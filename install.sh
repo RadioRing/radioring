@@ -341,6 +341,13 @@ if curl -fsSL "$REPO_RAW/update.sh" -o update.sh 2>/dev/null; then
 else
     warn "Could not download update.sh - updates have to be run by hand for now."
 fi
+
+# Download a copy of install.sh for later use.
+if curl -fsSL "$REPO_RAW/install.sh" -o install.sh 2>/dev/null; then
+    chmod +x install.sh 2>/dev/null || warn "Could not make install.sh executable."
+else
+    warn "Could not download install.sh - future repairs have to be run by hand for now."
+fi
 ok "docker-compose.yml written"
 
 # ------------------------------------------------------------------- Start ----
