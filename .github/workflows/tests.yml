@@ -1,10 +1,8 @@
 name: tests
 
+# Triggered by ci.yml and release.yml, which gate the image builds on it.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_call:
 
 jobs:
   ci:
@@ -40,8 +38,8 @@ jobs:
       - name: Copy environment file
         run: cp .env.example .env
 
-      # Die Testsuite laeuft gegen SQLite im Speicher. APP_LOCALE und die uebrigen
-      # Testwerte kommen aus phpunit.xml.
+      # The suite runs against in-memory SQLite. APP_LOCALE and the other test
+      # values come from phpunit.xml.
       - name: Override database for testing
         run: |
           sed -i 's/^DB_CONNECTION=.*/DB_CONNECTION=sqlite/' .env

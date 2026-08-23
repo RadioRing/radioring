@@ -24,8 +24,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # Die Skripte laufen auf dem Zielserver unter dash bzw. ash, nicht unter bash.
-      # -s sh prueft genau diese Teilmenge.
+      # The scripts run under dash or ash on the target server, not bash.
+      # -s sh checks exactly that subset.
       - name: ShellCheck
         run: shellcheck -s sh install.sh update.sh
 
@@ -41,8 +41,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # Das Template wird von install.sh unveraendert ausgeliefert. Wenn es nicht
-      # parst, scheitert jede Neuinstallation.
+      # install.sh ships the template unchanged. If it does not parse, every
+      # new installation fails.
       - name: Validate the compose template
         run: |
           workdir="$(mktemp -d)"

@@ -6,8 +6,7 @@ Liquidsoap process per station that actually puts the programme on air.
 You plan what should be playing when. RadioRing turns that into an hour-by-hour rundown,
 hands it to Liquidsoap track by track, and streams the result to Icecast or laut.fm.
 
-[![tests](https://github.com/RadioRing/radioring/actions/workflows/tests.yml/badge.svg)](https://github.com/RadioRing/radioring/actions/workflows/tests.yml)
-[![linter](https://github.com/RadioRing/radioring/actions/workflows/lint.yml/badge.svg)](https://github.com/RadioRing/radioring/actions/workflows/lint.yml)
+[![CI](https://github.com/RadioRing/radioring/actions/workflows/ci.yml/badge.svg)](https://github.com/RadioRing/radioring/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 
 > **Note on language.** The user interface and the end-user manual

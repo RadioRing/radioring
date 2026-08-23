@@ -1,5 +1,10 @@
 name: Release
 
+# A release is one git tag that produces three things which have to match: the
+# app image, the station image, and the compose template install.sh fetches from
+# the same tag. The images are built from here rather than from a tag trigger on
+# the image workflows, so that nothing depends on how GitHub evaluates a paths
+# filter on a tag push.
 on:
   push:
     tags: ['v*.*.*']
@@ -10,20 +15,27 @@ on:
         required: true
 
 jobs:
+  lint:
+    uses: ./.github/workflows/lint.yml
+
+  tests:
+    uses: ./.github/workflows/tests.yml
+
   app-image:
+    needs: [lint, tests]
     permissions:
       contents: read
       packages: write
+    secrets: inherit
     uses: ./.github/workflows/docker.yml
 
   station-image:
+    needs: [lint, tests]
     permissions:
       contents: read
       packages: write
     uses: ./.github/workflows/liquidsoap-station.yml
 
-  # Fails the release if a tag that installers will resolve to did not produce
-  # the images they will try to pull. Cheaper to find out here than on a VPS.
   verify:
     needs: [app-image, station-image]
     runs-on: ubuntu-latest
@@ -34,9 +46,8 @@ jobs:
         run: |
           ref="${{ github.event.inputs.tag || github.ref_name }}"
           echo "version=${ref#v}" >> "$GITHUB_OUTPUT"
-          echo "Release version: ${ref#v}"
 
-      - name: Both images exist under the release tag
+      - name: Both images exist for both architectures
         env:
           VERSION: ${{ steps.v.outputs.version }}
           OWNER: ${{ github.repository_owner }}
@@ -46,12 +57,20 @@ jobs:
 
           for image in "ghcr.io/${owner}/radioring:${VERSION}" \
                        "ghcr.io/${owner}/liquidsoap-station:${VERSION}"; do
-            if docker manifest inspect "$image" >/dev/null 2>&1; then
-              echo "ok   $image"
-            else
+            if ! manifest="$(docker manifest inspect "$image" 2>/dev/null)"; then
               echo "MISSING $image"
               failed=1
+              continue
             fi
+
+            for arch in amd64 arm64; do
+              if echo "$manifest" | grep -q "\"architecture\": \"$arch\""; then
+                echo "ok      $image ($arch)"
+              else
+                echo "MISSING $image ($arch)"
+                failed=1
+              fi
+            done
           done
 
           exit "$failed"
@@ -59,9 +78,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # install.sh pins RADIORING_IMAGE and STATION_IMAGE to this tag and pulls
-      # the template from it, so the template at the tag has to be usable on its
-      # own. This is the same check install.yml runs against main.
+      # install.sh pins the images to this tag and pulls the template from it,
+      # so the template at the tag has to stand on its own.
       - name: The compose template at this tag parses
         run: |
           workdir="$(mktemp -d)"

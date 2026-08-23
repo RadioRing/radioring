@@ -1,10 +1,8 @@
 name: linter
 
+# Triggered by ci.yml and release.yml, which gate the image builds on it.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_call:
 
 jobs:
   quality:

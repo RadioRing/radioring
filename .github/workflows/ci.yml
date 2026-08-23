@@ -1,0 +1,31 @@
+name: CI
+
+# Lint, then tests, then images. A build that would only ever produce an
+# unshippable image should not occupy two runners for ten minutes first.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    uses: ./.github/workflows/lint.yml
+
+  tests:
+    uses: ./.github/workflows/tests.yml
+
+  app-image:
+    needs: [lint, tests]
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit
+    uses: ./.github/workflows/docker.yml
+
+  station-image:
+    needs: [lint, tests]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/liquidsoap-station.yml
