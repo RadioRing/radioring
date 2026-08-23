@@ -1,31 +1,32 @@
-# RadioRing - Compose-Template
+# RadioRing - compose template
 #
-# Wird von install.sh in das Zielverzeichnis geschrieben. Die Datei ist bewusst
-# unveraenderlich: welche Dienste laufen, steuert COMPOSE_PROFILES in der .env
-# daneben. Das ist deutlich robuster, als Bloecke aus einer Datei zu schneiden.
+# Written into the target directory by install.sh. The file is deliberately
+# invariant: which services run is decided by COMPOSE_PROFILES in the .env next
+# to it. That is far more robust than cutting blocks out of a file.
 #
-# Profile:
-#   driver-docker   Socket-Proxy fuer die Container-Steuerung (CONTAINER_DRIVER=docker)
-#   bundled-db      MySQL mitliefern statt extern anbinden
-#   bundled-redis   Redis mitliefern statt extern anbinden
-#   traefik         Reverse Proxy mitliefern statt vorhandenen nutzen
+# Profiles:
+#   driver-docker   Socket proxy for container control (CONTAINER_DRIVER=docker)
+#   bundled-db      Ship MySQL instead of connecting to an external one
+#   bundled-redis   Ship Redis instead of connecting to an external one
+#   traefik         Ship a reverse proxy instead of using an existing one
 #
-# SICHERHEIT: Wer die Docker-API erreicht, kann einen privilegierten Container mit
-# gemountetem Host-Root starten und ist damit root auf dem Host. Der Socket-Proxy
-# verkleinert die Angriffsflaeche, er ist KEINE Sicherheitsgrenze. Siehe SECURITY.md.
+# SECURITY: anyone who reaches the Docker API can start a privileged container
+# with the host root mounted, and is root on the host from there. The socket
+# proxy reduces the attack surface, it is NOT a security boundary.
+# See SECURITY.md.
 
 services:
   app:
     image: ${RADIORING_IMAGE:?Set RADIORING_IMAGE}
     restart: unless-stopped
     init: true
-    # Eine einzige Quelle fuer alle Werte. Verhindert das staendige Auseinanderlaufen
-    # von .env und einem aufgezaehlten environment-Block.
+    # A single source for every value. Keeps the .env and an enumerated
+    # environment block from drifting apart over time.
     env_file: [.env]
     networks: [radioring, web]
-    # Standardmaessig nur auf dem Loopback. Mit Traefik ist das lediglich ein Zugang
-    # zur Fehlersuche; ohne Reverse Proxy ist es der einzige Weg hinein (dann per
-    # SSH-Tunnel erreichbar, oder APP_BIND bewusst weiten).
+    # Loopback only by default. With Traefik this is merely a way in for
+    # debugging; without a reverse proxy it is the only way in (reachable
+    # through an SSH tunnel then, or widen APP_BIND deliberately).
     ports:
       - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8080}:8080"
     volumes:
@@ -43,8 +44,8 @@ services:
       - traefik.http.routers.radioring.tls.certresolver=${TRAEFIK_CERTRESOLVER:-radioring}
       - traefik.http.services.radioring.loadbalancer.server.port=8080
 
-  # Vermittelt der App genau die Docker-Endpunkte, die sie braucht.
-  # Bewusst KEIN ports: - nur im internen Netz erreichbar.
+  # Hands the app exactly the Docker endpoints it needs.
+  # No ports: on purpose - reachable on the internal network only.
   dockerproxy:
     profiles: [driver-docker]
     image: tecnativa/docker-socket-proxy:0.3
@@ -54,7 +55,7 @@ services:
       IMAGES: 1
       POST: 1
     volumes:
-      # :ro ist kosmetisch - ein Unix-Socket ist bidirektional, read-only gilt der Inode.
+      # :ro is cosmetic - a Unix socket is bidirectional, read-only applies to the inode.
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks: [radioring]
 
@@ -87,6 +88,8 @@ services:
 
   traefik:
     profiles: [traefik]
+    # Do not go below v3.6: earlier versions pin the Docker API to 1.24, which
+    # newer engines reject, and Traefik then sees no containers at all.
     image: traefik:v3.6
     restart: unless-stopped
     command:
@@ -107,8 +110,8 @@ services:
       - acme:/acme
     networks: [radioring, web]
 
-  # Traefik bekommt einen EIGENEN, echt lesenden Proxy. Weder den Socket direkt noch
-  # den Proxy der App, der POST erlauben muss.
+  # Traefik gets its OWN, genuinely read-only proxy. Neither the socket itself
+  # nor the app's proxy, which has to allow POST.
   dockerproxy-traefik:
     profiles: [traefik]
     image: tecnativa/docker-socket-proxy:0.3
@@ -124,8 +127,8 @@ services:
     networks: [radioring]
 
 networks:
-  # Expliziter name: sonst haengt der Netzname vom Installationsverzeichnis ab
-  # (<projekt>_default) und DOCKER_STATION_NETWORK zeigt ins Leere.
+  # Explicit name: otherwise the network name depends on the installation
+  # directory (<project>_default) and DOCKER_STATION_NETWORK points nowhere.
   radioring:
     name: radioring
   web:
