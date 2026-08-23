@@ -173,6 +173,15 @@ We say this because you should know what you are reading before you trust it in
 production. The same rule applies to contributions: see
 [`CONTRIBUTING.md`](CONTRIBUTING.md#ai-assisted-contributions).
 
+## Support and Chat
+
+We have an IRC channel on the ST-City Network (irc.st-city.net) #radioring. Feel free to
+join and ask questions.
+
+Use your favorite IRC client or a web client like [ST-City](https://st-city.net/app?channel=radioring).
+
+Support can however only be done at best-effort basis.
+
 ## Licence
 
 [GNU Affero General Public License v3.0 or later](LICENSE).
