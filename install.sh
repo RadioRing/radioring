@@ -279,6 +279,11 @@ info "$MODE_LABEL - configuration"
 ask APP_HOST       "Panel domain"                           "${APP_HOST:-panel.example.com}"
 ask IMAGE_OWNER    "GitHub owner of the images"             "${IMAGE_OWNER:-radioring}"
 
+# A registry reference has to be lowercase, a GitHub owner does not have to be.
+# Answering "RadioRing" here would otherwise produce an image name that docker
+# refuses to parse, and only at pull time.
+IMAGE_OWNER="$(printf '%s' "$IMAGE_OWNER" | tr '[:upper:]' '[:lower:]')"
+
 # No prompt for the image tag any more. It comes from the channel, so that the
 # images, the compose template and this script can never drift apart. Override
 # it with --version=, which moves the whole installation, not just the images.
