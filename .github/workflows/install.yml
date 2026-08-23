@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Die Skripte laufen auf dem Zielserver unter dash bzw. ash, nicht unter bash.
       # -s sh prueft genau diese Teilmenge.
@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Das Template wird von install.sh unveraendert ausgeliefert. Wenn es nicht
       # parst, scheitert jede Neuinstallation.
