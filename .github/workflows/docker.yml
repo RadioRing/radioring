@@ -1,11 +1,15 @@
 name: Build & Push Docker Image
 
+# Continuous builds from main produce "edge". Release builds are driven by
+# release.yml, which calls this workflow on a version tag; the tag context then
+# makes metadata-action emit the semver tags plus "latest".
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
 
 env:
   REGISTRY: ghcr.io
@@ -44,14 +48,16 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # flavor latest=auto (the default) adds "latest" whenever a semver tag
+          # is produced, so "latest" tracks releases and "edge" tracks main.
           tags: |
-            # "latest" auf dem Default-Branch
-            type=raw,value=latest,enable={{is_default_branch}}
-            # Versions-Tags aus Git-Tags (v1.0.0 -> 1.0.0, 1.0, 1)
+            # Rolling build of the default branch
+            type=raw,value=edge,enable={{is_default_branch}}
+            # Version tags from git tags (v1.0.0 -> 1.0.0, 1.0, 1)
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            # Kurzer SHA fuer jeden Build
+            # Short SHA for every build
             type=sha,prefix=
 
       - name: Build and push
@@ -65,23 +71,26 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
 
+  # The demo tracks edge, so a release tag must not redeploy it. Without the
+  # ref check this would also fire when release.yml calls the workflow, because
+  # a tag push is a push event too.
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
       - name: Trigger Portainer redeploy
         env:
           WEBHOOK: ${{ secrets.PORTAINER_WEBHOOK_URL }}
         run: |
-          # Das Secret existiert nur im Repository, das die Demo betreibt. In Forks und
-          # im oeffentlichen Repository ohne Demo ueberspringt sich der Schritt still,
-          # statt den Build rot zu faerben.
+          # The secret only exists in the repository that runs the demo. In forks
+          # and in a public repository without a demo the step skips itself
+          # quietly instead of turning the build red.
           if [ -z "$WEBHOOK" ]; then
-            echo "PORTAINER_WEBHOOK_URL ist nicht gesetzt - Deploy uebersprungen."
+            echo "PORTAINER_WEBHOOK_URL is not set - deploy skipped."
             exit 0
           fi
 
           curl -fsS -X POST "$WEBHOOK"
-          echo "Portainer-Redeploy ausgeloest."
+          echo "Portainer redeploy triggered."

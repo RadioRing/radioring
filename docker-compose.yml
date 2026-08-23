@@ -26,6 +26,9 @@
 #     here to start.
 #   * The demo carries no data worth keeping, so nothing here is arranged with
 #     backups or upgrades in mind.
+#   * The images are the "edge" tag, rebuilt from every push to main. That is
+#     the point of the demo: it finds what is broken before a release is cut.
+#     A normal installation is pinned to a release tag by install.sh.
 #
 # Everything secret comes from a `.env` file next to this compose file on the
 # demo host, never from the repository.
@@ -33,7 +36,7 @@
 
 services:
   app:
-    image: ghcr.io/radioring/radioring:latest
+    image: ghcr.io/radioring/radioring:edge
     restart: unless-stopped
     init: true
     networks:
@@ -65,7 +68,7 @@ services:
       PORTAINER_ENDPOINT: ${PORTAINER_ENDPOINT}
       PORTAINER_ENVIRONMENT: ${PORTAINER_ENVIRONMENT}
       LIQUIDSOAP_API_URL: ${LIQUIDSOAP_API_URL}
-      STATION_IMAGE: ghcr.io/radioring/liquidsoap-station:latest
+      STATION_IMAGE: ghcr.io/radioring/liquidsoap-station:edge
       STATION_MANAGED_BY: radioring
       # Only needed while the station image is private.
       STATION_REGISTRY_USERNAME: ${STATION_REGISTRY_USERNAME:-}

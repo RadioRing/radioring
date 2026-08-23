@@ -88,17 +88,44 @@ The installer asks for the panel domain, whether to bring along MySQL, Redis and
 and how to reach Docker. It writes `/opt/radioring/.env` and a `docker-compose.yml`, pulls
 the images, starts everything and prints an invite code for the first registration.
 
-Afterwards, make that first account an administrator:
+Skip the invite and get a ready administrator account instead:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/radioring/radioring/main/install.sh \
+  | sh -s -- --admin=you@example.com
+```
+
+The generated password is printed once, at the end of the run.
+
+### Releases and channels
+
+An installation follows one of two channels, recorded in its `.env`:
+
+| Channel | What it installs |
+|---|---|
+| `stable` (default) | The newest published release. The app image, the station image and the compose template are all pinned to that one git tag. |
+| `edge` | The tip of `main`, rebuilt on every push. This is what the public demo runs. |
+
+Nothing moves on its own. A pinned installation keeps running the version it was installed
+with across reboots and container recreates, and only `update.sh` changes that:
 
 ```sh
 cd /opt/radioring
-docker compose exec -T app php artisan user:manage you@example.com --admin --verify
+./update.sh --check          # what would change
+./update.sh                  # move to the newest release in the channel
+./update.sh --version=v1.2.0 # move to an exact release
+./update.sh --channel=edge   # switch channels
 ```
 
-Updating:
+Updating rewrites the image pins and refetches the compose template from the matching tag,
+so the three never drift apart. A jump across a major version stops and points at the
+release notes; `--force` proceeds.
+
+To install a specific version, or to track `main` deliberately:
 
 ```sh
-cd /opt/radioring && ./update.sh
+... | sh -s -- --version=v1.2.0
+... | sh -s -- --channel=edge
 ```
 
 Prefer to do it by hand? [`docs/en/operations.md`](docs/en/operations.md) documents every variable, and

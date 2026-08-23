@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to (re)build, for example v1.2.0'
+        required: true
+
+jobs:
+  app-image:
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker.yml
+
+  station-image:
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/liquidsoap-station.yml
+
+  # Fails the release if a tag that installers will resolve to did not produce
+  # the images they will try to pull. Cheaper to find out here than on a VPS.
+  verify:
+    needs: [app-image, station-image]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve the version
+        id: v
+        run: |
+          ref="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "version=${ref#v}" >> "$GITHUB_OUTPUT"
+          echo "Release version: ${ref#v}"
+
+      - name: Both images exist under the release tag
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          owner="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          failed=0
+
+          for image in "ghcr.io/${owner}/radioring:${VERSION}" \
+                       "ghcr.io/${owner}/liquidsoap-station:${VERSION}"; do
+            if docker manifest inspect "$image" >/dev/null 2>&1; then
+              echo "ok   $image"
+            else
+              echo "MISSING $image"
+              failed=1
+            fi
+          done
+
+          exit "$failed"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # install.sh pins RADIORING_IMAGE and STATION_IMAGE to this tag and pulls
+      # the template from it, so the template at the tag has to be usable on its
+      # own. This is the same check install.yml runs against main.
+      - name: The compose template at this tag parses
+        run: |
+          workdir="$(mktemp -d)"
+          cp docker/templates/docker-compose.yml "$workdir/docker-compose.yml"
+
+          cat > "$workdir/.env" <<'ENVEOF'
+          RADIORING_IMAGE=ghcr.io/radioring/radioring:latest
+          APP_HOST=panel.example.com
+          DB_DATABASE=radioring
+          DB_USERNAME=radioring
+          DB_PASSWORD=secret
+          DB_ROOT_PASSWORD=rootsecret
+          REDIS_PASSWORD=secret
+          ACME_EMAIL=admin@example.com
+          WEB_NETWORK=radioring-web
+          ENVEOF
+
+          cd "$workdir"
+          docker compose config --quiet
+          COMPOSE_PROFILES=driver-docker,bundled-db,bundled-redis,traefik \
+            docker compose config --quiet

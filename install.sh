@@ -15,9 +15,25 @@ set -eu
 
 RR_DIR="${RR_DIR:-/opt/radioring}"
 ASSUME_YES="${RR_YES:-0}"
-REPO_RAW="${RR_REPO_RAW:-https://raw.githubusercontent.com/radioring/radioring/main}"
 ADMIN_EMAIL="${RR_ADMIN_EMAIL:-}"
 WANT_INVITE="${RR_INVITE:-0}"
+
+# Which line of releases this installation follows.
+#
+#   stable  the newest published release. Images and the compose template are
+#           pinned to that exact tag, and only update.sh ever moves them.
+#   edge    the tip of main, which is what the demo runs.
+#
+# The bootstrap URL in the README always points at main, because a URL people
+# copy out of a readme must not change. This script is therefore always the
+# newest one; the channel decides what it then installs, not where it came from.
+#
+# Kept in WANTED_* because the existing .env is sourced later and sets the very
+# same names; what the caller asked for has to survive that.
+WANTED_CHANNEL="${RR_CHANNEL:-}"
+WANTED_VERSION="${RR_VERSION:-}"
+WANTED_REPO_RAW="${RR_REPO_RAW:-}"
+WANTED_REPO_SLUG="${RR_REPO_SLUG:-}"
 
 for arg in "$@"; do
     case "$arg" in
@@ -25,15 +41,19 @@ for arg in "$@"; do
         --dir=*) RR_DIR="${arg#--dir=}" ;;
         --admin=*) ADMIN_EMAIL="${arg#--admin=}" ;;
         --invite) WANT_INVITE=1 ;;
+        --channel=*) WANTED_CHANNEL="${arg#--channel=}" ;;
+        --version=*) WANTED_VERSION="${arg#--version=}"; WANTED_CHANNEL=stable ;;
         -h|--help)
             cat <<'USAGE'
 RadioRing installer
 
-  -y, --yes         Non-interactive, accepts every default
-      --dir=PATH    Target directory (default: /opt/radioring)
-      --admin=MAIL  Create a verified admin account and print its password.
-                    Skips the invite and registration dance entirely.
-      --invite      Print a fresh invite code, also on a repeat run.
+  -y, --yes          Non-interactive, accepts every default
+      --dir=PATH     Target directory (default: /opt/radioring)
+      --admin=MAIL   Create a verified admin account and print its password.
+                     Skips the invite and registration dance entirely.
+      --invite       Print a fresh invite code, also on a repeat run.
+      --channel=NAME stable (newest release, the default) or edge (tip of main)
+      --version=TAG  Install this exact release, for example v1.2.0
 
 Every prompt can be preseeded through an environment variable, for example:
   RR_APP_HOST=panel.example.com RR_DB=bundled sh install.sh --yes
@@ -42,6 +62,11 @@ USAGE
             ;;
     esac
 done
+
+case "${WANTED_CHANNEL:-stable}" in
+    stable|edge) ;;
+    *) echo "Unknown channel: $WANTED_CHANNEL (expected stable or edge)" >&2; exit 1 ;;
+esac
 
 # ----------------------------------------------------------------- Output ----
 
@@ -162,13 +187,75 @@ if [ -f "$RR_DIR/.env" ]; then
     ok "Backed up the previous .env"
 fi
 
+# ---------------------------------------------------------------- Channel ----
+#
+# Resolved here and not earlier: the block above sources the existing .env,
+# which sets RR_CHANNEL, RR_VERSION, RR_REPO_SLUG and RR_REPO_RAW. Resolving
+# before that would let the old file overwrite the freshly resolved values, and
+# the installation would end up with images from one release and a compose
+# template from another.
+#
+# Precedence: what the caller asked for, then what the installation already
+# follows, then the default.
+
+REPO_SLUG="${WANTED_REPO_SLUG:-${RR_REPO_SLUG:-radioring/radioring}}"
+RR_CHANNEL="${WANTED_CHANNEL:-${RR_CHANNEL:-stable}}"
+
+# Newest published release tag, empty when the project has not tagged one.
+# Parsed with sed rather than jq, which is not on a bare VPS.
+latest_release() {
+    curl -fsSL "https://api.github.com/repos/$REPO_SLUG/releases/latest" 2>/dev/null \
+        | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+        | head -n 1
+}
+
+info "Resolving the $RR_CHANNEL channel"
+
+if [ -n "$WANTED_VERSION" ]; then
+    RR_VERSION="$WANTED_VERSION"
+elif [ "$RR_CHANNEL" = "edge" ]; then
+    RR_VERSION="main"
+elif [ "$FRESH_INSTALL" = "0" ] && [ -n "${RR_VERSION:-}" ] && [ -z "$WANTED_CHANNEL" ]; then
+    # A repair run stays on the version this installation already runs.
+    # Moving to a newer release is update.sh's job, never a side effect of
+    # rerunning the installer to fix something.
+    say "  Keeping the installed version $RR_VERSION. Use update.sh to move forward."
+else
+    RR_VERSION="$(latest_release || true)"
+
+    if [ -z "$RR_VERSION" ]; then
+        # Before the first tag there is nothing stable to install. Falling back
+        # is friendlier than refusing, but it has to be said out loud: this
+        # installation then follows a moving target.
+        warn "No published release found for $REPO_SLUG."
+        warn "Falling back to the edge channel (tip of main). Expect changes without notice."
+        RR_CHANNEL="edge"
+        RR_VERSION="main"
+    fi
+fi
+
+# Git tags carry a leading v, image tags do not: v1.2.0 -> 1.2.0.
+if [ "$RR_CHANNEL" = "edge" ]; then
+    RESOLVED_IMAGE_TAG="edge"
+else
+    RESOLVED_IMAGE_TAG="${RR_VERSION#v}"
+fi
+
+REPO_RAW="${WANTED_REPO_RAW:-https://raw.githubusercontent.com/$REPO_SLUG/$RR_VERSION}"
+
+ok "Channel $RR_CHANNEL, version $RR_VERSION, image tag $RESOLVED_IMAGE_TAG"
+
 # ---------------------------------------------------------------- Prompts ----
 
 info "$MODE_LABEL - configuration"
 
 ask APP_HOST       "Panel domain"                           "${APP_HOST:-panel.example.com}"
 ask IMAGE_OWNER    "GitHub owner of the images"             "${IMAGE_OWNER:-radioring}"
-ask IMAGE_TAG      "Image tag"                              "${IMAGE_TAG:-latest}"
+
+# No prompt for the image tag any more. It comes from the channel, so that the
+# images, the compose template and this script can never drift apart. Override
+# it with --version=, which moves the whole installation, not just the images.
+IMAGE_TAG="$RESOLVED_IMAGE_TAG"
 
 ask CONTAINER_DRIVER "Container control (docker|portainer)" "${CONTAINER_DRIVER:-docker}"
 if [ "$CONTAINER_DRIVER" = "portainer" ]; then
@@ -322,8 +409,15 @@ TRAEFIK_CERTRESOLVER=${TRAEFIK_CERTRESOLVER:-radioring}
 ACME_EMAIL=$ACME_EMAIL
 COMPOSE_PROFILES=$PROFILES
 
-# Source update.sh pulls the docker-compose.yml from. On a fork this points at
-# the fork, not at the original.
+# Which release line this installation follows and where it currently sits.
+# update.sh reads all four: it resolves the newest version in the channel,
+# rewrites the image tags below and refetches the compose template from the
+# matching tag. Editing RADIORING_IMAGE by hand and leaving RR_VERSION behind
+# is how an installation ends up with an app and a template from different
+# releases, so change the channel here and let update.sh do the rest.
+RR_CHANNEL=$RR_CHANNEL
+RR_VERSION=$RR_VERSION
+RR_REPO_SLUG=$REPO_SLUG
 RR_REPO_RAW=$REPO_RAW
 ENVEOF
 
