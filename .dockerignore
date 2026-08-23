@@ -1,0 +1,25 @@
+.git
+.github
+node_modules
+vendor
+public/build
+storage/app/public
+storage/app/uploads
+storage/framework/cache
+storage/framework/sessions
+storage/framework/views
+storage/logs
+storage/app/stations
+database/*.sqlite
+database/*.sqlite-journal
+bootstrap/cache
+.env
+.env.*
+!.env.example
+*.log
+docker-compose*.yml
+# Das Handbuch ist keine reine Doku: die Hilfeseite liest es zur Laufzeit aus docs/.
+docs/**
+!docs/de/handbuch.md
+!docs/en/handbook.md
+tests

@@ -1,0 +1,74 @@
+name: install scripts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'install.sh'
+      - 'update.sh'
+      - 'docker/templates/**'
+      - '.github/workflows/install.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'install.sh'
+      - 'update.sh'
+      - 'docker/templates/**'
+      - '.github/workflows/install.yml'
+  workflow_dispatch:
+
+jobs:
+  shell:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # Die Skripte laufen auf dem Zielserver unter dash bzw. ash, nicht unter bash.
+      # -s sh prueft genau diese Teilmenge.
+      - name: ShellCheck
+        run: shellcheck -s sh install.sh update.sh
+
+      - name: Parse with a real POSIX shell
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq dash
+          dash -n install.sh
+          dash -n update.sh
+
+  compose:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # Das Template wird von install.sh unveraendert ausgeliefert. Wenn es nicht
+      # parst, scheitert jede Neuinstallation.
+      - name: Validate the compose template
+        run: |
+          workdir="$(mktemp -d)"
+          cp docker/templates/docker-compose.yml "$workdir/docker-compose.yml"
+
+          cat > "$workdir/.env" <<'ENVEOF'
+          RADIORING_IMAGE=ghcr.io/radioring/radioring:latest
+          APP_HOST=panel.example.com
+          DB_DATABASE=radioring
+          DB_USERNAME=radioring
+          DB_PASSWORD=secret
+          DB_ROOT_PASSWORD=rootsecret
+          REDIS_PASSWORD=secret
+          ACME_EMAIL=admin@example.com
+          WEB_NETWORK=radioring-web
+          WEB_NETWORK_EXTERNAL=false
+          TRAEFIK_ENABLE=true
+          TRAEFIK_CERTRESOLVER=radioring
+          COMPOSE_PROFILES=driver-docker,bundled-db,bundled-redis,traefik
+          ENVEOF
+
+          cd "$workdir"
+          docker compose config --quiet
+          echo "Template mit allen Profilen valide."
+
+          # Und einmal ohne die optionalen Dienste, also der externe Aufbau.
+          sed -i 's/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=/' .env
+          docker compose config --quiet
+          echo "Template ohne optionale Dienste valide."

@@ -1,0 +1,110 @@
+# ==============================================================================
+# This is the deployment file for the public RadioRing demo (panel.radioring.de).
+#
+# It lives in the repository because the demo is redeployed straight from `main`:
+# a push updates the demo, so this file has to be versioned alongside the code
+# it deploys. It is a running configuration, not a template.
+#
+# DO NOT USE THIS FILE FOR YOUR OWN INSTALLATION.
+#
+# Run `install.sh` instead. It asks a handful of questions and writes a compose
+# file from `docker/templates/docker-compose.yml` that matches your machine:
+#
+#   curl -fsSL https://raw.githubusercontent.com/radioring/radioring/main/install.sh | sh
+#
+# Why copying this one hurts:
+#
+#   * APP_DEBUG is on. The demo is meant to be broken and inspected. On any
+#     other host it turns every uncaught exception into a page that prints your
+#     environment, database credentials included.
+#   * CONTAINER_DRIVER is `portainer`, so it needs a Portainer instance with an
+#     API token. The default for new installations is the Docker socket proxy,
+#     which needs nothing beyond Docker.
+#   * It expects a Traefik reverse proxy that already exists, on an external
+#     network named `web`, with a cert resolver named `myresolver`.
+#   * MySQL and Redis are external. There are no database or cache services
+#     here to start.
+#   * The demo carries no data worth keeping, so nothing here is arranged with
+#     backups or upgrades in mind.
+#
+# Everything secret comes from a `.env` file next to this compose file on the
+# demo host, never from the repository.
+# ==============================================================================
+
+services:
+  app:
+    image: ghcr.io/radioring/radioring:latest
+    restart: unless-stopped
+    init: true
+    networks:
+      - web
+    environment:
+      APP_NAME: Radioring
+      APP_ENV: production
+      APP_MODE: all
+      # Demo only. See the warning at the top of this file.
+      APP_DEBUG: true
+      APP_KEY: ${APP_KEY:?Generate one via 'php artisan key:generate --show' and put APP_KEY into the .env next to this compose file}
+      APP_URL: ${APP_URL:-https://panel.radioring.de}
+      APP_LOCALE: de
+      ASSET_URL: ${APP_URL:-https://panel.radioring.de}
+      DB_CONNECTION: mysql
+      DB_DATABASE: ${DB_DATABASE:?Set DB_DATABASE}
+      DB_HOST: ${DB_HOST:?Set DB_HOST}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USERNAME: ${DB_USERNAME:?Set DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      CONTAINER_DRIVER: portainer
+      # Keep sessions and cache out of SQLite: avoids write contention per request.
+      SESSION_DRIVER: redis
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: database
+      LOG_CHANNEL: stderr
+      SERVER_NAME: ":80"
+      PORTAINER_TOKEN: ${PORTAINER_TOKEN}
+      PORTAINER_ENDPOINT: ${PORTAINER_ENDPOINT}
+      PORTAINER_ENVIRONMENT: ${PORTAINER_ENVIRONMENT}
+      LIQUIDSOAP_API_URL: ${LIQUIDSOAP_API_URL}
+      STATION_IMAGE: ghcr.io/radioring/liquidsoap-station:latest
+      STATION_MANAGED_BY: radioring
+      # Only needed while the station image is private.
+      STATION_REGISTRY_USERNAME: ${STATION_REGISTRY_USERNAME:-}
+      STATION_REGISTRY_PASSWORD: ${STATION_REGISTRY_PASSWORD:-}
+      # Per-station live input (input.harbor): plain Icecast on its own port per
+      # station, published from the container to the host directly, bypassing
+      # Traefik. Encoders connect to {slug}.STREAM_DOMAIN:{port}. Empty means no
+      # publishing at all (local development). Requires a wildcard DNS record
+      # *.stream.radioring.de pointing at the server (DNS only is enough) and the
+      # port range opened in the firewall.
+      STREAM_DOMAIN: ${STREAM_DOMAIN:-stream.radioring.de}
+      STREAM_PORT_MIN: ${STREAM_PORT_MIN:-8001}
+      STREAM_PORT_MAX: ${STREAM_PORT_MAX:-8099}
+      # Redis command relay (skip / hard cut), against an external Redis on
+      # another host. Note that Redis pub/sub is instance-wide and NOT scoped to
+      # a database; REDIS_DB only affects keys. The app and the station
+      # containers must share both the channel and the instance.
+      REDIS_HOST: ${REDIS_HOST:?Set REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+      REDIS_DB: ${REDIS_DB:-10}
+      # Optional: a different Redis address for the station containers.
+      STATION_REDIS_HOST: ${STATION_REDIS_HOST:-}
+      # Loudness is measured offline on upload via ffmpeg, so there is no live
+      # autocue to crash on a damaged file.
+      LOUDNESS_NORMALIZATION: ${LOUDNESS_NORMALIZATION:-true}
+    volumes:
+      - storage:/app/storage
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=web
+      - traefik.http.routers.radioring.rule=Host(`panel.radioring.de`)
+      - traefik.http.routers.radioring.entrypoints=websecure
+      - traefik.http.routers.radioring.tls.certresolver=myresolver
+      - traefik.http.services.radioring.loadbalancer.server.port=8080
+
+networks:
+  web:
+    external: true
+
+volumes:
+  storage:

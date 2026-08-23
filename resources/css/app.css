@@ -1,0 +1,64 @@
+@import 'bootstrap/dist/css/bootstrap.min.css';
+@import 'bootstrap-icons/font/bootstrap-icons.css';
+
+/* ── Sidebar layout ────────────────────────────────────────── */
+#sidebar {
+    width: 250px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    /* Eigenständig auf Viewport-Höhe halten, nicht auf die Inhaltshöhe mitwachsen.
+       Bei vielen Einträgen scrollt die Navigation in sich selbst. */
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    height: 100vh;
+    overflow-y: auto;
+}
+
+/* Abschnitts-Überschriften in der Sidebar (z. B. PROGRAMMPLANUNG) lesbar halten –
+   Bootstraps .text-muted ist auf dunklem Grund zu kontrastarm. */
+#sidebar .nav-link.disabled {
+    color: rgba(255, 255, 255, .5) !important;
+}
+
+#sidebar .nav-link {
+    color: rgba(255, 255, 255, .75);
+    border-radius: .375rem;
+}
+
+#sidebar .nav-link:hover,
+#sidebar .nav-link.active {
+    color: #fff;
+    background-color: rgba(255, 255, 255, .1);
+}
+
+#sidebar .nav-link .bi {
+    width: 1.125rem;
+    text-align: center;
+}
+
+#content-wrapper {
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+/* ── Auth layout ───────────────────────────────────────────── */
+.auth-wrapper {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f8f9fa;
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 420px;
+}
+
+/* ── Misc ──────────────────────────────────────────────────── */
+.text-muted-sm {
+    font-size: .875rem;
+    color: #6c757d;
+}
