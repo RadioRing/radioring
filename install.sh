@@ -16,17 +16,24 @@ set -eu
 RR_DIR="${RR_DIR:-/opt/radioring}"
 ASSUME_YES="${RR_YES:-0}"
 REPO_RAW="${RR_REPO_RAW:-https://raw.githubusercontent.com/radioring/radioring/main}"
+ADMIN_EMAIL="${RR_ADMIN_EMAIL:-}"
+WANT_INVITE="${RR_INVITE:-0}"
 
 for arg in "$@"; do
     case "$arg" in
         -y|--yes) ASSUME_YES=1 ;;
         --dir=*) RR_DIR="${arg#--dir=}" ;;
+        --admin=*) ADMIN_EMAIL="${arg#--admin=}" ;;
+        --invite) WANT_INVITE=1 ;;
         -h|--help)
             cat <<'USAGE'
 RadioRing installer
 
-  -y, --yes        Non-interactive, accepts every default
-      --dir=PATH   Target directory (default: /opt/radioring)
+  -y, --yes         Non-interactive, accepts every default
+      --dir=PATH    Target directory (default: /opt/radioring)
+      --admin=MAIL  Create a verified admin account and print its password.
+                    Skips the invite and registration dance entirely.
+      --invite      Print a fresh invite code, also on a repeat run.
 
 Every prompt can be preseeded through an environment variable, for example:
   RR_APP_HOST=panel.example.com RR_DB=bundled sh install.sh --yes
@@ -357,10 +364,34 @@ ok "App is running"
 
 # --------------------------------------------------------------- Bootstrap ----
 
+# An invite code is only useful while somebody still has to register. With
+# --admin the account exists already, so a code would just be noise.
+#
+# On a repeat run there is deliberately no code unless --invite asks for one:
+# the operator already has an account, and every unused code is a way in.
+ADMIN_OUTPUT=""
+if [ -n "$ADMIN_EMAIL" ]; then
+    info "Creating the admin account $ADMIN_EMAIL"
+    if ADMIN_OUTPUT=$(docker compose exec -T app php artisan user:manage "$ADMIN_EMAIL"             --create --admin --verify --no-interaction 2>&1 </dev/null); then
+        ok "Admin account ready"
+    else
+        warn "Could not create the admin account:"
+        printf '%s
+' "$ADMIN_OUTPUT" >&2
+        ADMIN_OUTPUT=""
+    fi
+fi
+
 INVITE_OUTPUT=""
-if [ "$FRESH_INSTALL" = "1" ]; then
+if [ -z "$ADMIN_EMAIL" ] && { [ "$FRESH_INSTALL" = "1" ] || [ "$WANT_INVITE" = "1" ]; }; then
     info "Creating an invite code for the first registration"
-    INVITE_OUTPUT=$(docker compose exec -T app php artisan invite:manage --create --count=1 --note="install.sh" 2>/dev/null </dev/null || true)
+    if ! INVITE_OUTPUT=$(docker compose exec -T app php artisan invite:manage             --create --count=1 --note="install.sh" --no-interaction 2>&1 </dev/null); then
+        warn "Could not create an invite code:"
+        printf '%s
+' "$INVITE_OUTPUT" >&2
+        warn "By hand: cd $RR_DIR && docker compose exec -T app php artisan invite:manage --create"
+        INVITE_OUTPUT=""
+    fi
 fi
 
 # ---------------------------------------------------------------- Finished ----
@@ -376,6 +407,13 @@ if [ "${NO_PROXY_NOTE:-}" = "yes" ]; then
 else
     say "  Panel:        https://$APP_HOST"
 fi
+if [ -n "$ADMIN_OUTPUT" ]; then
+    say "  Sign in:      https://$APP_HOST/login"
+    say "  Account:      $ADMIN_EMAIL"
+    say ""
+    printf '%s\n' "$ADMIN_OUTPUT"
+    say ""
+fi
 if [ -n "$INVITE_OUTPUT" ]; then
     say "  Register:     https://$APP_HOST/register"
     say ""
@@ -383,6 +421,11 @@ if [ -n "$INVITE_OUTPUT" ]; then
     say ""
     say "  Then make the first user an admin:"
     say "    cd $RR_DIR && docker compose exec -T app php artisan user:manage YOUR@MAIL --admin --verify"
+fi
+if [ -z "$ADMIN_OUTPUT" ] && [ -z "$INVITE_OUTPUT" ]; then
+    say "  Need a way in?"
+    say "    cd $RR_DIR && ./install.sh --invite"
+    say "    cd $RR_DIR && ./install.sh --admin=you@example.com"
 fi
 say ""
 say "  DNS:          A  $APP_HOST            -> IP of this server"

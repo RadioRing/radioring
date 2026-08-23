@@ -11,10 +11,10 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 
 #[Signature('media:rescan-tags
-    {--station= : Nur die Bibliothek des Mandanten dieser Station (ID oder Slug)}
-    {--force : Vorhandene Werte überschreiben statt nur leere Felder zu füllen}
-    {--dry-run : Nur anzeigen, was geändert würde – nichts speichern}')]
-#[Description('Liest die ID3-Tags vorhandener Mediendateien neu und füllt leere DB-Felder (Interpret, Album, Titel, Dauer)')]
+    {--station= : Only the library of the tenant of this station (ID or slug)}
+    {--force : Overwrite existing values instead of filling empty fields only}
+    {--dry-run : Only show what would change, save nothing}')]
+#[Description('Re-reads the ID3 tags of existing media files and fills empty database fields (artist, album, title, duration)')]
 class RescanMediaTags extends Command
 {
     public function handle(AudioMetadataService $metadata): int
@@ -27,7 +27,7 @@ class RescanMediaTags extends Command
                 ->first();
 
             if (! $station) {
-                $this->error('Keine Station für „'.$this->option('station').'" gefunden.');
+                $this->error(__('No station found for :station.', ['station' => $this->option('station')]));
 
                 return self::FAILURE;
             }
@@ -51,7 +51,7 @@ class RescanMediaTags extends Command
 
                 if (! $disk->exists($file->file_path)) {
                     $missing++;
-                    $this->warn("  fehlt auf Disk: {$file->file_path}");
+                    $this->warn('  '.__('missing on disk: :path', ['path' => $file->file_path]));
 
                     continue;
                 }
@@ -75,20 +75,20 @@ class RescanMediaTags extends Command
         });
 
         $this->newLine();
-        $this->table(['Gescannt', 'Aktualisiert', 'Unverändert', 'Fehlend'], [
+        $this->table([__('Scanned'), __('Updated'), __('Unchanged'), __('Missing')], [
             [$scanned, $updated, $unchanged, $missing],
         ]);
 
         if ($dryRun) {
-            $this->info('Probelauf – es wurde nichts gespeichert.');
+            $this->info(__('Dry run, nothing was saved.'));
         }
 
         return self::SUCCESS;
     }
 
     /**
-     * Ermittelt die zu setzenden Felder: gefüllt wird nur, wenn das Feld leer ist
-     * (oder --force gesetzt) und der ID3-Tag tatsächlich einen Wert liefert.
+     * Works out which fields to set: a field is only filled when it is empty
+     * (or --force is given) and the ID3 tag actually carries a value.
      *
      * @param  array{title: ?string, artist: ?string, album: ?string, duration: ?int}  $meta
      * @return array<string, mixed>

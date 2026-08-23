@@ -13,12 +13,12 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
 #[Signature('radioring:prepare-local-stream
-    {station? : Slug oder ID der Station (Standard: erste Station)}
-    {--host=host.docker.internal : Hostname, unter dem der Container die App erreicht}
-    {--port=8000 : Port der lokalen App}
-    {--icecast-password=hackme : Source-Passwort des lokalen Icecast}
-    {--playlist= : Slug/ID/Name der Playlist für den Fallback-Slot (Standard: Playlist mit den meisten Items)}')]
-#[Description('Konfiguriert eine Station für den lokalen Docker-Liquidsoap-Test (Output, Rundown, .env)')]
+    {station? : Slug or ID of the station (default: the first one)}
+    {--host=host.docker.internal : Hostname under which the container reaches the app}
+    {--port=8000 : Port of the local app}
+    {--icecast-password=hackme : Source password of the local Icecast}
+    {--playlist= : Slug/ID/name of the playlist for the fallback slot (default: the playlist with the most items)}')]
+#[Description('Configures a station for the local Docker Liquidsoap test (output, rundown, .env)')]
 class PrepareLocalStream extends Command
 {
     public function handle(RundownGeneratorService $generator): int
@@ -26,7 +26,7 @@ class PrepareLocalStream extends Command
         $station = $this->resolveStation();
 
         if (! $station) {
-            $this->error('Keine Station gefunden. Lege zuerst eine Station an.');
+            $this->error(__('No station found. Create a station first.'));
 
             return self::FAILURE;
         }
@@ -43,20 +43,19 @@ class PrepareLocalStream extends Command
         $this->writeDockerEnv($station, $apiBase);
 
         $this->newLine();
-        $this->info('✓ Lokaler Stream vorbereitet.');
-        $this->line('  Hören auf  : http://localhost:8010/'.$station->slug.'  (Icecast, z.B. in VLC)');
-        $this->line('  Rundowns   : '.$rundownCount.' Stunde(n) für heute generiert');
-        $this->line('  docker/.env: geschrieben (SLUG, TOKEN, LIQUIDSOAP_API_URL)');
+        $this->info(__('Local stream prepared.'));
+        $this->line('  '.__('Listen on').' : http://localhost:8010/'.$station->slug.'  (Icecast, e.g. in VLC)');
+        $this->line('  Rundowns    : '.__(':count hour(s) generated for today', ['count' => $rundownCount]));
+        $this->line('  docker/.env : '.__('written (SLUG, TOKEN, LIQUIDSOAP_API_URL)'));
 
         if ($rundownCount === 0) {
             $this->newLine();
-            $this->warn('Achtung: Für die aktuelle Stunde ist im Wochenraster keine Playlist hinterlegt.');
-            $this->warn('Weise im Wochenraster der jetzigen Stunde eine Playlist zu und führe den Befehl erneut aus,');
-            $this->warn('sonst liefert /next nur Stille.');
+            $this->warn(__('Careful: the weekly grid holds no playlist for the current hour.'));
+            $this->warn(__('Assign one to this hour and run the command again, otherwise /next returns silence.'));
         }
 
         $this->newLine();
-        $this->line('Jetzt starten:  <comment>./docker/run-local.ps1</comment>');
+        $this->line(__('Start it now:').'  <comment>./docker/run-local.ps1</comment>');
 
         return self::SUCCESS;
     }
@@ -87,7 +86,7 @@ class PrepareLocalStream extends Command
             ]
         );
 
-        $this->line('  → Icecast-Output gesetzt (host=icecast, mount=/'.$station->slug.')');
+        $this->line('  '.__('Icecast output set (host=icecast, mount=/:slug)', ['slug' => $station->slug]));
     }
 
     private function configureStream(Station $station): void
@@ -102,14 +101,14 @@ class PrepareLocalStream extends Command
             ]
         );
 
-        $this->line('  → Stream-Record gesetzt (container=radioring-'.$station->slug.')');
+        $this->line('  '.__('Stream record set (container=radioring-:slug)', ['slug' => $station->slug]));
     }
 
     /**
-     * Generiert Rundowns für die aktuelle und die nächste Stunde.
+     * Generates rundowns for the current and the next hour.
      *
-     * Für die aktuelle Stunde wird – falls kein Slot existiert – automatisch
-     * ein Fallback-Slot im Wochenraster angelegt, damit lokal sofort Ton kommt.
+     * When the current hour has no slot, a fallback slot is created in the
+     * weekly grid so that something is audible locally right away.
      */
     private function ensureRundowns(Station $station, RundownGeneratorService $generator): int
     {
@@ -126,12 +125,12 @@ class PrepareLocalStream extends Command
                 ->with('playlist.items.mediaFile')
                 ->first();
 
-            // Nur für die aktuelle Stunde einen Fallback-Slot anlegen
+            // Only create a fallback slot for the current hour
             if (! $slot && $offset === 0) {
                 $playlist = $this->pickFallbackPlaylist($station);
 
                 if (! $playlist) {
-                    $this->warn('  → Keine Playlist mit Items vorhanden – kann keinen Fallback-Slot anlegen.');
+                    $this->warn('  '.__('No playlist with items exists, cannot create a fallback slot.'));
 
                     continue;
                 }
@@ -143,7 +142,7 @@ class PrepareLocalStream extends Command
                 ]);
                 $slot->load('playlist.items.mediaFile');
 
-                $this->line("  → Fallback-Slot angelegt: jetzt → Playlist '{$playlist->name}'");
+                $this->line('  '.__('Fallback slot created: now, playlist ":name"', ['name' => $playlist->name]));
             }
 
             if (! $slot) {
@@ -153,9 +152,9 @@ class PrepareLocalStream extends Command
             try {
                 $generator->generate($station, $slot, $date, force: true);
                 $count++;
-                $this->line('  → Rundown generiert für '.$date->toDateString().' '.$moment->hour.':00');
+                $this->line('  '.__('Rundown generated for :date :hour:00', ['date' => $date->toDateString(), 'hour' => $moment->hour]));
             } catch (\Throwable $e) {
-                $this->warn('  → Rundown für '.$moment->hour.':00 fehlgeschlagen: '.$e->getMessage());
+                $this->warn('  '.__('Rundown for :hour:00 failed: :error', ['hour' => $moment->hour, 'error' => $e->getMessage()]));
             }
         }
 
@@ -163,7 +162,7 @@ class PrepareLocalStream extends Command
     }
 
     /**
-     * Wählt die Fallback-Playlist: explizit per --playlist oder die mit den meisten Items.
+     * Picks the fallback playlist: explicitly via --playlist, or the one with the most items.
      */
     private function pickFallbackPlaylist(Station $station): ?Playlist
     {
@@ -197,12 +196,12 @@ class PrepareLocalStream extends Command
             ]
         );
 
-        $this->line('  → Liquidsoap-State zurückgesetzt (Position 0)');
+        $this->line('  '.__('Liquidsoap state reset (position 0)'));
     }
 
     /**
-     * Stellt sicher, dass die App-.env LIQUIDSOAP_API_URL enthält, damit das
-     * generierte .liq-Script die vom Container erreichbare URL einbettet.
+     * Makes sure the app .env carries LIQUIDSOAP_API_URL so that the generated
+     * .liq script embeds the URL that is reachable from inside the container.
      */
     private function writeAppEnv(string $apiBase): void
     {
@@ -223,13 +222,13 @@ class PrepareLocalStream extends Command
 
         file_put_contents($path, $content);
 
-        // config:clear nur außerhalb von Tests – sonst reconnectet Laravel auf
+        // config:clear outside of tests only, otherwise Laravel reconnects to
         // eine frische :memory:-DB und bricht nachfolgende Tests ab.
         if (! app()->runningUnitTests()) {
             $this->call('config:clear');
         }
 
-        $this->line('  → App-.env: '.$line);
+        $this->line('  '.__('App .env: :line', ['line' => $line]));
     }
 
     private function writeDockerEnv(Station $station, string $apiBase): void
@@ -243,7 +242,7 @@ class PrepareLocalStream extends Command
             $redisHost = 'host.docker.internal';
         }
 
-        $content = "# Auto-generiert von radioring:prepare-local-stream\n"
+        $content = "# Auto-generated by radioring:prepare-local-stream\n"
             ."STATION_SLUG={$station->slug}\n"
             ."STATION_TOKEN={$station->api_token}\n"
             ."LIQUIDSOAP_API_URL={$apiBase}\n"
@@ -256,6 +255,9 @@ class PrepareLocalStream extends Command
 
         file_put_contents(base_path('docker/.env'), $content);
 
-        $this->line('  → docker/.env: Redis-Relay verdrahtet (REDIS_HOST='.$redisHost.', Channel='.config('radioring.control_channel').')');
+        $this->line('  '.__('docker/.env: Redis relay wired up (REDIS_HOST=:host, channel=:channel)', [
+            'host' => $redisHost,
+            'channel' => config('radioring.control_channel'),
+        ]));
     }
 }

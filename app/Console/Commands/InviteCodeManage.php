@@ -8,11 +8,11 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 #[Signature('invite:manage
-    {--create : Neue Einladungscodes erzeugen}
-    {--count=1 : Anzahl der zu erzeugenden Codes}
-    {--note= : Notiz, die an den/die Codes gehängt wird}
-    {--list : Alle Codes auflisten}')]
-#[Description('Erzeugt und verwaltet Einladungscodes für die Registrierung')]
+    {--create : Create new invite codes}
+    {--count=1 : How many codes to create}
+    {--note= : Note attached to the code or codes}
+    {--list : List every code}')]
+#[Description('Creates and manages invite codes for registration')]
 class InviteCodeManage extends Command
 {
     public function handle(): int
@@ -38,10 +38,10 @@ class InviteCodeManage extends Command
                 'note' => $note,
             ]);
 
-            $this->line("  → {$invite->code}".($note ? "  ({$note})" : ''));
+            $this->line("  {$invite->code}".($note ? "  ({$note})" : ''));
         }
 
-        $this->info("{$count} Einladungscode(s) erzeugt.");
+        $this->info(__(':count invite code(s) created.', ['count' => $count]));
         $this->newLine();
     }
 
@@ -50,19 +50,19 @@ class InviteCodeManage extends Command
         $codes = InviteCode::with('usedBy')->latest()->get();
 
         if ($codes->isEmpty()) {
-            $this->warn('Keine Einladungscodes vorhanden. Mit --create erzeugen.');
+            $this->warn(__('No invite codes exist. Create one with --create.'));
 
             return;
         }
 
         $this->table(
-            ['Code', 'Notiz', 'Status', 'Verwendet von', 'Verwendet am'],
+            [__('Code'), __('Note'), __('Status'), __('Used by'), __('Used at')],
             $codes->map(fn (InviteCode $code) => [
                 $code->code,
-                $code->note ?? '–',
-                $code->isUsed() ? 'verbraucht' : 'frei',
-                $code->usedBy?->email ?? '–',
-                $code->used_at?->toDateTimeString() ?? '–',
+                $code->note ?? '-',
+                $code->isUsed() ? __('spent') : __('free'),
+                $code->usedBy?->email ?? '-',
+                $code->used_at?->toDateTimeString() ?? '-',
             ])->all(),
         );
     }

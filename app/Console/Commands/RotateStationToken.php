@@ -10,10 +10,10 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
 #[Signature('station:rotate-token
-    {station : Slug oder ID der Station}
-    {--force : Ohne Rueckfrage rotieren und neu starten}
-    {--no-restart : Nur den Token rotieren, Container nicht anfassen}')]
-#[Description('Erzeugt einen neuen API-Token fuer eine Station und startet ihren Container neu')]
+    {station : Slug or ID of the station}
+    {--force : Rotate and restart without asking}
+    {--no-restart : Only rotate the token, leave the container alone}')]
+#[Description('Creates a new API token for a station and recreates its container')]
 class RotateStationToken extends Command
 {
     public function handle(ContainerServiceInterface $containers): int

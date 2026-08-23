@@ -10,8 +10,8 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
 #[Signature('external-sources:migrate-legacy
-    {--dry-run : Nur anzeigen, was umgewandelt würde – nichts speichern}')]
-#[Description('Wandelt bestehende url/news/weather-Playlist-Items in wiederverwendbare ExternalSource-Objekte um')]
+    {--dry-run : Only show what would be converted, save nothing}')]
+#[Description('Converts existing url/news/weather playlist items into reusable ExternalSource objects')]
 class MigrateLegacyExternalSources extends Command
 {
     private const TITLES = [
@@ -30,7 +30,7 @@ class MigrateLegacyExternalSources extends Command
             ->get();
 
         if ($items->isEmpty()) {
-            $this->info('Keine Legacy-Items gefunden.');
+            $this->info(__('No legacy items found.'));
 
             return self::SUCCESS;
         }
@@ -46,8 +46,13 @@ class MigrateLegacyExternalSources extends Command
 
             $source = $dryRun ? null : $this->resolveSource($item, $stationId);
 
-            $this->line("  #{$item->id} [{$item->type}] „{$item->title}\" → ".
-                ($source ? "Quelle #{$source->id}" : 'neue/wiederverwendete Quelle'));
+            $this->line(sprintf(
+                '  #%s [%s] "%s" -> %s',
+                $item->id,
+                $item->type,
+                $item->title,
+                $source ? __('source #:id', ['id' => $source->id]) : __('new or reused source'),
+            ));
 
             if (! $dryRun) {
                 DB::transaction(function () use ($item, $source) {
@@ -63,10 +68,10 @@ class MigrateLegacyExternalSources extends Command
         }
 
         $this->newLine();
-        $this->info(($dryRun ? '[Probelauf] ' : '')."{$converted} Item(s) umgewandelt.");
+        $this->info(($dryRun ? '['.__('Dry run').'] ' : '').__(':count item(s) converted.', ['count' => $converted]));
 
         if ($dryRun) {
-            $this->warn('Probelauf – es wurde nichts gespeichert.');
+            $this->warn(__('Dry run, nothing was saved.'));
         }
 
         return self::SUCCESS;

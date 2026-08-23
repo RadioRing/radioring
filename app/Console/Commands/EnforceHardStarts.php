@@ -10,7 +10,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 #[Signature('radioring:enforce-hard-starts')]
-#[Description('Erzwingt zur vollen Stunde den Wechsel auf Hard-Start-Rundowns (sample-genau via skip)')]
+#[Description('Forces the switch to hard-start rundowns on the hour (sample accurate, via skip)')]
 class EnforceHardStarts extends Command
 {
     public function handle(LiquidsoapStateService $state, LiquidsoapCommandService $commands): int
@@ -30,7 +30,11 @@ class EnforceHardStarts extends Command
             $state->commitHardStart($station, $hard);
             $commands->skip($station);
 
-            $this->info("Hard-Start erzwungen: Station #{$station->id} → Rundown #{$hard->id} ".sprintf('%02d:00', $hard->broadcast_hour));
+            $this->info(__('Hard start forced: station #:station, rundown #:rundown at :hour', [
+                'station' => $station->id,
+                'rundown' => $hard->id,
+                'hour' => sprintf('%02d:00', $hard->broadcast_hour),
+            ]));
         }
 
         return self::SUCCESS;

@@ -9,8 +9,8 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 
-#[Signature('media:prune-replaced {--days=7 : Ersetzte Fassungen älter als N Tage löschen} {--dry-run : Nur anzeigen, nichts löschen}')]
-#[Description('Löscht ersetzte Fassungen von Mediendateien, auf die kein Rundown mehr zeigt.')]
+#[Signature('media:prune-replaced {--days=7 : Delete replaced versions older than N days} {--dry-run : Only show, delete nothing}')]
+#[Description('Deletes replaced versions of media files that no rundown points at any more.')]
 class PruneReplacedMedia extends Command
 {
     public function handle(): int
@@ -45,8 +45,8 @@ class PruneReplacedMedia extends Command
         }
 
         $this->info($dryRun
-            ? "Würde löschen: {$pruned} ersetzte Fassung(en), behalten: {$kept}."
-            : "Gelöscht: {$pruned} ersetzte Fassung(en), behalten: {$kept}.");
+            ? __('Would delete :pruned replaced version(s), keeping :kept.', ['pruned' => $pruned, 'kept' => $kept])
+            : __('Deleted :pruned replaced version(s), kept :kept.', ['pruned' => $pruned, 'kept' => $kept]));
 
         return self::SUCCESS;
     }

@@ -7,8 +7,8 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 
-#[Signature('media:prune-chunks {--hours=2 : Chunk-Verzeichnisse älter als N Stunden löschen}')]
-#[Description('Löscht verwaiste Chunk-Upload-Verzeichnisse die älter als N Stunden sind.')]
+#[Signature('media:prune-chunks {--hours=2 : Delete chunk directories older than N hours}')]
+#[Description('Deletes orphaned chunk upload directories older than N hours.')]
 class PruneChunks extends Command
 {
     public function handle(): int
@@ -36,7 +36,7 @@ class PruneChunks extends Command
             }
         }
 
-        $this->info("Gelöscht: {$pruned} verwaiste Chunk-Verzeichnis(se).");
+        $this->info(__('Deleted :count orphaned chunk directory/directories.', ['count' => $pruned]));
 
         return self::SUCCESS;
     }
