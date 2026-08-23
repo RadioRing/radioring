@@ -260,7 +260,7 @@ APP_DEBUG=false
 APP_URL=https://$APP_HOST
 ASSET_URL=https://$APP_HOST
 APP_MODE=all
-APP_LOCALE=de
+APP_LOCALE=en
 APP_FALLBACK_LOCALE=en
 
 # Initial value. The effective mode lives in the database and can be switched
@@ -333,22 +333,40 @@ chmod 600 .env 2>/dev/null || warn "Could not set the permissions of .env to 600
 ok ".env written (readable by its owner only)"
 
 umask 022
-curl -fsSL "$REPO_RAW/docker/templates/docker-compose.yml" -o docker-compose.yml 2>/dev/null \
+
+fetch() {
+    _url="$1"; _dest="$2"; _tmp="$2.download.$$"
+
+    if curl -fsSL "$_url" -o "$_tmp" 2>/dev/null; then
+        mv -f "$_tmp" "$_dest"
+        return 0
+    fi
+
+    rm -f "$_tmp"
+    return 1
+}
+
+fetch "$REPO_RAW/docker/templates/docker-compose.yml" docker-compose.yml \
     || die "Could not download docker-compose.yml from $REPO_RAW"
-# update.sh is optional: without it the installation still runs.
-if curl -fsSL "$REPO_RAW/update.sh" -o update.sh 2>/dev/null; then
+ok "docker-compose.yml written"
+
+# Both scripts are optional: the installation runs without them, it is only
+# less convenient afterwards.
+if fetch "$REPO_RAW/update.sh" update.sh; then
     chmod +x update.sh 2>/dev/null || warn "Could not make update.sh executable."
+    ok "update.sh written"
 else
     warn "Could not download update.sh - updates have to be run by hand for now."
 fi
 
-# Download a copy of install.sh for later use.
-if curl -fsSL "$REPO_RAW/install.sh" -o install.sh 2>/dev/null; then
+# A local copy so that --invite, --admin= and later repairs work without
+# fetching the installer from the network again.
+if fetch "$REPO_RAW/install.sh" install.sh; then
     chmod +x install.sh 2>/dev/null || warn "Could not make install.sh executable."
+    ok "install.sh written"
 else
-    warn "Could not download install.sh - future repairs have to be run by hand for now."
+    warn "Could not download install.sh - repairs have to be run from the URL for now."
 fi
-ok "docker-compose.yml written"
 
 # ------------------------------------------------------------------- Start ----
 
