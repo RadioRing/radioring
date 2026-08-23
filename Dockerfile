@@ -77,8 +77,13 @@ RUN rm -rf \
     && chmod -R 775 storage bootstrap/cache \
     && chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/healthcheck.sh
 
+ARG APP_VERSION=""
+ARG APP_COMMIT=""
+
 # TLS terminiert am Reverse-Proxy vor dem Container
-ENV APP_ENV=production APP_DEBUG=false APP_MODE=all
+ENV APP_ENV=production APP_DEBUG=false APP_MODE=all \
+    APP_VERSION=$APP_VERSION \
+    APP_COMMIT=$APP_COMMIT
 
 EXPOSE 8080
 

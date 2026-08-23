@@ -149,5 +149,7 @@
     "source #:id": "Quelle #:id",
     "spent": "verbraucht",
     "written (SLUG, TOKEN, LIQUIDSOAP_API_URL)": "geschrieben (SLUG, TOKEN, LIQUIDSOAP_API_URL)",
-    "yes": "ja"
+    "yes": "ja",
+    "Release notes": "Release-Notes",
+    "This build on GitHub": "Dieser Build auf GitHub"
 }

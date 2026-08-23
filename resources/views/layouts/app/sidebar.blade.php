@@ -157,6 +157,8 @@
                             </li>
                         </ul>
                     </div>
+
+                    <x-app-version />
                 </div>
             </nav>
 

@@ -60,10 +60,21 @@ REPO_SLUG="$(env_get RR_REPO_SLUG)"
 
 IMAGE_OWNER="${REPO_SLUG%%/*}"
 
-latest_release() {
+# Two endpoints, because /releases/latest excludes drafts AND prereleases by
+# definition. While a project marks its whole 0.x line as prerelease, that
+# endpoint 404s even though releases exist.
+tag_from_json() {
+    sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1
+}
+
+latest_stable_release() {
     curl -fsSL "https://api.github.com/repos/$REPO_SLUG/releases/latest" 2>/dev/null \
-        | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
-        | head -n 1
+        | tag_from_json
+}
+
+newest_any_release() {
+    curl -fsSL "https://api.github.com/repos/$REPO_SLUG/releases?per_page=1" 2>/dev/null \
+        | tag_from_json
 }
 
 # ------------------------------------------------------------- Target ----
@@ -74,7 +85,13 @@ if [ -n "$WANTED_VERSION" ]; then
 elif [ "$CHANNEL" = "edge" ]; then
     TARGET_VERSION="main"
 else
-    TARGET_VERSION="$(latest_release || true)"
+    TARGET_VERSION="$(latest_stable_release || true)"
+    PRERELEASE=0
+
+    if [ -z "$TARGET_VERSION" ]; then
+        TARGET_VERSION="$(newest_any_release || true)"
+        [ -n "$TARGET_VERSION" ] && PRERELEASE=1
+    fi
 
     if [ -z "$TARGET_VERSION" ]; then
         echo "Could not determine the newest release of $REPO_SLUG." >&2
@@ -93,7 +110,11 @@ REPO_RAW="https://raw.githubusercontent.com/$REPO_SLUG/$TARGET_VERSION"
 
 echo "Channel:  $CHANNEL"
 echo "Current:  $CURRENT_VERSION"
-echo "Target:   $TARGET_VERSION"
+if [ "${PRERELEASE:-0}" = "1" ]; then
+    echo "Target:   $TARGET_VERSION (prerelease, no stable release published yet)"
+else
+    echo "Target:   $TARGET_VERSION"
+fi
 
 # A jump across a major version is the one case where reading the release notes
 # is not optional, so it stops here unless the operator insists. Comparing only

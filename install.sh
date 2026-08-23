@@ -201,12 +201,27 @@ fi
 REPO_SLUG="${WANTED_REPO_SLUG:-${RR_REPO_SLUG:-radioring/radioring}}"
 RR_CHANNEL="${WANTED_CHANNEL:-${RR_CHANNEL:-stable}}"
 
-# Newest published release tag, empty when the project has not tagged one.
 # Parsed with sed rather than jq, which is not on a bare VPS.
-latest_release() {
+#
+# Two endpoints, because /releases/latest excludes drafts AND prereleases by
+# definition. A project whose whole 0.x line is marked "prerelease" therefore
+# gets a 404 from it even though it has published releases.
+tag_from_json() {
+    sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1
+}
+
+# Newest release GitHub itself calls "latest": stable, not a prerelease.
+latest_stable_release() {
     curl -fsSL "https://api.github.com/repos/$REPO_SLUG/releases/latest" 2>/dev/null \
-        | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
-        | head -n 1
+        | tag_from_json
+}
+
+# Newest published release of any kind. per_page=1 keeps the response to a
+# single entry, so the crude sed cannot pick a tag out of the wrong one.
+# Drafts are not in the unauthenticated response at all.
+newest_any_release() {
+    curl -fsSL "https://api.github.com/repos/$REPO_SLUG/releases?per_page=1" 2>/dev/null \
+        | tag_from_json
 }
 
 info "Resolving the $RR_CHANNEL channel"
@@ -221,12 +236,24 @@ elif [ "$FRESH_INSTALL" = "0" ] && [ -n "${RR_VERSION:-}" ] && [ -z "$WANTED_CHA
     # rerunning the installer to fix something.
     say "  Keeping the installed version $RR_VERSION. Use update.sh to move forward."
 else
-    RR_VERSION="$(latest_release || true)"
+    RR_VERSION="$(latest_stable_release || true)"
 
     if [ -z "$RR_VERSION" ]; then
-        # Before the first tag there is nothing stable to install. Falling back
-        # is friendlier than refusing, but it has to be said out loud: this
-        # installation then follows a moving target.
+        # No stable release yet. A prerelease is still a pinned tag with built
+        # images behind it, which beats following a moving branch, so prefer it
+        # over edge and say what happened.
+        RR_VERSION="$(newest_any_release || true)"
+
+        if [ -n "$RR_VERSION" ]; then
+            warn "No stable release yet, using the newest prerelease $RR_VERSION."
+            warn "It is a pinned tag with published images, unlike the edge channel."
+        fi
+    fi
+
+    if [ -z "$RR_VERSION" ]; then
+        # Nothing published at all. Falling back is friendlier than refusing,
+        # but it has to be said out loud: this installation then follows a
+        # moving target.
         warn "No published release found for $REPO_SLUG."
         warn "Falling back to the edge channel (tip of main). Expect changes without notice."
         RR_CHANNEL="edge"

@@ -228,4 +228,18 @@ return [
     | die App). Leer = REDIS_HOST aus der DB-Config.
     */
     'station_redis_host' => env('STATION_REDIS_HOST', ''),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Build-ID
+    |--------------------------------------------------------------------------
+    | Used to show the short-sha from git if it is a snapshot from main branch
+    | If this is a tagged release it should display the version number.
+    |
+    */
+    'version' => [
+        'name' => env('APP_VERSION', ''),
+        'commit' => env('APP_COMMIT', ''),
+        'repository' => env('APP_REPOSITORY', 'radioring/radioring'),
+    ],
 ];
