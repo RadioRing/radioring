@@ -4,7 +4,13 @@
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/radioring/radioring/main/install.sh | sh
 #
-# POSIX sh on purpose (dash/ash on Debian and Alpine)
+# POSIX sh on purpose (dash/ash on Debian and Alpine): no arrays, no [[ ]], no ${x^^}.
+#
+# Two rules that this script breaks if you forget them, because with 'curl | sh'
+# stdin IS the script text:
+#   - prompts read from /dev/tty, never from stdin
+#   - every docker command gets </dev/null, or it eats the rest of this file and
+#     sh dies with 'end of file unexpected' somewhere near the bottom
 set -eu
 
 RR_DIR="${RR_DIR:-/opt/radioring}"
@@ -130,8 +136,8 @@ if ! command -v docker >/dev/null 2>&1; then
     fi
 fi
 
-docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is missing (docker compose version)."
-docker info >/dev/null 2>&1 || die "No access to the Docker daemon. Run as root or join the docker group."
+docker compose version >/dev/null 2>&1 </dev/null || die "Docker Compose v2 is missing (docker compose version)."
+docker info >/dev/null 2>&1 </dev/null || die "No access to the Docker daemon. Run as root or join the docker group."
 ok "Docker ready"
 
 # ------------------------------------------------------- Existing install ----
@@ -333,13 +339,13 @@ ok "docker-compose.yml written"
 # ------------------------------------------------------------------- Start ----
 
 info "Pulling images and starting"
-docker compose pull
-docker compose up -d
+docker compose pull </dev/null
+docker compose up -d </dev/null
 
 info "Waiting for readiness"
 _waited=0
 while [ "$_waited" -lt 180 ]; do
-    if docker compose exec -T app php artisan migrate:status >/dev/null 2>&1; then
+    if docker compose exec -T app php artisan migrate:status >/dev/null 2>&1 </dev/null; then
         break
     fi
     sleep 3
@@ -354,7 +360,7 @@ ok "App is running"
 INVITE_OUTPUT=""
 if [ "$FRESH_INSTALL" = "1" ]; then
     info "Creating an invite code for the first registration"
-    INVITE_OUTPUT=$(docker compose exec -T app php artisan invite:manage --create --count=1 --note="install.sh" 2>/dev/null || true)
+    INVITE_OUTPUT=$(docker compose exec -T app php artisan invite:manage --create --count=1 --note="install.sh" 2>/dev/null </dev/null || true)
 fi
 
 # ---------------------------------------------------------------- Finished ----

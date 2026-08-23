@@ -28,7 +28,7 @@ REPO_RAW=$(grep -E '^RR_REPO_RAW=' .env 2>/dev/null | cut -d= -f2- || true)
 
 if [ "$CHECK_ONLY" = "1" ]; then
     echo "Comparing local images against the registry ..."
-    docker compose pull --dry-run 2>/dev/null || docker compose pull
+    docker compose pull --dry-run 2>/dev/null </dev/null || docker compose pull </dev/null
     exit 0
 fi
 
@@ -64,13 +64,13 @@ else
     echo "Warning: could not download docker-compose.yml from $REPO_RAW, keeping the local one." >&2
 fi
 
-docker compose pull
-docker compose up -d
+docker compose pull </dev/null
+docker compose up -d </dev/null
 
 # Migrations run in the container entrypoint. They only have to be triggered
 # here when the app is split across containers (APP_MODE != all).
 if [ "$(grep -E '^APP_MODE=' .env 2>/dev/null | cut -d= -f2)" != "all" ]; then
-    docker compose exec -T app php artisan migrate --force
+    docker compose exec -T app php artisan migrate --force </dev/null
 fi
 
 docker image prune -f >/dev/null 2>&1 || true

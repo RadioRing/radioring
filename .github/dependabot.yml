@@ -1,12 +1,98 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+# Dependabot version updates.
+#
+# Grouping is deliberate. Ungrouped, this repository produces well over a dozen
+# pull requests a week across five ecosystems, which nobody reviews properly.
+# Minor and patch updates are batched per ecosystem; major updates stay on their
+# own, because those are the ones that need a human to read a changelog.
+#
+# https://docs.github.com/code-security/dependabot/working-with-dependabot/dependabot-options-reference
 
 version: 2
+
 updates:
-  - package-ecosystem: "" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  - package-ecosystem: composer
+    directory: /
     schedule:
-      interval: "weekly"
-      
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    versioning-strategy: increase-if-necessary
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: composer
+    groups:
+      php-production:
+        dependency-type: production
+        update-types: [minor, patch]
+      php-development:
+        dependency-type: development
+        update-types: [minor, patch]
+
+  # ---------------------------------------------------------- Frontend ----
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    versioning-strategy: increase-if-necessary
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: npm
+    groups:
+      npm-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # ------------------------------------------------------------- CI ----
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: actions
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  # ------------------------------------------------------- Base images ----
+  - package-ecosystem: docker
+    directories:
+      - /
+      - /docker/liquidsoap-station
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: docker
+    groups:
+      docker-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # -------------------------------------------------- Bundled services ----
+  - package-ecosystem: docker-compose
+    directories:
+      - /
+      - /docker/templates
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: compose
+    groups:
+      compose-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
