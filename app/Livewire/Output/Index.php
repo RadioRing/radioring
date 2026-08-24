@@ -3,6 +3,7 @@
 namespace App\Livewire\Output;
 
 use App\Models\Station;
+use App\Services\IcecastStatusService;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -41,12 +42,25 @@ class Index extends Component
     }
 
     /**
+     * For the internal server the user maintains neither host nor credentials: the script
+     * generator derives them. What is left is the mount, which becomes the last part of
+     * the public URL and therefore must not carry special characters.
+     *
      * @return array<string, mixed>
      */
     protected function rules(): array
     {
+        if ($this->type === 'internal') {
+            return [
+                'type' => 'required|in:icecast,lautfm,internal',
+                'mount' => ['required', 'string', 'max:64', 'regex:/^\/?[a-zA-Z0-9](?:[a-zA-Z0-9._-]*[a-zA-Z0-9])?$/'],
+                'bitrate' => 'required|integer|in:64,96,128,192,256,320',
+                'enabled' => 'boolean',
+            ];
+        }
+
         return [
-            'type' => 'required|in:icecast,lautfm',
+            'type' => 'required|in:icecast,lautfm,internal',
             'host' => 'required|string|max:255',
             'port' => 'required|integer|min:1|max:65535',
             'mount' => 'required|string|max:255',
@@ -56,6 +70,27 @@ class Index extends Component
             'bitrate' => 'required|integer|in:64,96,128,192,256,320',
             'enabled' => 'boolean',
         ];
+    }
+
+    /**
+     * Does this installation offer the internal Icecast at all?
+     */
+    public function internalAvailable(): bool
+    {
+        return Station::internalStreamSupported();
+    }
+
+    /**
+     * Prefill when switching to the internal server, so the user is not left with a
+     * required field whose meaning does not matter to them here.
+     */
+    public function updatedType(string $value): void
+    {
+        if ($value === 'internal' && trim($this->mount) === '') {
+            $this->mount = 'stream';
+        }
+
+        $this->resetValidation();
     }
 
     public function createNew(): void
@@ -83,6 +118,35 @@ class Index extends Component
     public function save(): void
     {
         $validated = $this->validate();
+
+        if ($validated['type'] === 'internal') {
+            abort_unless(Station::internalStreamSupported(), 403, 'Kein interner Server verfügbar.');
+
+            // Host, port and credentials are display values only: the script generator
+            // fills in the container name it actually sends to.
+            $data = [
+                'type' => 'internal',
+                'host' => $this->station->icecastContainerName(),
+                'port' => 8000,
+                'mount' => '/'.ltrim($validated['mount'], '/'),
+                'username' => 'source',
+                'bitrate' => $validated['bitrate'],
+                'enabled' => $validated['enabled'],
+            ];
+
+            if ($this->editingId) {
+                $this->station->outputs()->findOrFail($this->editingId)->update($data);
+                $message = __('Output updated.');
+            } else {
+                $this->station->outputs()->create($data);
+                $message = __('Output added.');
+            }
+
+            $this->resetForm();
+            $this->dispatch('notify', message: $message.' '.__('Container neu starten, damit die Änderung greift.'), type: 'success');
+
+            return;
+        }
 
         $data = [
             'type' => $validated['type'],
@@ -142,10 +206,17 @@ class Index extends Component
         $this->resetValidation();
     }
 
-    public function render()
+    public function render(IcecastStatusService $icecast)
     {
+        $outputs = $this->station->outputs()->orderByDesc('enabled')->latest()->get();
+
         return view('livewire.output.index', [
-            'outputs' => $this->station->outputs()->orderByDesc('enabled')->latest()->get(),
+            'outputs' => $outputs,
+            'internalAvailable' => $this->internalAvailable(),
+            // Query once: all internal outputs share the same sidecar.
+            'listeners' => $outputs->contains(fn ($output) => $output->isInternal() && $output->enabled)
+                ? $icecast->listeners($this->station)
+                : null,
         ])->layout('layouts.app');
     }
 }

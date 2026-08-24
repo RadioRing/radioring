@@ -23,7 +23,8 @@ return [
     |--------------------------------------------------------------------------
     | docker    = direkt gegen die Docker Engine API (Standard). Empfohlen ueber
     |             einen vorgeschalteten Socket-Proxy, siehe SECURITY.md.
-    | portainer = Legacy-Treiber ueber die Portainer-API (services.portainer.*).
+    | portainer = alternative Implementierung ueber die Portainer-API
+    |             (services.portainer.*). Funktional gleichwertig zum docker-Treiber.
     |
     | DOCKER_HOST nutzt die uebliche Docker-Syntax:
     |   tcp://dockerproxy:2375       -> Socket-Proxy (empfohlen)
@@ -201,6 +202,38 @@ return [
         'port_max' => (int) env('STREAM_PORT_MAX', 8099),
         'mount' => env('STREAM_MOUNT', '/live'),
         'username' => env('STREAM_USERNAME', 'source'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Internal Icecast (one sidecar container per station)
+    |--------------------------------------------------------------------------
+    | An output of type "internal" does not send to a third-party provider but to an
+    | Icecast that RadioRing starts next to the station's Liquidsoap container.
+    | Listeners reach it at https://{slug}.{stream.domain}/{mount}.
+    |
+    | Publishing goes through Traefik only (labels on the container), so the feature
+    | needs both 'traefik_enabled' and a 'stream.domain'. Without a reverse proxy
+    | there would be neither TLS nor a free port per station.
+    |
+    | admin_password is shared by ALL sidecars and only serves the app's status query.
+    | The source password is per station, encrypted in
+    | station_streams.icecast_password_enc.
+    |
+    */
+    'icecast' => [
+        'image' => env('ICECAST_IMAGE', 'ghcr.io/radioring/icecast:latest'),
+        'admin_password' => env('ICECAST_ADMIN_PASSWORD', ''),
+        'max_listeners' => (int) env('ICECAST_MAX_LISTENERS', 100),
+        'burst_size' => (int) env('ICECAST_BURST_SIZE', 65536),
+        // The network Traefik watches. Has to match WEB_NETWORK in the compose file,
+        // otherwise the proxy never sees the sidecar.
+        'web_network' => env('DOCKER_WEB_NETWORK', ''),
+        'traefik_enabled' => filter_var(env('TRAEFIK_ENABLE', false), FILTER_VALIDATE_BOOLEAN),
+        'cert_resolver' => env('TRAEFIK_CERTRESOLVER', 'radioring'),
+        // How long listener counts are cached. The dashboard polls, so without a cache
+        // every poll of every open tab would mean an HTTP request.
+        'status_ttl_seconds' => (int) env('ICECAST_STATUS_TTL_SECONDS', 10),
     ],
 
     /*

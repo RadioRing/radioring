@@ -29,3 +29,10 @@ jobs:
       contents: read
       packages: write
     uses: ./.github/workflows/liquidsoap-station.yml
+
+  icecast-image:
+    needs: [lint, tests]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/icecast.yml

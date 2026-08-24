@@ -1,8 +1,8 @@
 name: Release
 
-# A release is one git tag that produces three things which have to match: the
-# app image, the station image, and the compose template install.sh fetches from
-# the same tag. The images are built from here rather than from a tag trigger on
+# A release is one git tag that produces four things which have to match: the
+# app image, the station image, the Icecast image and the compose template
+# install.sh fetches from the same tag. The images are built from here rather than from a tag trigger on
 # the image workflows, so that nothing depends on how GitHub evaluates a paths
 # filter on a tag push.
 on:
@@ -36,8 +36,15 @@ jobs:
       packages: write
     uses: ./.github/workflows/liquidsoap-station.yml
 
+  icecast-image:
+    needs: [lint, tests]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/icecast.yml
+
   verify:
-    needs: [app-image, station-image]
+    needs: [app-image, station-image, icecast-image]
     runs-on: ubuntu-latest
 
     steps:
@@ -47,7 +54,7 @@ jobs:
           ref="${{ github.event.inputs.tag || github.ref_name }}"
           echo "version=${ref#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Both images exist for both architectures
+      - name: All images exist for both architectures
         env:
           VERSION: ${{ steps.v.outputs.version }}
           OWNER: ${{ github.repository_owner }}
@@ -56,7 +63,8 @@ jobs:
           failed=0
 
           for image in "ghcr.io/${owner}/radioring:${VERSION}" \
-                       "ghcr.io/${owner}/liquidsoap-station:${VERSION}"; do
+                       "ghcr.io/${owner}/liquidsoap-station:${VERSION}" \
+                       "ghcr.io/${owner}/icecast:${VERSION}"; do
             if ! manifest="$(docker manifest inspect "$image" 2>/dev/null)"; then
               echo "MISSING $image"
               failed=1

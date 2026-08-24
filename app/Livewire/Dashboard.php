@@ -6,6 +6,7 @@ use App\Contracts\ContainerServiceInterface;
 use App\Jobs\StartStationContainer;
 use App\Models\LiquidsoapState;
 use App\Models\Station;
+use App\Services\IcecastStatusService;
 use App\Services\LiquidsoapCommandService;
 use App\Services\LiquidsoapStateService;
 use App\Services\PlaylistProjectionService;
@@ -130,7 +131,7 @@ class Dashboard extends Component
             ?? abort(403, 'Keine Station ausgewählt.');
     }
 
-    public function render(PlaylistProjectionService $projection)
+    public function render(PlaylistProjectionService $projection, IcecastStatusService $icecast)
     {
         /** @var Station|null $station */
         $station = auth()->user()->currentStation();
@@ -149,6 +150,8 @@ class Dashboard extends Component
         $playlistCount = 0;
         $mediaCount = 0;
         $stream = null;
+        $internalStreamUrl = null;
+        $listeners = null;
 
         if ($station) {
             $playlistCount = $station->playlists()->count();
@@ -202,6 +205,13 @@ class Dashboard extends Component
             }
 
             $playlist = $projection->project($station);
+
+            // Listener count for the station's own Icecast. The service caches it, so the
+            // dashboard's wire:poll does not turn into one request per tab every ten seconds.
+            if ($output = $station->internalOutput()) {
+                $internalStreamUrl = $station->internalStreamUrl($output);
+                $listeners = $icecast->listeners($station);
+            }
         }
 
         return view('livewire.dashboard', [
@@ -220,6 +230,8 @@ class Dashboard extends Component
             'playlistCount' => $playlistCount,
             'mediaCount' => $mediaCount,
             'stream' => $stream,
+            'internalStreamUrl' => $internalStreamUrl,
+            'listeners' => $listeners,
             'liveStream' => $station?->liveStreamCredentials(),
             'liveActive' => (bool) ($state?->live_active),
             'liveTitle' => $state?->live_title,

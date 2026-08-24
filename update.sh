@@ -8,8 +8,8 @@
 #   ./update.sh --keep-compose   Leave the local docker-compose.yml untouched
 #   ./update.sh --force          Do not stop at a major version jump
 #
-# Updating means moving three things together: the app image, the station image
-# and the compose template. They are pinned to one git tag in the .env, and this
+# Updating means moving four things together: the app image, the station image,
+# the Icecast image and the compose template. They are pinned to one git tag in the .env, and this
 # script is the only thing that rewrites those pins. Editing RADIORING_IMAGE by
 # hand leaves RR_VERSION behind, and the next run of this script would happily
 # "update" back to a template from a different release.
@@ -171,6 +171,16 @@ fetch() {
 }
 
 # Rewrite one KEY=value line in the .env, or append it when it is missing.
+# Only used to backfill secrets that a given installation predates.
+random_secret() {
+    if command -v openssl >/dev/null 2>&1; then
+        openssl rand -hex 24
+    else
+        head -c 24 /dev/urandom | od -An -tx1 | tr -d ' 
+'
+    fi
+}
+
 env_set() {
     _key="$1"; _value="$2"; _tmp=".env.update.$$"
 
@@ -200,6 +210,24 @@ env_set RR_REPO_SLUG "$REPO_SLUG"
 env_set RR_REPO_RAW "$REPO_RAW"
 env_set RADIORING_IMAGE "ghcr.io/$IMAGE_OWNER/radioring:$TARGET_IMAGE_TAG"
 env_set STATION_IMAGE "ghcr.io/$IMAGE_OWNER/liquidsoap-station:$TARGET_IMAGE_TAG"
+env_set ICECAST_IMAGE "ghcr.io/$IMAGE_OWNER/icecast:$TARGET_IMAGE_TAG"
+
+# Settings an installation from before the internal Icecast simply does not have.
+# env_set appends a key that is missing, so an installation that already carries
+# them is left alone. Without this an older instance would update to a version
+# whose panel can never offer the internal server.
+if [ -z "$(env_get ICECAST_ADMIN_PASSWORD)" ]; then
+    env_set ICECAST_ADMIN_PASSWORD "$(random_secret)"
+    echo "ICECAST_ADMIN_PASSWORD generated (internal Icecast)"
+fi
+
+# The sidecar has to sit in the network Traefik watches. That is the same network
+# the app already uses, so there is nothing to ask the operator about.
+if [ -z "$(env_get DOCKER_WEB_NETWORK)" ] && [ -n "$(env_get WEB_NETWORK)" ]; then
+    env_set DOCKER_WEB_NETWORK "$(env_get WEB_NETWORK)"
+    echo "DOCKER_WEB_NETWORK set to $(env_get WEB_NETWORK) (internal Icecast)"
+fi
+
 echo ".env pinned to $TARGET_VERSION"
 
 # The compose template belongs to the release, not to the installation day: it

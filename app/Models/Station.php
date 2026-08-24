@@ -225,6 +225,11 @@ class Station extends Model
             $changed = true;
         }
 
+        if (! $stream->icecast_password) {
+            $stream->icecast_password = Str::random(24);
+            $changed = true;
+        }
+
         if ($changed) {
             $stream->save();
         }
@@ -309,6 +314,65 @@ class Station extends Model
             // Klartext-Ingest (eigener Port pro Station, kein TLS).
             'tls' => false,
         ];
+    }
+
+    /**
+     * Name of this station's Icecast sidecar. Own prefix on purpose, so the two
+     * containers of a station are told apart at a glance in `docker ps`.
+     */
+    public function icecastContainerName(): string
+    {
+        return 'radioring-icecast-'.$this->slug;
+    }
+
+    /**
+     * Can this installation offer an internal Icecast at all?
+     *
+     * The sidecar is published through Traefik only, so it needs both a stream domain for
+     * the hostname and an active reverse proxy for TLS. Without those there is no https
+     * URL to embed.
+     */
+    public static function internalStreamSupported(): bool
+    {
+        return (string) config('radioring.stream.domain') !== ''
+            && (bool) config('radioring.icecast.traefik_enabled');
+    }
+
+    /**
+     * Public https URL of an internal output, or null when this installation cannot
+     * offer an internal Icecast.
+     */
+    public function internalStreamUrl(StationOutput $output): ?string
+    {
+        $host = $this->streamHost();
+
+        if ($host === null || ! self::internalStreamSupported()) {
+            return null;
+        }
+
+        return 'https://'.$host.'/'.$output->mountName();
+    }
+
+    /**
+     * Is there any internal output at all, enabled or not?
+     *
+     * Decides whether a sidecar could exist. Stations that never had one are spared the
+     * cleanup call to the Docker API on every stop.
+     */
+    public function hasInternalOutput(): bool
+    {
+        return $this->outputs()->where('type', 'internal')->exists();
+    }
+
+    /**
+     * This station's active internal output, if one is configured.
+     */
+    public function internalOutput(): ?StationOutput
+    {
+        return $this->outputs()
+            ->where('type', 'internal')
+            ->where('enabled', true)
+            ->first();
     }
 
     protected static function booted(): void

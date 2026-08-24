@@ -79,6 +79,37 @@
         </div>
     </div>
 
+    {{-- Only when it is a public stream with internal icecast--}}
+    @if($internalStreamUrl)
+        <div class="card mb-4">
+            <div class="card-header fw-medium d-flex align-items-center gap-2 py-2">
+                <i class="bi bi-house-up text-primary"></i>{{ __('Your stream') }}
+                <span class="text-muted-sm fw-normal">{{ __('Public address of this station') }}</span>
+                <span class="badge text-bg-light border ms-auto d-flex align-items-center gap-1">
+                    <i class="bi bi-people"></i>
+                    @if($listeners === null)
+                        {{ __('no data') }}
+                    @else
+                        {{ trans_choice(':count listener|:count listeners', $listeners, ['count' => $listeners]) }}
+                    @endif
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="row g-3 align-items-center">
+                    <div class="col-lg-7">
+                        <div class="text-muted small mb-1">{{ __('Stream-URL') }}</div>
+                        <a href="{{ $internalStreamUrl }}" target="_blank" rel="noopener">
+                            <code class="user-select-all">{{ $internalStreamUrl }}</code>
+                        </a>
+                    </div>
+                    <div class="col-lg-5" wire:ignore>
+                        <audio controls preload="none" class="w-100" src="{{ $internalStreamUrl }}"></audio>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
+
     {{-- Live-Eingang (Streaming von außen via input.harbor + Traefik) --}}
     @if($liveStream)
         <div class="card mb-4" x-data="{ show: false }">

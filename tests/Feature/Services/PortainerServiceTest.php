@@ -123,3 +123,115 @@ test('start sends registry auth header when credentials configured', function ()
             && ($decoded['serveraddress'] ?? null) === 'ghcr.io';
     });
 });
+
+// -- Icecast-Sidecar --------------------------------------------------------
+
+/**
+ * Portainer is the second, equivalent driver: the internal Icecast has to come up exactly
+ * as it does under Docker, only through Portainer's Docker proxy.
+ */
+function enablePortainerIcecast(Station $station): void
+{
+    config([
+        'radioring.stream.domain' => 'stream.example.com',
+        'radioring.icecast.traefik_enabled' => true,
+        'radioring.icecast.image' => 'ghcr.io/acme/icecast:latest',
+        'radioring.icecast.web_network' => 'radioring-web',
+        'radioring.icecast.cert_resolver' => 'radioring',
+        'radioring.docker.station_network' => 'radioring',
+    ]);
+
+    $station->outputs()->create([
+        'type' => 'internal',
+        'host' => $station->icecastContainerName(),
+        'port' => 8000,
+        'mount' => '/stream',
+        'username' => 'source',
+        'bitrate' => 128,
+        'enabled' => true,
+    ]);
+}
+
+test('a station without an internal output never touches the sidecar', function () {
+    Http::fake([
+        '*/docker/images/create*' => Http::response('', 200),
+        '*/docker/containers/create*' => Http::response(['Id' => 'abc123'], 201),
+        '*' => Http::response('', 204),
+    ]);
+
+    app(PortainerService::class)->startStationContainer($this->station);
+
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), 'radioring-icecast-'));
+});
+
+test('starting a station with an internal output brings up the sidecar', function () {
+    enablePortainerIcecast($this->station);
+
+    Http::fake([
+        '*/docker/images/create*' => Http::response('', 200),
+        '*/docker/containers/create*' => Http::response(['Id' => 'ice123'], 201),
+        '*' => Http::response('', 204),
+    ]);
+
+    expect(app(PortainerService::class)->startStationContainer($this->station->fresh()))->toBeTrue();
+
+    Http::assertSent(function ($request) {
+        if (! str_contains($request->url(), '/endpoints/2/docker/containers/create?name=radioring-icecast-'.$this->station->slug)) {
+            return false;
+        }
+
+        $data = $request->data();
+        $labels = $data['Labels'] ?? [];
+        $router = 'radioring-icecast-'.$this->station->slug;
+
+        return $data['Image'] === 'ghcr.io/acme/icecast:latest'
+            && ($labels["traefik.http.routers.{$router}.rule"] ?? null) === 'Host(`'.$this->station->slug.'.stream.example.com`)'
+            && array_key_exists('radioring', $data['NetworkingConfig']['EndpointsConfig'])
+            && array_key_exists('radioring-web', $data['NetworkingConfig']['EndpointsConfig']);
+    });
+});
+
+test('the station container joins the configured network so it can reach the sidecar', function () {
+    enablePortainerIcecast($this->station);
+
+    Http::fake([
+        '*/docker/images/create*' => Http::response('', 200),
+        '*/docker/containers/create*' => Http::response(['Id' => 'abc123'], 201),
+        '*' => Http::response('', 204),
+    ]);
+
+    app(PortainerService::class)->startStationContainer($this->station->fresh());
+
+    Http::assertSent(function ($request) {
+        if (! str_contains($request->url(), 'create?name=radioring-'.$this->station->slug)) {
+            return false;
+        }
+
+        return array_key_exists('radioring', $request->data()['NetworkingConfig']['EndpointsConfig'] ?? []);
+    });
+});
+
+test('a slug that could rewrite traefik rules gets no sidecar', function () {
+    enablePortainerIcecast($this->station);
+    $this->station->update(['slug' => 'evil`) || Host(`panel.example.com']);
+
+    Http::fake([
+        '*/docker/images/create*' => Http::response('', 200),
+        '*/docker/containers/create*' => Http::response(['Id' => 'abc123'], 201),
+        '*' => Http::response('', 204),
+    ]);
+
+    app(PortainerService::class)->startStationContainer($this->station->fresh());
+
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), 'radioring-icecast-'));
+});
+
+test('stopping a station removes its sidecar as well', function () {
+    enablePortainerIcecast($this->station);
+    Http::fake(['*' => Http::response('', 204)]);
+
+    app(PortainerService::class)->stopStationContainer($this->station->fresh());
+
+    Http::assertSent(fn ($request) => $request->method() === 'DELETE'
+        && str_contains($request->url(), '/docker/containers/radioring-icecast-'.$this->station->slug.'?force=true'));
+});

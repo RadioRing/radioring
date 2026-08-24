@@ -58,6 +58,17 @@ class StationOutput extends Model
     }
 
     /**
+     * Does this output send to the station's own Icecast sidecar?
+     *
+     * Host, port and password are not user-maintained for those: the script generator
+     * derives them from config and station_streams.
+     */
+    public function isInternal(): bool
+    {
+        return $this->type === 'internal';
+    }
+
+    /**
      * Klartext-Passwort transparent ver-/entschlüsseln (gespeichert in password_enc).
      */
     protected function password(): Attribute

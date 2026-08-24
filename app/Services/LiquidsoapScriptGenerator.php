@@ -95,7 +95,7 @@ class LiquidsoapScriptGenerator
         $lines[] = '';
 
         foreach ($outputs as $output) {
-            $lines[] = $this->outputBlock($output);
+            $lines[] = $this->outputBlock($output, $station);
             $lines[] = '';
         }
 
@@ -265,8 +265,12 @@ LIQ;
         LIQ;
     }
 
-    private function outputBlock(StationOutput $output): string
+    private function outputBlock(StationOutput $output, Station $station): string
     {
+        if ($output->isInternal()) {
+            return $this->internalOutputBlock($output, $station);
+        }
+
         $password = $output->password ?? '';
         $username = $output->username ?: 'source';
 
@@ -278,6 +282,37 @@ output.icecast(
   mount="{$output->mount}",
   user="{$username}",
   password="{$password}",
+  fallible=true,
+  radio
+)
+LIQ;
+    }
+
+    /**
+     * Output to the station's own Icecast sidecar.
+     *
+     * The target is the container name inside the Docker network, not the public address:
+     * going through Traefik would hairpin and hit the TLS endpoint. Host, port and password
+     * are therefore derived here instead of stored, so a rotated password stays valid
+     * without touching any data.
+     */
+    private function internalOutputBlock(StationOutput $output, Station $station): string
+    {
+        $host = $station->icecastContainerName();
+        $password = $station->ensureStream()->icecast_password ?? '';
+        $mount = '/'.$output->mountName();
+        $name = addslashes($station->name);
+
+        return <<<LIQ
+output.icecast(
+  %mp3(bitrate={$output->bitrate}),
+  host="{$host}",
+  port=8000,
+  mount="{$mount}",
+  user="source",
+  password="{$password}",
+  name="{$name}",
+  public=false,
   fallible=true,
   radio
 )

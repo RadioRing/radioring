@@ -361,6 +361,10 @@ PROFILES="";
 
 APP_KEY="${APP_KEY:-$(app_key)}"
 
+# Admin password of the per-station Icecast sidecars. RadioRing is the only thing
+# that ever uses it, so it is generated rather than asked for.
+ICECAST_ADMIN_PASSWORD="${ICECAST_ADMIN_PASSWORD:-$(random_secret)}"
+
 # ----------------------------------------------------------------- Writing ----
 
 info "Writing the configuration to $RR_DIR"
@@ -418,6 +422,7 @@ ${PORTAINER_ENVIRONMENT:+PORTAINER_ENVIRONMENT=$PORTAINER_ENVIRONMENT}
 
 RADIORING_IMAGE=ghcr.io/$IMAGE_OWNER/radioring:$IMAGE_TAG
 STATION_IMAGE=ghcr.io/$IMAGE_OWNER/liquidsoap-station:$IMAGE_TAG
+ICECAST_IMAGE=ghcr.io/$IMAGE_OWNER/icecast:$IMAGE_TAG
 STATION_MANAGED_BY=radioring
 
 # The station container reaches the app on the internal network.
@@ -428,6 +433,13 @@ STATION_REDIS_HOST=$REDIS_HOST
 STREAM_DOMAIN=$STREAM_DOMAIN
 STREAM_PORT_MIN=$STREAM_PORT_MIN
 STREAM_PORT_MAX=$STREAM_PORT_MAX
+
+# Internal Icecast: one sidecar container per station, published by Traefik under
+# {slug}.$STREAM_DOMAIN. Needs a reverse proxy, otherwise the option stays hidden
+# in the panel. DOCKER_WEB_NETWORK has to be the network Traefik watches.
+ICECAST_ADMIN_PASSWORD=$ICECAST_ADMIN_PASSWORD
+ICECAST_MAX_LISTENERS=100
+DOCKER_WEB_NETWORK=$WEB_NETWORK
 
 LOUDNESS_NORMALIZATION=true
 
@@ -582,6 +594,8 @@ say ""
 say "  DNS:          A  $APP_HOST            -> IP of this server"
 if [ -n "$STREAM_DOMAIN" ]; then
     say "                A  *.$STREAM_DOMAIN  -> IP of this server"
+    say "                   (live input, and the public streams of the"
+    say "                    internal Icecast at https://{station}.$STREAM_DOMAIN)"
     say "  Firewall:     ufw allow $STREAM_PORT_MIN:$STREAM_PORT_MAX/tcp"
 fi
 say ""

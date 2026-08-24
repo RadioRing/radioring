@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Contracts\ContainerServiceInterface;
 use App\Models\Station;
+use App\Services\Concerns\ManagesIcecastSidecar;
 use App\Services\Docker\DockerConnection;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -22,6 +23,8 @@ use Illuminate\Support\Facades\Log;
  */
 class DockerService implements ContainerServiceInterface
 {
+    use ManagesIcecastSidecar;
+
     private ?DockerConnection $connection = null;
 
     private function connection(): DockerConnection
@@ -82,6 +85,10 @@ class DockerService implements ContainerServiceInterface
             // Live-Harbor-Zugangsdaten (inkl. eindeutigem Port) provisionieren, bevor der
             // Container das Script zieht.
             $stream = $station->ensureStream();
+
+            // The sidecar has to be up before Liquidsoap. output.icecast is fallible and
+            // would retry, but without a target the station starts with a gap.
+            $this->syncIcecastSidecar($station);
 
             $payload = [
                 'Image' => config('radioring.station_image'),
@@ -154,6 +161,10 @@ class DockerService implements ContainerServiceInterface
     {
         $name = $this->containerName($station);
 
+        // A leftover Icecast would keep the station looking reachable while nothing
+        // is being sent to it.
+        $this->removeIcecastSidecar($station);
+
         try {
             $response = $this->client()->delete("/containers/{$name}?force=true");
 
@@ -172,6 +183,10 @@ class DockerService implements ContainerServiceInterface
     public function restartStationContainer(Station $station): bool
     {
         $name = $this->containerName($station);
+
+        // Restarting is the documented point at which output changes take effect, so a
+        // freshly enabled internal output gets its sidecar here, and a disabled one loses it.
+        $this->syncIcecastSidecar($station);
 
         try {
             $response = $this->client()->post("/containers/{$name}/restart");
@@ -227,9 +242,9 @@ class DockerService implements ContainerServiceInterface
      * Pull den Start nicht verhindern (air-gapped Hosts). Der Rueckgabewert dient nur der
      * Fehlermeldung, falls das anschliessende Anlegen scheitert.
      */
-    protected function pullImage(): bool
+    protected function pullImage(?string $image = null): bool
     {
-        $image = (string) config('radioring.station_image');
+        $image = $image ?: (string) config('radioring.station_image');
         [$fromImage, $tag] = $this->splitImage($image);
 
         $request = $this->client((int) config('radioring.docker.pull_timeout', 600));
@@ -352,6 +367,67 @@ class DockerService implements ContainerServiceInterface
     protected function streamPublished(): bool
     {
         return (string) config('radioring.stream.domain') !== '';
+    }
+
+    /**
+     * Creates and starts the sidecar through the Docker Engine API.
+     */
+    protected function createIcecastSidecar(Station $station, string $host): bool
+    {
+        $name = $station->icecastContainerName();
+
+        try {
+            $pulled = $this->pullImage((string) config('radioring.icecast.image'));
+
+            $response = $this->client()->post(
+                '/containers/create?'.http_build_query(['name' => $name]),
+                $this->icecastPayload($station, $host),
+            );
+
+            $containerId = $response->json('Id') ?: $this->containerIdByName($name);
+
+            if (! $containerId) {
+                Log::error("Docker: Icecast-Sidecar {$name} konnte nicht angelegt werden. ".$this->describe($response)
+                    .($pulled ? '' : ' Der Image-Pull war zuvor fehlgeschlagen.'));
+
+                return false;
+            }
+
+            $start = $this->client()->post("/containers/{$containerId}/start");
+
+            if ($start->failed() && $start->status() !== 304) {
+                Log::error("Docker: Start des Icecast-Sidecars {$name} fehlgeschlagen. ".$this->describe($start));
+
+                return false;
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::error("Docker: Fehler beim Start des Icecast-Sidecars {$name}: ".$e->getMessage());
+
+            return false;
+        }
+    }
+
+    protected function deleteIcecastSidecar(Station $station): bool
+    {
+        $name = $station->icecastContainerName();
+
+        try {
+            $response = $this->client()->delete("/containers/{$name}?force=true");
+
+            if ($response->failed() && $response->status() !== 404) {
+                Log::warning("Docker: Entfernen des Icecast-Sidecars {$name} meldete einen Fehler. ".$this->describe($response));
+
+                return false;
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::error("Docker: Entfernen des Icecast-Sidecars {$name} fehlgeschlagen: ".$e->getMessage());
+
+            return false;
+        }
     }
 
     /**

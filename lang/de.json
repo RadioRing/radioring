@@ -151,5 +151,18 @@
     "written (SLUG, TOKEN, LIQUIDSOAP_API_URL)": "geschrieben (SLUG, TOKEN, LIQUIDSOAP_API_URL)",
     "yes": "ja",
     "Release notes": "Release-Notes",
-    "This build on GitHub": "Dieser Build auf GitHub"
+    "This build on GitHub": "Dieser Build auf GitHub",
+    "Or you use the internal server: RadioRing then broadcasts by itself and hands you a ready-made stream URL for your website.": "Oder du nutzt den internen Server: RadioRing sendet dann selbst und liefert dir eine fertige Stream-URL für deine Webseite.",
+    "Internal server (RadioRing)": "Interner Server (RadioRing)",
+    "Internal server": "Interner Server",
+    "RadioRing starts its own streaming server next to this station. Host, user and password are managed automatically.": "RadioRing startet neben dieser Station einen eigenen Streaming-Server. Host, Benutzer und Passwort verwaltet es selbst.",
+    "Last part of the public address:": "Letzter Teil der öffentlichen Adresse:",
+    "Listeners right now": "Hörer aktuell",
+    "Embed on your website": "In deine Webseite einbauen",
+    "Output added.": "Ausgang hinzugefügt.",
+    "Output updated.": "Ausgang aktualisiert.",
+    "Your stream": "Dein Stream",
+    "Public address of this station": "Öffentliche Adresse dieser Station",
+    "no data": "keine Daten",
+    ":count listener|:count listeners": ":count Hörer|:count Hörer"
 }

@@ -4,12 +4,15 @@ namespace App\Services;
 
 use App\Contracts\ContainerServiceInterface;
 use App\Models\Station;
+use App\Services\Concerns\ManagesIcecastSidecar;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class PortainerService implements ContainerServiceInterface
 {
+    use ManagesIcecastSidecar;
+
     protected string $endpoint;
 
     protected string $token;
@@ -46,6 +49,10 @@ class PortainerService implements ContainerServiceInterface
             // Container das Script zieht.
             $stream = $station->ensureStream();
 
+            // The sidecar has to be up before Liquidsoap. output.icecast is fallible and
+            // would retry, but without a target the station starts with a gap.
+            $this->syncIcecastSidecar($station);
+
             $payload = [
                 'Image' => config('radioring.station_image'),
                 'Env' => $this->envVars($station),
@@ -65,6 +72,15 @@ class PortainerService implements ContainerServiceInterface
                 $payload['ExposedPorts'] = ["{$port}/tcp" => new \stdClass];
                 $payload['HostConfig']['PortBindings'] = [
                     "{$port}/tcp" => [['HostPort' => (string) $port]],
+                ];
+            }
+
+            // Optionally join a named network, so the container reaches the app internally
+            // instead of hairpinning through the public URL. Empty = default bridge. The
+            // internal Icecast needs this: container names only resolve in a named network.
+            if ($network = (string) config('radioring.docker.station_network')) {
+                $payload['NetworkingConfig'] = [
+                    'EndpointsConfig' => [$network => new \stdClass],
                 ];
             }
 
@@ -106,6 +122,10 @@ class PortainerService implements ContainerServiceInterface
     {
         $name = $this->containerName($station);
 
+        // A leftover Icecast would keep the station looking reachable while nothing
+        // is being sent to it.
+        $this->removeIcecastSidecar($station);
+
         try {
             $this->client()->delete("/endpoints/{$this->environment}/docker/containers/{$name}?force=true");
 
@@ -120,6 +140,10 @@ class PortainerService implements ContainerServiceInterface
     public function restartStationContainer(Station $station): bool
     {
         $name = $this->containerName($station);
+
+        // Restarting is the documented point at which output changes take effect, so a
+        // freshly enabled internal output gets its sidecar here, and a disabled one loses it.
+        $this->syncIcecastSidecar($station);
 
         try {
             $response = $this->client()->post("/endpoints/{$this->environment}/docker/containers/{$name}/restart");
@@ -160,9 +184,9 @@ class PortainerService implements ContainerServiceInterface
     /**
      * Zieht das Station-Image auf dem Ziel-Endpoint (best effort).
      */
-    protected function pullImage(): void
+    protected function pullImage(?string $image = null): void
     {
-        $image = (string) config('radioring.station_image');
+        $image = $image ?: (string) config('radioring.station_image');
         [$fromImage, $tag] = $this->splitImage($image);
 
         $request = $this->client();
@@ -186,6 +210,60 @@ class PortainerService implements ContainerServiceInterface
 
         if ($response->failed()) {
             Log::warning("Portainer: Image-Pull für {$image} meldete HTTP {$response->status()} (fahre fort).");
+        }
+    }
+
+    /**
+     * Creates and starts the sidecar through Portainer's Docker proxy.
+     */
+    protected function createIcecastSidecar(Station $station, string $host): bool
+    {
+        $name = $station->icecastContainerName();
+
+        try {
+            $this->pullImage((string) config('radioring.icecast.image'));
+
+            $response = $this->client()->post(
+                "/endpoints/{$this->environment}/docker/containers/create?name={$name}",
+                $this->icecastPayload($station, $host),
+            );
+
+            $containerId = $response->json('Id') ?: $this->containerIdByName($name);
+
+            if (! $containerId) {
+                Log::error("Portainer: konnte Container-ID für den Icecast-Sidecar {$name} nicht ermitteln.");
+
+                return false;
+            }
+
+            $start = $this->client()->post("/endpoints/{$this->environment}/docker/containers/{$containerId}/start");
+
+            if ($start->failed() && $start->status() !== 304) {
+                Log::error("Portainer: Start des Icecast-Sidecars {$name} fehlgeschlagen (HTTP {$start->status()}).");
+
+                return false;
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::error("Portainer: Fehler beim Start des Icecast-Sidecars {$name}: ".$e->getMessage());
+
+            return false;
+        }
+    }
+
+    protected function deleteIcecastSidecar(Station $station): bool
+    {
+        $name = $station->icecastContainerName();
+
+        try {
+            $this->client()->delete("/endpoints/{$this->environment}/docker/containers/{$name}?force=true");
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::error("Portainer: Entfernen des Icecast-Sidecars {$name} fehlgeschlagen: ".$e->getMessage());
+
+            return false;
         }
     }
 

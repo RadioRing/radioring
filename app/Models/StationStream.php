@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Crypt;
     'status',
     'live_port',
     'live_password',
+    'icecast_password',
     'last_started_at',
 ])]
 class StationStream extends Model
@@ -40,6 +41,17 @@ class StationStream extends Model
         return Attribute::make(
             get: fn (): ?string => $this->live_password_enc ? Crypt::decryptString($this->live_password_enc) : null,
             set: fn (?string $value): array => ['live_password_enc' => $value ? Crypt::encryptString($value) : null],
+        );
+    }
+
+    /**
+     * Icecast sidecar source password, encrypted transparently (icecast_password_enc).
+     */
+    protected function icecastPassword(): Attribute
+    {
+        return Attribute::make(
+            get: fn (): ?string => $this->icecast_password_enc ? Crypt::decryptString($this->icecast_password_enc) : null,
+            set: fn (?string $value): array => ['icecast_password_enc' => $value ? Crypt::encryptString($value) : null],
         );
     }
 }
