@@ -96,7 +96,7 @@ services:
       # autocue to crash on a damaged file.
       LOUDNESS_NORMALIZATION: ${LOUDNESS_NORMALIZATION:-true}
       #Sidecar Icecast
-      ICECAST_IMAGE: ghcr.io/radioring/icecast:latest
+      ICECAST_IMAGE: ghcr.io/radioring/icecast:edge
       # Used by RadioRing alone, to read the listener figures. Generate one.
       ICECAST_ADMIN_PASSWORD: ${ICECAST_ADMIN_PASSWORD}
       ICECAST_MAX_LISTENERS: ${ICECAST_MAX_LISTENERS:-100}
