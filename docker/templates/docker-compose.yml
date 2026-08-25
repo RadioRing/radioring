@@ -90,7 +90,7 @@ services:
     profiles: [traefik]
     # Do not go below v3.6: earlier versions pin the Docker API to 1.24, which
     # newer engines reject, and Traefik then sees no containers at all.
-    image: traefik:v3.6
+    image: traefik:v3.7
     restart: unless-stopped
     command:
       - --providers.docker=true
