@@ -126,33 +126,6 @@
                 @endif
             </div>
             <div class="card-body">
-                @if($liveActive)
-                    <div class="alert alert-danger d-flex align-items-center gap-3 py-2 mb-3">
-                        <i class="bi bi-broadcast fs-4"></i>
-                        <div class="flex-grow-1 overflow-hidden">
-                            <div class="fw-semibold text-truncate">
-                                {{ $liveTitle ?: __('Live-Übernahme aktiv') }}
-                                @if($liveArtist)
-                                    <span class="fw-normal">&ndash; {{ $liveArtist }}</span>
-                                @endif
-                            </div>
-                            <div class="small text-muted">
-                                {{ __('Externer Encoder sendet') }}
-                                @if($liveStartedAt)
-                                    · {{ __('seit') }}
-                                    <span class="font-monospace"
-                                          x-data="nowPlaying()"
-                                          data-started="{{ $liveStartedAt->timestamp }}"
-                                          data-elapsed="{{ (int) $liveStartedAt->diffInSeconds(now()) }}"
-                                          data-duration="0"
-                                          x-text="fmt(elapsed)"
-                                          wire:key="live-{{ $liveStartedAt->timestamp }}">{{ gmdate('G:i:s', (int) $liveStartedAt->diffInSeconds(now())) }}</span>
-                                @endif
-                                · {{ __('das automatische Programm ist unterbrochen') }}
-                            </div>
-                        </div>
-                    </div>
-                @endif
                 <div class="row g-3">
                     <div class="col-sm-6 col-lg-3">
                         <div class="text-muted small mb-1">{{ __('Server') }}</div>
