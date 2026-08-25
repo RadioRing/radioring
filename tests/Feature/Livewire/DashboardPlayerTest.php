@@ -60,7 +60,38 @@ test('player is suppressed while a live takeover is active', function () {
 
     Livewire::test(Dashboard::class)
         ->assertDontSee('Programm-Song')
-        ->assertSee('Kein Track aktiv');
+        ->assertSee('Live broadcast running')
+        ->assertDontSee('Kein Track aktiv');
+});
+
+test('the station counts as on air while a live takeover is active', function () {
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'live_active' => true,
+        'live_started_at' => now()->subSeconds(30),
+    ]);
+
+    Livewire::test(Dashboard::class)
+        ->assertSee('ON AIR - LIVE')
+        ->assertDontSee('OFF AIR')
+        ->assertDontSee('NO PLAYOUT');
+});
+
+test('a running container without playout is shown as no playout, not off air', function () {
+    $this->station->stream()->create([
+        'container_name' => 'radioring-station-'.$this->station->id,
+        'status' => 'running',
+    ]);
+
+    Livewire::test(Dashboard::class)
+        ->assertSee('NO PLAYOUT')
+        ->assertDontSee('OFF AIR');
+});
+
+test('a stopped container is shown as off air', function () {
+    Livewire::test(Dashboard::class)
+        ->assertSee('OFF AIR')
+        ->assertDontSee('NO PLAYOUT');
 });
 
 test('player keeps showing an adbreak past its signal duration', function () {

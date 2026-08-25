@@ -164,5 +164,8 @@
     "Your stream": "Dein Stream",
     "Public address of this station": "Öffentliche Adresse dieser Station",
     "no data": "keine Daten",
-    ":count listener|:count listeners": ":count Hörer|:count Hörer"
+    ":count listener|:count listeners": ":count Hörer|:count Hörer",
+    "NO PLAYOUT": "KEIN PLAYOUT",
+    "Live broadcast running": "Live-Sendung läuft",
+    "An external encoder is on air, the automatic playout is paused.": "Ein externer Encoder sendet, das automatische Programm pausiert."
 }

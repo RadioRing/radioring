@@ -202,13 +202,15 @@
                 $isStarting = $containerStatus === 'starting';
             @endphp
             <div class="d-flex align-items-center gap-2">
-                @if($onAir)
+                @if($liveActive || $onAir)
                     <span class="badge bg-danger d-flex align-items-center gap-1" style="font-size:.7rem">
                         <span class="rounded-circle bg-white d-inline-block" style="width:6px;height:6px;animation:blink 1s step-end infinite"></span>
-                        ON AIR
+                        {{ $liveActive ? __('ON AIR - LIVE') : __('ON AIR') }}
                     </span>
+                @elseif($isRunning || $isStarting)
+                    <span class="badge bg-warning text-dark" style="font-size:.7rem">{{ __('NO PLAYOUT') }}</span>
                 @else
-                    <span class="badge bg-secondary" style="font-size:.7rem">OFFLINE</span>
+                    <span class="badge bg-secondary" style="font-size:.7rem">{{ __('OFF AIR') }}</span>
                 @endif
                 {{-- Container-Status --}}
                 @php
@@ -325,6 +327,21 @@
                         @endif
                     </div>
                 @endif
+            @elseif($liveActive)
+                {{-- Live-Übernahme: kein Playout, aber die Station sendet trotzdem. --}}
+                <div class="d-flex align-items-center gap-3 py-1">
+                    <div class="d-flex align-items-center justify-content-center rounded-2 bg-danger bg-opacity-10 flex-shrink-0"
+                         style="width:44px;height:44px">
+                        <i class="bi bi-mic-fill fs-4 text-danger"></i>
+                    </div>
+                    <div>
+                        <div class="fw-medium">{{ $liveTitle ?: __('Live broadcast running') }}</div>
+                        <div class="small text-muted">{{ __('An external encoder is on air, the automatic playout is paused.') }}</div>
+                    </div>
+                </div>
+                <div class="progress mt-2" style="height:5px">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-danger" style="width:100%"></div>
+                </div>
             @else
                 {{-- Kein aktiver Track --}}
                 <div class="d-flex align-items-center gap-3 text-muted py-1">
