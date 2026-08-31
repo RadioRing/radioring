@@ -1,5 +1,5 @@
 # Persistenter RadioRing Liquidsoap-Station-Container (Pull-Modell)
-FROM savonet/liquidsoap:v2.2.5
+FROM savonet/liquidsoap:v2.4.5
 
 USER root
 RUN apt-get update \
