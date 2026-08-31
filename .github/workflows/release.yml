@@ -84,7 +84,7 @@ jobs:
           exit "$failed"
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # install.sh pins the images to this tag and pulls the template from it,
       # so the template at the tag has to stand on its own.
