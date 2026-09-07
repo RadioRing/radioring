@@ -6,9 +6,7 @@ use App\Models\GeneratedPlaylist;
 use App\Models\GeneratedPlaylistItem;
 use App\Models\Station;
 use App\Services\AudioMetadataService;
-use App\Services\LoudnessAnalyzerService;
-use App\Services\RemoteFileFetcher;
-use App\Services\SilenceTrimmerService;
+use App\Services\ExternalItemPreparer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
@@ -60,7 +58,7 @@ test('prepares a due external item: downloads, measures and caches it', function
     Http::fake(['example.com/*' => Http::response('AUDIO-BYTES', 200)]);
     fakeLoudnormResult('-20.0', '-5.0');
 
-    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class), app(RemoteFileFetcher::class));
+    (new PrepareUpcomingHttpItemsJob)->handle(app(ExternalItemPreparer::class));
 
     $item->refresh();
     expect($item->prepared_path)->not->toBeNull()
@@ -84,12 +82,12 @@ test('updates the source expected duration from the prepared file length', funct
     Process::fake();
 
     // Echte Dauermessung der vorbereiteten Datei simulieren.
-    $metadata = Mockery::mock(AudioMetadataService::class);
-    $metadata->shouldReceive('read')->once()->andReturn([
-        'title' => null, 'artist' => null, 'album' => null, 'duration' => 1234,
-    ]);
+    $this->mock(AudioMetadataService::class)
+        ->shouldReceive('read')->once()->andReturn([
+            'title' => null, 'artist' => null, 'album' => null, 'duration' => 1234,
+        ]);
 
-    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), $metadata, app(RemoteFileFetcher::class));
+    (new PrepareUpcomingHttpItemsJob)->handle(app(ExternalItemPreparer::class));
 
     expect($item->fresh()->prepared_path)->not->toBeNull()
         ->and($source->fresh()->expected_duration_seconds)->toBe(1234);
@@ -103,7 +101,7 @@ test('records an error and leaves the item unprepared on a failed download', fun
 
     Http::fake(['example.com/*' => Http::response('', 503)]);
 
-    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class), app(RemoteFileFetcher::class));
+    (new PrepareUpcomingHttpItemsJob)->handle(app(ExternalItemPreparer::class));
 
     expect($item->fresh()->prepared_path)->toBeNull()
         ->and($source->fresh()->last_error)->toContain('503');
@@ -119,7 +117,7 @@ test('does not prepare an item that is still beyond the prefetch lead', function
 
     Http::fake();
 
-    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class), app(RemoteFileFetcher::class));
+    (new PrepareUpcomingHttpItemsJob)->handle(app(ExternalItemPreparer::class));
 
     Http::assertNothingSent();
     expect($item->fresh()->prepared_path)->toBeNull();
@@ -136,7 +134,7 @@ test('runs an ffmpeg silenceremove pass when trim_leading_silence is enabled', f
     Http::fake(['example.com/*' => Http::response('AUDIO', 200)]);
     Process::fake();
 
-    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class), app(RemoteFileFetcher::class));
+    (new PrepareUpcomingHttpItemsJob)->handle(app(ExternalItemPreparer::class));
 
     Process::assertRan(fn ($process) => str_contains(implode(' ', (array) $process->command), 'silenceremove'));
     expect($item->fresh()->prepared_path)->not->toBeNull();
@@ -153,7 +151,7 @@ test('does not run a trim pass when trim_leading_silence is disabled', function 
     Http::fake(['example.com/*' => Http::response('AUDIO', 200)]);
     Process::fake();
 
-    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class), app(RemoteFileFetcher::class));
+    (new PrepareUpcomingHttpItemsJob)->handle(app(ExternalItemPreparer::class));
 
     Process::assertNothingRan();
 });
@@ -168,7 +166,7 @@ test('skips a normalize=false source without measuring loudness', function () {
     Http::fake(['example.com/*' => Http::response('AUDIO', 200)]);
     Process::fake();
 
-    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class), app(RemoteFileFetcher::class));
+    (new PrepareUpcomingHttpItemsJob)->handle(app(ExternalItemPreparer::class));
 
     Process::assertNothingRan();
     expect($item->fresh()->prepared_path)->not->toBeNull()
@@ -186,7 +184,7 @@ test('it sends the stored credentials as basic auth when preparing an http sourc
     Http::fake(['example.com/*' => Http::response('AUDIO', 200)]);
     Process::fake();
 
-    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class), app(RemoteFileFetcher::class));
+    (new PrepareUpcomingHttpItemsJob)->handle(app(ExternalItemPreparer::class));
 
     Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Basic '.base64_encode('radioring:geheim123')));
     expect($item->fresh()->prepared_path)->not->toBeNull();
@@ -200,7 +198,7 @@ test('it records a readable error for an address the fetcher cannot handle', fun
 
     Http::fake();
 
-    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class), app(RemoteFileFetcher::class));
+    (new PrepareUpcomingHttpItemsJob)->handle(app(ExternalItemPreparer::class));
 
     Http::assertNothingSent();
     expect($item->fresh()->prepared_path)->toBeNull()

@@ -5,14 +5,9 @@ namespace App\Jobs;
 use App\Models\ExternalSource;
 use App\Models\GeneratedPlaylistItem;
 use App\Models\Station;
-use App\Services\AudioMetadataService;
-use App\Services\LoudnessAnalyzerService;
-use App\Services\RemoteFetchException;
-use App\Services\RemoteFileFetcher;
-use App\Services\SilenceTrimmerService;
+use App\Services\ExternalItemPreparer;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -29,7 +24,7 @@ class PrepareUpcomingHttpItemsJob implements ShouldQueue
     /** Kulanz nach der geschätzten Sendezeit, bis ein Item nicht mehr vorbereitet wird. */
     private const PAST_GRACE_SECONDS = 60;
 
-    public function handle(LoudnessAnalyzerService $analyzer, SilenceTrimmerService $trimmer, AudioMetadataService $metadata, RemoteFileFetcher $fetcher): void
+    public function handle(ExternalItemPreparer $preparer): void
     {
         $this->cleanupStalePreparedFiles();
 
@@ -53,7 +48,7 @@ class PrepareUpcomingHttpItemsJob implements ShouldQueue
                     continue;
                 }
 
-                $this->prepare($item, $source, $station, $analyzer, $trimmer, $metadata, $fetcher);
+                $preparer->prepare($item, $source, $station);
             }
         }
     }
@@ -75,76 +70,6 @@ class PrepareUpcomingHttpItemsJob implements ShouldQueue
         return $source->freshness_seconds > 0
             && $item->prepared_at !== null
             && $item->prepared_at->lt(now()->subSeconds($source->freshness_seconds));
-    }
-
-    private function prepare(GeneratedPlaylistItem $item, ExternalSource $source, Station $station, LoudnessAnalyzerService $analyzer, SilenceTrimmerService $trimmer, AudioMetadataService $metadata, RemoteFileFetcher $fetcher): void
-    {
-        $url = $source->resolveUrl();
-
-        if ($url === null) {
-            $this->recordError($source, __('No address could be resolved (missing laut.fm output or credentials?).'));
-
-            return;
-        }
-
-        $path = "stations/{$station->slug}/prepared/{$item->id}.mp3";
-
-        try {
-            $body = $fetcher->fetch($url, $source->url_username, $source->url_password);
-        } catch (RemoteFetchException $e) {
-            $this->recordError($source, $e->getMessage());
-
-            return;
-        } catch (\Throwable $e) {
-            $this->recordError($source, __('Download failed: :error', ['error' => $e->getMessage()]));
-
-            return;
-        }
-
-        Storage::disk('local')->put($path, $body);
-
-        // Führende Stille offline wegschneiden (vor der Messung, damit auf dem
-        // tatsächlich ausgelieferten Material gemessen wird).
-        if ($source->trim_leading_silence) {
-            $trimmer->trimLeadingSilence(
-                Storage::disk('local')->path($path),
-                (float) config('radioring.silence_trim_threshold_db', -45.0),
-            );
-        }
-
-        // Lautheit messen (nur wenn gewünscht) – schlägt das fehl, wird ohne Gain ausgeliefert.
-        $measurement = $source->normalize ? $analyzer->analyze(Storage::disk('local')->path($path)) : null;
-
-        // Tatsächliche Dauer der vorbereiteten (ggf. getrimmten) Datei messen – die echte
-        // Länge ist die zuverlässigste Basis für Rundown-Timing & Playlist-Planung.
-        $duration = $metadata->read(Storage::disk('local')->path($path))['duration'];
-
-        $item->update([
-            'prepared_path' => $path,
-            'prepared_at' => now(),
-            'loudness_lufs' => $measurement['lufs'] ?? null,
-            'loudness_true_peak' => $measurement['true_peak'] ?? null,
-        ]);
-
-        $sourceUpdate = [
-            'last_fetched_at' => now(),
-            'last_loudness_lufs' => $measurement['lufs'] ?? null,
-            'last_true_peak' => $measurement['true_peak'] ?? null,
-            'last_error' => null,
-        ];
-
-        if ($duration !== null && $duration > 0) {
-            $sourceUpdate['expected_duration_seconds'] = $duration;
-        }
-
-        $source->update($sourceUpdate);
-    }
-
-    private function recordError(ExternalSource $source, string $message): void
-    {
-        Log::warning("Externe Quelle #{$source->id} ({$source->name}): {$message}");
-
-        $source->update(['last_fetched_at' => now(), 'last_error' => $message]);
     }
 
     /**

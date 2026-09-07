@@ -5,8 +5,10 @@ use App\Models\GeneratedPlaylist;
 use App\Models\GeneratedPlaylistItem;
 use App\Models\Station;
 use App\Models\User;
+use App\Services\AudioMetadataService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 
 uses(RefreshDatabase::class);
@@ -205,4 +207,34 @@ test('next falls back to the item title when no broadcast title is set', functio
 
     expect($this->withToken($this->token)->get("/api/liquidsoap/{$this->station->slug}/next")->getContent())
         ->toContain('title="Wetterbericht"');
+});
+
+test('the inline fallback prepares the item fully: trim, loudness and duration', function () {
+    config(['radioring.loudness.enabled' => true, 'radioring.loudness.target_lufs' => -14.0]);
+
+    $source = ExternalSource::factory()->create([
+        'station_id' => $this->station->id, 'kind' => 'url', 'url' => 'https://files.example.com/show.mp3',
+        'normalize' => true, 'trim_leading_silence' => true, 'expected_duration_seconds' => 300,
+    ]);
+
+    // Not prepared in advance: the job has not reached this item yet.
+    $item = externalRundownItem($this->station, ['prepared_path' => null], $source);
+
+    Http::fake(['*' => Http::response('AUDIO', 200)]);
+    Process::fake(['*' => Process::result(output: '', errorOutput: "[Parsed_loudnorm_0 @ 0x0]\n{\n\t\"input_i\" : \"-20.0\",\n\t\"input_tp\" : \"-8.0\",\n\t\"input_lra\" : \"7.0\",\n\t\"input_thresh\" : \"-30.0\"\n}")]);
+
+    $this->mock(AudioMetadataService::class)
+        ->shouldReceive('read')->once()->andReturn([
+            'title' => null, 'artist' => null, 'album' => null, 'duration' => 1802,
+        ]);
+
+    $response = $this->withToken($this->token)->get("/api/liquidsoap/{$this->station->slug}/next");
+
+    // Trim ran, loudness was measured and travels along as a gain.
+    Process::assertRan(fn ($process) => str_contains(implode(' ', (array) $process->command), 'silenceremove'));
+    expect($response->getContent())->toContain('liq_amplify="6 dB"');
+
+    // And the measured length reached the source instead of the guess.
+    expect($item->fresh()->loudness_lufs)->toBe(-20.0)
+        ->and($source->fresh()->expected_duration_seconds)->toBe(1802);
 });

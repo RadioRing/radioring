@@ -5,15 +5,15 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\GeneratedPlaylistItem;
 use App\Models\Station;
+use App\Services\ExternalItemPreparer;
 use App\Services\LiquidsoapStateService;
-use App\Services\RemoteFileFetcher;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 
 class LiquidsoapNextTrackController extends Controller
 {
-    public function __construct(private readonly RemoteFileFetcher $fetcher) {}
+    public function __construct(private readonly ExternalItemPreparer $preparer) {}
 
     public function __invoke(string $slug, LiquidsoapStateService $stateService): Response
     {
@@ -41,7 +41,7 @@ class LiquidsoapNextTrackController extends Controller
         if ($item->source_type === 'external') {
             // Inline-Vorbereitung: synchron holen falls der Hintergrundjob noch nicht gelaufen ist.
             if (! ($item->prepared_path && Storage::disk('local')->exists($item->prepared_path))) {
-                $this->prepareInline($item, $station->slug);
+                $this->prepareInline($item, $station);
             }
 
             // Nach erfolgloser Vorbereitung: Item überspringen, damit keine Zugangsdaten
@@ -154,33 +154,23 @@ class LiquidsoapNextTrackController extends Controller
     }
 
     /**
-     * Lädt eine externe Quelle synchron herunter und speichert sie als lokale Kopie –
-     * Fallback, wenn PrepareUpcomingHttpItemsJob noch nicht im Vorlauf gelaufen ist.
+     * Bereitet eine externe Quelle synchron vor – Fallback, wenn
+     * PrepareUpcomingHttpItemsJob sie im Vorlauf noch nicht erwischt hat.
      *
-     * Nach dem Aufruf ist $item->prepared_path gesetzt (und die Datei vorhanden),
-     * sofern der Download erfolgreich war.
+     * Bewusst dieselbe Vorbereitung wie im Job (Trim, Lautheit, Dauermessung), nur mit
+     * kürzerem Timeout: ein inline geholter Titel soll nicht anders klingen als ein
+     * vorbereiteter. Nach dem Aufruf ist $item->prepared_path gesetzt (und die Datei
+     * vorhanden), sofern der Download erfolgreich war.
      */
-    private function prepareInline(GeneratedPlaylistItem $item, string $stationSlug): void
+    private function prepareInline(GeneratedPlaylistItem $item, Station $station): void
     {
         $source = $item->externalSource;
-        $url = $source?->resolveUrl();
 
-        if ($url === null) {
+        if (! $source) {
             return;
         }
 
-        $path = "stations/{$stationSlug}/prepared/{$item->id}.mp3";
-
-        try {
-            $body = $this->fetcher->fetch($url, $source->url_username, $source->url_password, timeoutSeconds: 30);
-
-            Storage::disk('local')->put($path, $body);
-            $item->update(['prepared_path' => $path, 'prepared_at' => now()]);
-        } catch (\Throwable $e) {
-            // The item is skipped a moment later, so record why: without this the only
-            // trace of a wrong address or a rejected login is a silent gap.
-            $source->update(['last_fetched_at' => now(), 'last_error' => $e->getMessage()]);
-        }
+        $this->preparer->prepare($item, $source, $station, timeoutSeconds: 30);
     }
 
     /**
