@@ -30,6 +30,7 @@ class RemoteFileFetcher
      */
     public function fetch(string $url, ?string $username = null, ?string $password = null, int $timeoutSeconds = 60): string
     {
+        $url = self::normalizeUrl($url);
         $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
 
         $body = match (true) {
@@ -43,6 +44,41 @@ class RemoteFileFetcher
         }
 
         return $body;
+    }
+
+    /**
+     * Percent-encodes what an address may not carry literally, above all the spaces that
+     * FTP filenames are full of ("Show - Stafford 1A.mp3"): those make the address fail
+     * validation and, once stored, fail the transfer.
+     *
+     * Only the part after the host is touched, so a login in the authority survives
+     * untouched. Sequences that are already encoded are left as they are, and the
+     * delimiters ? and # keep their meaning, so running this twice changes nothing.
+     */
+    public static function normalizeUrl(string $url): string
+    {
+        $url = trim($url);
+        $scheme = strpos($url, '://');
+
+        if ($scheme === false) {
+            return $url;
+        }
+
+        $pathStart = strpos($url, '/', $scheme + 3);
+
+        if ($pathStart === false) {
+            return $url;
+        }
+
+        $encoded = preg_replace_callback(
+            '/%[0-9A-Fa-f]{2}|[^A-Za-z0-9\-._~!$&\'()*+,;=:@\/?#]/',
+            fn (array $match): string => str_starts_with($match[0], '%') && strlen($match[0]) === 3
+                ? $match[0]
+                : rawurlencode($match[0]),
+            substr($url, $pathStart),
+        );
+
+        return substr($url, 0, $pathStart).$encoded;
     }
 
     /**

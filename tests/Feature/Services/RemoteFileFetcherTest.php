@@ -61,3 +61,37 @@ test('an ftp address does not go through the http client', function () {
 
     Http::assertNothingSent();
 });
+
+test('it percent-encodes spaces in an address', function () {
+    expect(RemoteFileFetcher::normalizeUrl('ftp://markstafford.co.uk/All/current/Show - Stafford 1A.mp3'))
+        ->toBe('ftp://markstafford.co.uk/All/current/Show%20-%20Stafford%201A.mp3');
+});
+
+test('normalizing an address twice changes nothing', function (string $url) {
+    $once = RemoteFileFetcher::normalizeUrl($url);
+
+    expect(RemoteFileFetcher::normalizeUrl($once))->toBe($once);
+})->with([
+    'spaces' => 'ftp://host/All/Show - Stafford 1A.mp3',
+    'already encoded' => 'ftp://host/All/Show%20-%20Stafford%201A.mp3',
+    'query' => 'https://host/file.mp3?token=ab%2Bcd&expires=123',
+    'login in the authority' => 'https://mount:pa%3Fss@api.example.com/news/1',
+    'umlaut' => 'ftp://host/Sendung/Grüße.mp3',
+]);
+
+test('it keeps query and fragment delimiters intact', function () {
+    expect(RemoteFileFetcher::normalizeUrl('https://host/a b.mp3?x=1&y=2#top'))
+        ->toBe('https://host/a%20b.mp3?x=1&y=2#top');
+});
+
+test('it leaves an address without a path alone', function () {
+    expect(RemoteFileFetcher::normalizeUrl('  https://example.com  '))->toBe('https://example.com');
+});
+
+test('it fetches the encoded address when the path contains spaces', function () {
+    Http::fake(['*' => Http::response('AUDIO', 200)]);
+
+    app(RemoteFileFetcher::class)->fetch('https://example.com/All/Show - Stafford 1A.mp3');
+
+    Http::assertSent(fn ($request) => $request->url() === 'https://example.com/All/Show%20-%20Stafford%201A.mp3');
+});

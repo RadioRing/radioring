@@ -128,6 +128,12 @@ class Index extends Component
 
     public function save(): void
     {
+        // Encode before validating: FTP paths regularly carry spaces ("Show - Stafford
+        // 1A.mp3"), which no url rule accepts and no transfer survives.
+        if ($this->kind === 'url') {
+            $this->url = RemoteFileFetcher::normalizeUrl($this->url);
+        }
+
         $data = $this->validate();
 
         $attributes = [

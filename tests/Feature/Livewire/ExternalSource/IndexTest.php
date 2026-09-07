@@ -205,3 +205,16 @@ test('switching a source away from kind=url clears its credentials', function ()
         ->and($source->url_username)->toBeNull()
         ->and($source->url_password)->toBeNull();
 });
+
+test('an ftp address with spaces in the path is accepted and stored encoded', function () {
+    Livewire::test(Index::class)
+        ->call('startCreate')
+        ->set('name', 'Stafford')
+        ->set('kind', 'url')
+        ->set('url', 'ftp://markstafford.co.uk/All/current/Show - Stafford 1A.mp3')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($this->station->externalSources()->first()->url)
+        ->toBe('ftp://markstafford.co.uk/All/current/Show%20-%20Stafford%201A.mp3');
+});
