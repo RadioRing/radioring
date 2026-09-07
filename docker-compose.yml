@@ -103,6 +103,7 @@ services:
       DOCKER_WEB_NETWORK: ${DOCKER_WEB_NETWORK:-web}
       DOCKER_STATION_NETWORK: ${DOCKER_STATION_NETWORK:-web}
       TRAEFIK_ENABLE: ${TRAEFIK_ENABLE:-true}
+      TRAEFIK_CERTRESOLVER: ${TRAEFIK_CERTRESOLVER:-myresolver}
     volumes:
       - storage:/app/storage
     labels:
