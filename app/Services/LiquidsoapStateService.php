@@ -338,6 +338,11 @@ class LiquidsoapStateService
             ->with('nowPlayingItem')
             ->first();
 
+        // Make sure cut only happens once.
+        if ($state?->hard_start_committed_rundown_id === $hard->id) {
+            return null;
+        }
+
         // Entscheidend am ECHTEN Airplay (now_playing), NICHT am Pull-Cursor
         // (current_rundown_id): Der Cursor eilt durch prefetch=3 bis zu drei Tracks
         // voraus und steht zur vollen Stunde oft schon im Hard-Rundown, während
@@ -359,7 +364,11 @@ class LiquidsoapStateService
         DB::transaction(function () use ($station, $hard) {
             LiquidsoapState::updateOrCreate(
                 ['station_id' => $station->id],
-                ['current_rundown_id' => $hard->id, 'current_item_position' => 0],
+                [
+                    'current_rundown_id' => $hard->id,
+                    'current_item_position' => 0,
+                    'hard_start_committed_rundown_id' => $hard->id,
+                ],
             );
         }, self::TRANSACTION_ATTEMPTS);
     }

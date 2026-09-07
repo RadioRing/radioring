@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'station_id',
     'current_rundown_id',
     'current_item_position',
+    'hard_start_committed_rundown_id',
     'now_playing_item_id',
     'now_playing_title',
     'now_playing_artist',

@@ -29,7 +29,7 @@ class LiquidsoapNowPlayingController extends Controller
         }
 
         // 2. Fallback: anhand des Dateinamens (ältere Scripts ohne Annotation).
-        $filename = $request->input('filename', '');
+        $filename = trim((string) $request->input('filename', ''));
 
         if (! $item && $filename) {
             $base = basename($filename);
@@ -60,6 +60,10 @@ class LiquidsoapNowPlayingController extends Controller
         // (Titel/Interpret) herein → ein externer Encoder sendet über den input.harbor.
         $title = trim((string) $request->input('title', ''));
         $artist = trim((string) $request->input('artist', ''));
+
+        if (! $item && empty($itemId) && $filename === '' && $title === '' && $artist === '') {
+            return response()->json(['ok' => true, 'ignored' => true]);
+        }
 
         if (! $item && empty($itemId) && ($title !== '' || $artist !== '')) {
             [$artist, $title] = $this->splitArtistTitle($title, $artist);

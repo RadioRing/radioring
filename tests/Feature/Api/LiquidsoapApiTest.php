@@ -5,6 +5,7 @@ use App\Models\GeneratedPlaylistItem;
 use App\Models\LiquidsoapState;
 use App\Models\MediaFile;
 use App\Models\Station;
+use App\Models\StationLog;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -1026,4 +1027,36 @@ test('now-playing leaves a live title without a separator as title only', functi
     $state = LiquidsoapState::where('station_id', $this->station->id)->first();
     expect($state->live_title)->toBe('Nur ein Sendungstitel')
         ->and($state->live_artist)->toBeNull();
+});
+
+test('now-playing ignores a metadata event without item, filename and title', function () {
+    Storage::fake('local');
+    $this->travelTo(today()->setHour(12)->setMinute(5));
+
+    $file = MediaFile::factory()->create(['tenant_id' => $this->station->tenant_id, 'file_path' => "tenants/{$this->station->tenant_id}/media/n.mp3", 'type' => 'music', 'title' => 'N']);
+
+    $rundown = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 12,
+        'status' => 'ready', 'start_mode' => 'soft',
+    ]);
+    $item = GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $rundown->id, 'media_file_id' => $file->id, 'position' => 0, 'source_type' => 'template_item', 'title' => 'Nachrichten + Wetter']);
+
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'current_rundown_id' => $rundown->id,
+        'current_item_position' => 1,
+        'now_playing_item_id' => $item->id,
+        'now_playing_title' => 'Nachrichten + Wetter',
+    ]);
+
+    $this->withToken($this->token)
+        ->postJson("/api/liquidsoap/{$this->station->slug}/now-playing", ['item_id' => '', 'filename' => '', 'title' => '', 'artist' => ''])
+        ->assertStatus(200)
+        ->assertJson(['ignored' => true]);
+
+    $state = LiquidsoapState::where('station_id', $this->station->id)->first();
+    expect($state->now_playing_item_id)->toBe($item->id)
+        ->and($state->now_playing_title)->toBe('Nachrichten + Wetter');
+
+    expect(StationLog::where('station_id', $this->station->id)->where('event', 'track')->count())->toBe(0);
 });

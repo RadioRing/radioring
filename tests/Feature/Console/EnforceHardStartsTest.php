@@ -105,3 +105,58 @@ test('enforces the cut even when the pull cursor already raced into the hard run
     expect($state->current_rundown_id)->toBe($hard->id)
         ->and($state->current_item_position)->toBe(0);
 });
+
+test('does not cut the same hard rundown twice when now_playing was cleared', function () {
+    $this->station->stream()->create(['container_name' => 'radioring-'.$this->station->slug, 'status' => 'running']);
+    $hard = hardSetup($this->station);
+
+    LiquidsoapState::create(['station_id' => $this->station->id, 'current_rundown_id' => null, 'current_item_position' => 3]);
+
+    // First run should cut at full hour
+    $this->mock(LiquidsoapCommandService::class)
+        ->shouldReceive('skip')->once()->andReturnTrue();
+
+    $this->artisan('radioring:enforce-hard-starts')->assertSuccessful();
+
+    $this->travelTo(today()->setHour(12)->setMinute(23));
+    LiquidsoapState::where('station_id', $this->station->id)->update([
+        'now_playing_item_id' => null,
+        'current_item_position' => 7,
+    ]);
+
+    $this->artisan('radioring:enforce-hard-starts')->assertSuccessful();
+
+    $state = LiquidsoapState::where('station_id', $this->station->id)->first();
+    expect($state->current_item_position)->toBe(7)
+        ->and($state->hard_start_committed_rundown_id)->toBe($hard->id);
+});
+
+test('cuts again for the next hour despite an earlier commit', function () {
+    $this->station->stream()->create(['container_name' => 'radioring-'.$this->station->slug, 'status' => 'running']);
+    $previous = hardSetup($this->station);
+
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'current_rundown_id' => $previous->id,
+        'current_item_position' => 4,
+        'hard_start_committed_rundown_id' => $previous->id,
+    ]);
+
+    $next = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 13,
+        'status' => 'ready', 'start_mode' => 'hard',
+    ]);
+    GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $next->id, 'position' => 0, 'source_type' => 'news_weather', 'title' => 'Nachrichten + Wetter']);
+
+    $this->travelTo(today()->setHour(13)->setMinute(0));
+
+    $this->mock(LiquidsoapCommandService::class)
+        ->shouldReceive('skip')->once()->andReturnTrue();
+
+    $this->artisan('radioring:enforce-hard-starts')->assertSuccessful();
+
+    $state = LiquidsoapState::where('station_id', $this->station->id)->first();
+    expect($state->current_rundown_id)->toBe($next->id)
+        ->and($state->current_item_position)->toBe(0)
+        ->and($state->hard_start_committed_rundown_id)->toBe($next->id);
+});
