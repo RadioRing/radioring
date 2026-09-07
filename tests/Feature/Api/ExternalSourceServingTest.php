@@ -164,3 +164,45 @@ test('prepared endpoint forbids an item of another station', function () {
     $this->get(signedDeliveryUrl('liquidsoap.prepared', ['slug' => $this->station->slug, 'item' => $foreignItem->id]))
         ->assertStatus(403);
 });
+
+test('next annotates the broadcast title instead of the internal name', function () {
+    $source = ExternalSource::factory()->create([
+        'station_id' => $this->station->id, 'kind' => 'url', 'url' => 'https://example.com/show.mp3',
+        'name' => 'Morgenshow #2', 'broadcast_title' => 'Morgenshow',
+    ]);
+
+    $path = "stations/{$this->station->slug}/prepared/77.mp3";
+    Storage::disk('local')->put($path, 'AUDIO');
+
+    externalRundownItem($this->station, [
+        'prepared_path' => $path,
+        'prepared_at' => now(),
+        // The frozen item title is the operator's label, as copied from the source.
+        'title' => 'Morgenshow #2',
+    ], $source);
+
+    $response = $this->withToken($this->token)->get("/api/liquidsoap/{$this->station->slug}/next");
+
+    expect($response->getContent())
+        ->toContain('title="Morgenshow"')
+        ->not->toContain('#2');
+});
+
+test('next falls back to the item title when no broadcast title is set', function () {
+    $source = ExternalSource::factory()->create([
+        'station_id' => $this->station->id, 'kind' => 'url', 'url' => 'https://example.com/show.mp3',
+        'name' => 'Wetterbericht', 'broadcast_title' => null,
+    ]);
+
+    $path = "stations/{$this->station->slug}/prepared/78.mp3";
+    Storage::disk('local')->put($path, 'AUDIO');
+
+    externalRundownItem($this->station, [
+        'prepared_path' => $path,
+        'prepared_at' => now(),
+        'title' => 'Wetterbericht',
+    ], $source);
+
+    expect($this->withToken($this->token)->get("/api/liquidsoap/{$this->station->slug}/next")->getContent())
+        ->toContain('title="Wetterbericht"');
+});

@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'station_id',
     'name',
+    'broadcast_title',
     'kind',
     'url',
     'url_username',
@@ -114,6 +115,15 @@ class ExternalSource extends Model
         }
 
         return sprintf('%d:%02d', intdiv($this->expected_duration_seconds, 60), $this->expected_duration_seconds % 60);
+    }
+
+    /**
+     * The title listeners see. The name is the operator's label (it carries part numbers
+     * and other bookkeeping), so it only goes on air while no broadcast title is set.
+     */
+    public function broadcastTitle(): string
+    {
+        return ($this->broadcast_title ?? '') !== '' ? $this->broadcast_title : $this->name;
     }
 
     /** Anzahl der Playlisten-Items, die diese Quelle referenzieren. */

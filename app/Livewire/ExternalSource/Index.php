@@ -26,6 +26,9 @@ class Index extends Component
 
     public string $kind = 'url';
 
+    /** Empty means: annotate the name, exactly as before. */
+    public string $broadcastTitle = '';
+
     public string $url = '';
 
     public string $urlUsername = '';
@@ -79,6 +82,7 @@ class Index extends Component
     {
         return [
             'name' => 'required|string|min:1|max:200',
+            'broadcastTitle' => 'nullable|string|max:200',
             'kind' => 'required|in:url,news,weather,news_weather,syndication',
             // Only schemes RemoteFileFetcher can actually download. Laravel's bare "url"
             // rule also accepts sftp:// and friends, which the form used to swallow while
@@ -118,6 +122,7 @@ class Index extends Component
         $this->editingId = $source->id;
         $this->copyPasswordFromId = null;
         $this->name = $source->name;
+        $this->broadcastTitle = $source->broadcast_title ?? '';
         $this->kind = $source->kind;
         $this->url = $source->url ?? '';
         $this->urlUsername = $source->url_username ?? '';
@@ -160,6 +165,7 @@ class Index extends Component
 
         $attributes = [
             'name' => $data['name'],
+            'broadcast_title' => $data['broadcastTitle'] !== '' ? $data['broadcastTitle'] : null,
             'kind' => $data['kind'],
             'url' => $data['kind'] === 'url' ? $data['url'] : null,
             'url_username' => $data['kind'] === 'url' && $data['urlUsername'] !== '' ? $data['urlUsername'] : null,
@@ -209,7 +215,7 @@ class Index extends Component
 
     private function resetForm(): void
     {
-        $this->reset('showForm', 'editingId', 'copyPasswordFromId', 'name', 'kind', 'url', 'urlUsername', 'urlPassword', 'expectedDuration', 'prefetchLead', 'freshness', 'normalize', 'trimLeadingSilence', 'fadeIn');
+        $this->reset('showForm', 'editingId', 'copyPasswordFromId', 'name', 'broadcastTitle', 'kind', 'url', 'urlUsername', 'urlPassword', 'expectedDuration', 'prefetchLead', 'freshness', 'normalize', 'trimLeadingSilence', 'fadeIn');
         $this->resetValidation();
     }
 
@@ -349,6 +355,9 @@ class Index extends Component
 
             $this->station->externalSources()->create([
                 'name' => $baseName.' ('.$variantLabel.')',
+                // The name carries the part numbering for the operator; listeners get
+                // the show itself, the same for every part.
+                'broadcast_title' => $multiple ? $show['name'] : null,
                 'kind' => 'syndication',
                 'syndication_sendung_id' => $show['id'],
                 'syndication_variant' => $this->importVariant,

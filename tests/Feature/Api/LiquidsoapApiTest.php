@@ -1060,3 +1060,78 @@ test('now-playing ignores a metadata event without item, filename and title', fu
 
     expect(StationLog::where('station_id', $this->station->id)->where('event', 'track')->count())->toBe(0);
 });
+
+test('now-playing keeps the player alive when the item was deleted by a regeneration', function () {
+    Storage::fake('local');
+    $this->travelTo(today()->setHour(12)->setMinute(5));
+
+    $rundown = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 12,
+        'status' => 'ready', 'start_mode' => 'soft',
+    ]);
+    $item = GeneratedPlaylistItem::factory()->create([
+        'generated_playlist_id' => $rundown->id, 'position' => 0, 'source_type' => 'template_item', 'title' => 'Alt',
+    ]);
+
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'current_rundown_id' => $rundown->id,
+        'current_item_position' => 1,
+        'now_playing_item_id' => $item->id,
+        'now_playing_title' => 'Alt',
+    ]);
+
+    // Regeneration: the prefetched track keeps its now dangling item id.
+    $staleId = $item->id;
+    $item->delete();
+
+    $this->withToken($this->token)
+        ->postJson("/api/liquidsoap/{$this->station->slug}/now-playing", [
+            'item_id' => $staleId, 'title' => 'Prefetchter Titel', 'artist' => 'Interpret',
+        ])
+        ->assertStatus(200)
+        ->assertJson(['unidentified' => true]);
+
+    $state = LiquidsoapState::where('station_id', $this->station->id)->first();
+    expect($state->now_playing_title)->toBe('Prefetchter Titel')
+        ->and($state->now_playing_artist)->toBe('Interpret')
+        ->and($state->now_playing_started_at)->not->toBeNull()
+        ->and($state->now_playing_item_id)->toBeNull();
+
+    expect(StationLog::where('station_id', $this->station->id)->where('event', 'track')->first()->title)
+        ->toBe('Prefetchter Titel');
+});
+
+test('now-playing keeps the existing snapshot when a deleted item reports no metadata', function () {
+    Storage::fake('local');
+    $this->travelTo(today()->setHour(12)->setMinute(5));
+
+    $rundown = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 12,
+        'status' => 'ready', 'start_mode' => 'soft',
+    ]);
+    $item = GeneratedPlaylistItem::factory()->create([
+        'generated_playlist_id' => $rundown->id, 'position' => 0, 'source_type' => 'news_weather', 'title' => 'Nachrichten + Wetter',
+    ]);
+
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'current_rundown_id' => $rundown->id,
+        'current_item_position' => 1,
+        'now_playing_item_id' => $item->id,
+        'now_playing_title' => 'Nachrichten + Wetter',
+        'now_playing_started_at' => now(),
+    ]);
+
+    $staleId = $item->id;
+    $item->delete();
+
+    // News and weather carry no title annotation, so nothing identifiable comes back.
+    $this->withToken($this->token)
+        ->postJson("/api/liquidsoap/{$this->station->slug}/now-playing", ['item_id' => $staleId])
+        ->assertStatus(200)
+        ->assertJson(['ignored' => true]);
+
+    expect(LiquidsoapState::where('station_id', $this->station->id)->first()->now_playing_title)
+        ->toBe('Nachrichten + Wetter');
+});

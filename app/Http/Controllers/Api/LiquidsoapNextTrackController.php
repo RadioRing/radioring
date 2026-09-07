@@ -56,7 +56,11 @@ class LiquidsoapNextTrackController extends Controller
             ]);
 
             $annotations = "radioring_item_id=\"{$item->id}\"";
-            $annotations .= $this->metadataAnnotations($item->title, null);
+            // The source's broadcast title, not the frozen item title: the item carries
+            // the operator's label (part numbers and the like), which belongs in the
+            // library and the log, not in the stream metadata. Live DB value, so a
+            // correction takes effect without regenerating rundowns.
+            $annotations .= $this->metadataAnnotations($item->externalSource?->broadcastTitle() ?? $item->title, null);
 
             if (config('radioring.loudness.enabled', true) && $item->externalSource?->normalize) {
                 $gainDb = $item->loudnessGainDb();

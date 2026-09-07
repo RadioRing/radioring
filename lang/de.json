@@ -188,5 +188,8 @@
     "No address could be resolved (missing laut.fm output or credentials?).": "Es ließ sich keine Adresse auflösen (fehlt der laut.fm-Ausgang oder dessen Zugangsdaten?).",
     "Please enter an http, https, ftp or ftps address.": "Bitte eine http-, https-, ftp- oder ftps-Adresse eingeben.",
     "Duplicate": "Duplizieren",
-    ":name (copy)": ":name (Kopie)"
+    ":name (copy)": ":name (Kopie)",
+    "Broadcast title": "Sendetitel",
+    "Leave empty to broadcast the name. Set it to keep internal markers such as #1, #2 out of the stream.": "Leer lassen, um den Namen zu senden. Gesetzt, damit interne Kennzeichnungen wie #1, #2 nicht im Stream landen.",
+    "on air: :title": "auf Sendung: :title"
 }

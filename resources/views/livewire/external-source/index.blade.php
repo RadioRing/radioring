@@ -143,6 +143,16 @@
                             @error('name') <div class="invalid-feedback">{{ $message }}</div> @enderror
                         </div>
                         <div class="col-12 col-md-6">
+                            <label class="form-label small fw-medium">{{ __('Broadcast title') }}</label>
+                            <input type="text" wire:model="broadcastTitle"
+                                   class="form-control form-control-sm @error('broadcastTitle') is-invalid @enderror"
+                                   placeholder="{{ $name !== '' ? $name : __('optional') }}">
+                            @error('broadcastTitle') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            <div class="form-text" style="font-size:.75rem">
+                                {{ __('Leave empty to broadcast the name. Set it to keep internal markers such as #1, #2 out of the stream.') }}
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
                             <label class="form-label small fw-medium">{{ __('Art') }}</label>
                             <select wire:model.live="kind" class="form-select form-select-sm @error('kind') is-invalid @enderror"
                                     @disabled($kind === 'syndication')>
@@ -283,7 +293,14 @@
                         </span>
 
                         <div class="flex-grow-1 overflow-hidden">
-                            <div class="fw-medium small text-truncate">{{ $source->name }}</div>
+                            <div class="fw-medium small text-truncate">
+                                {{ $source->name }}
+                                @if($source->broadcast_title)
+                                    <span class="text-muted fw-normal ms-1" style="font-size:.75rem">
+                                        <i class="bi bi-broadcast-pin me-1"></i>{{ __('on air: :title', ['title' => $source->broadcast_title]) }}
+                                    </span>
+                                @endif
+                            </div>
                             <div class="text-muted" style="font-size:.75rem">
                                 @if($source->kind === 'url')
                                     <i class="bi bi-link-45deg me-1"></i><span class="text-truncate">{{ $source->url }}</span>

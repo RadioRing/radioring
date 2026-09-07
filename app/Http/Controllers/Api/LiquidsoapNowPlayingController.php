@@ -65,6 +65,25 @@ class LiquidsoapNowPlayingController extends Controller
             return response()->json(['ok' => true, 'ignored' => true]);
         }
 
+        // An item id that resolves to nothing: the rundown was regenerated while this
+        // track sat in Liquidsoap's prefetch queue, so the annotated row is gone. The
+        // container is playing, so keep showing it rather than reporting silence. Without
+        // any metadata to show (news and weather carry no title annotation) the existing
+        // snapshot is still the best answer available.
+        if (! $item && ! empty($itemId)) {
+            if ($title === '' && $artist === '') {
+                return response()->json(['ok' => true, 'ignored' => true]);
+            }
+
+            $stateService->setNowPlayingUnidentified(
+                $station,
+                $title !== '' ? $title : null,
+                $artist !== '' ? $artist : null,
+            );
+
+            return response()->json(['ok' => true, 'unidentified' => true]);
+        }
+
         if (! $item && empty($itemId) && ($title !== '' || $artist !== '')) {
             [$artist, $title] = $this->splitArtistTitle($title, $artist);
 

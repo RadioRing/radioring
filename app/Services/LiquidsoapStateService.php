@@ -185,6 +185,75 @@ class LiquidsoapStateService
     }
 
     /**
+     * Airplay whose item can no longer be resolved.
+     *
+     * The rundown was regenerated while this track was already in Liquidsoap's prefetch
+     * queue, so its annotated item id points at a row that no longer exists. The container
+     * is demonstrably on air, and it tells us what it plays, so keep the snapshot alive
+     * from that metadata. Reporting silence here is what used to freeze the dashboard on
+     * "NO PLAYOUT" until the prefetch queue had drained.
+     *
+     * There is no item to hang a duration or a rundown position on, so both stay empty
+     * until the next track pulled after the regeneration reports in with a fresh id.
+     */
+    public function setNowPlayingUnidentified(Station $station, ?string $title, ?string $artist): void
+    {
+        $result = DB::transaction(function () use ($station, $title, $artist) {
+            $state = LiquidsoapState::firstOrCreate(['station_id' => $station->id]);
+
+            $wasLive = (bool) $state->live_active;
+
+            // Same track reported twice: keep the snapshot, above all its start time.
+            if (! $wasLive
+                && $state->now_playing_item_id === null
+                && $state->now_playing_title === $title
+                && $state->now_playing_artist === $artist
+            ) {
+                return ['duplicate' => true, 'wasLive' => false];
+            }
+
+            $state->update([
+                'now_playing_item_id' => null,
+                'now_playing_title' => $title,
+                'now_playing_artist' => $artist,
+                'now_playing_source_type' => null,
+                'now_playing_duration_seconds' => null,
+                'now_playing_started_at' => now(),
+                'live_active' => false,
+                'live_title' => null,
+                'live_artist' => null,
+                'live_started_at' => null,
+            ]);
+
+            return ['duplicate' => false, 'wasLive' => $wasLive];
+        }, self::TRANSACTION_ATTEMPTS);
+
+        if ($result['duplicate']) {
+            return;
+        }
+
+        if ($result['wasLive']) {
+            StationLog::create([
+                'station_id' => $station->id,
+                'event' => StationLog::EVENT_LIVE_STOPPED,
+                'message' => __('Live-Übernahme beendet – zurück zum Programm.'),
+                'occurred_at' => now(),
+            ]);
+        }
+
+        // Log it like any other track: without this the protocol has a hole around every
+        // regeneration, exactly where an operator goes looking for one.
+        StationLog::create([
+            'station_id' => $station->id,
+            'event' => StationLog::EVENT_TRACK,
+            'source' => 'playlist',
+            'title' => $title,
+            'artist' => $artist,
+            'occurred_at' => now(),
+        ]);
+    }
+
+    /**
      * Speichert eine aktive Live-Übernahme (input.harbor) inkl. eingehender Metadaten.
      * Erkannt daran, dass der on_metadata-Callback Metadaten OHNE radioring_item_id
      * liefert (unsere eigenen Tracks tragen immer eine Item-ID).
