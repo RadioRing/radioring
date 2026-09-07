@@ -186,5 +186,7 @@
     "FTP download failed: :error": "FTP-Download fehlgeschlagen: :error",
     "unknown error": "unbekannter Fehler",
     "No address could be resolved (missing laut.fm output or credentials?).": "Es ließ sich keine Adresse auflösen (fehlt der laut.fm-Ausgang oder dessen Zugangsdaten?).",
-    "Please enter an http, https, ftp or ftps address.": "Bitte eine http-, https-, ftp- oder ftps-Adresse eingeben."
+    "Please enter an http, https, ftp or ftps address.": "Bitte eine http-, https-, ftp- oder ftps-Adresse eingeben.",
+    "Duplicate": "Duplizieren",
+    ":name (copy)": ":name (Kopie)"
 }

@@ -33,6 +33,10 @@ class Index extends Component
     /** Kept blank while editing: an empty field means "keep the stored password". */
     public string $urlPassword = '';
 
+    /** Source to take the stored password from when duplicating (see startDuplicate). */
+    #[Locked]
+    public ?int $copyPasswordFromId = null;
+
     public ?int $expectedDuration = null;
 
     public int $prefetchLead = 180;
@@ -112,6 +116,7 @@ class Index extends Component
         $source = $this->station->externalSources()->findOrFail($id);
 
         $this->editingId = $source->id;
+        $this->copyPasswordFromId = null;
         $this->name = $source->name;
         $this->kind = $source->kind;
         $this->url = $source->url ?? '';
@@ -124,6 +129,23 @@ class Index extends Component
         $this->trimLeadingSilence = $source->trim_leading_silence;
         $this->fadeIn = $source->fade_in;
         $this->showForm = true;
+    }
+
+    /**
+     * Opens the form as a NEW source, prefilled from an existing one. Everything but the
+     * name and the address is usually identical for a second show from the same supplier.
+     */
+    public function startDuplicate(int $id): void
+    {
+        $source = $this->station->externalSources()->where('kind', '!=', 'syndication')->findOrFail($id);
+
+        $this->startEdit($id);
+
+        // A copy is a new record: no id to update, and a name that says what it is.
+        $this->editingId = null;
+        $this->name = __(':name (copy)', ['name' => $source->name]);
+        // The plaintext never reaches the form, so remember where to take it from.
+        $this->copyPasswordFromId = $source->id;
     }
 
     public function save(): void
@@ -155,6 +177,11 @@ class Index extends Component
             $attributes['url_password'] = null;
         } elseif ($data['urlPassword'] !== '') {
             $attributes['url_password'] = $data['urlPassword'];
+        } elseif ($this->copyPasswordFromId !== null) {
+            // Duplicate with the password field untouched: carry the original one over,
+            // since a copy almost always points at the same server.
+            $attributes['url_password'] = $this->station->externalSources()
+                ->find($this->copyPasswordFromId)?->url_password;
         }
 
         if ($this->editingId) {
@@ -182,7 +209,7 @@ class Index extends Component
 
     private function resetForm(): void
     {
-        $this->reset('showForm', 'editingId', 'name', 'kind', 'url', 'urlUsername', 'urlPassword', 'expectedDuration', 'prefetchLead', 'freshness', 'normalize', 'trimLeadingSilence', 'fadeIn');
+        $this->reset('showForm', 'editingId', 'copyPasswordFromId', 'name', 'kind', 'url', 'urlUsername', 'urlPassword', 'expectedDuration', 'prefetchLead', 'freshness', 'normalize', 'trimLeadingSilence', 'fadeIn');
         $this->resetValidation();
     }
 

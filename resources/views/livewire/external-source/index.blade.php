@@ -344,6 +344,11 @@
                         <button class="btn btn-sm btn-outline-secondary" wire:click="startEdit({{ $source->id }})" title="{{ __('Bearbeiten') }}">
                             <i class="bi bi-pencil"></i>
                         </button>
+                        @if($source->kind !== 'syndication')
+                            <button class="btn btn-sm btn-outline-secondary" wire:click="startDuplicate({{ $source->id }})" title="{{ __('Duplicate') }}">
+                                <i class="bi bi-copy"></i>
+                            </button>
+                        @endif
                         <button class="btn btn-sm btn-outline-danger"
                                 @click="$dispatch('confirm-dialog', { message: @js($source->playlist_items_count > 0
                                     ? __('Diese Quelle wird in :n Playlist-Element(en) verwendet. Trotzdem löschen?', ['n' => $source->playlist_items_count])
