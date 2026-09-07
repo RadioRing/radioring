@@ -185,14 +185,27 @@ class Station extends Model
     }
 
     /**
-     * Der aktive laut.fm-Ausgang dieser Station (liefert die Credentials für die
-     * Nachrichten-/Wetter-API). Null, wenn die Station kein laut.fm-Ausgang ist.
+     * The laut.fm output whose credentials open the RadioAdmin news and weather API.
+     * Null when the station has no usable laut.fm login.
+     *
+     * Deliberately not limited to enabled outputs. "Enabled" decides whether Liquidsoap
+     * streams there (LiquidsoapScriptGenerator picks the send targets itself); it says
+     * nothing about whether the login still works. Filtering on it here meant that
+     * switching the output off silently took the news off the air as well.
+     *
+     * An enabled output still wins, in case a station keeps more than one.
      */
     public function lautfmOutput(): ?StationOutput
     {
         return $this->outputs()
             ->where('type', 'lautfm')
-            ->where('enabled', true)
+            ->whereNotNull('username')
+            ->where('username', '!=', '')
+            // password is a virtual attribute over the encrypted password_enc column,
+            // so the query has to name the column that actually exists.
+            ->whereNotNull('password_enc')
+            ->orderByDesc('enabled')
+            ->orderBy('id')
             ->first();
     }
 

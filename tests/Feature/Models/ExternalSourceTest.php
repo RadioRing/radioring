@@ -45,3 +45,43 @@ test('usageCount reflects referencing playlist items', function () {
 
     expect($source->usageCount())->toBe(1);
 });
+
+test('a news source still resolves while the laut.fm output is switched off', function () {
+    $station = Station::factory()->create();
+    // Enabled decides whether Liquidsoap streams there, not whether the login works.
+    $station->outputs()->create([
+        'type' => 'lautfm', 'host' => 'stream.laut.fm', 'port' => 80, 'mount' => '/teststation',
+        'username' => 'teststation', 'password' => 'geheim123', 'bitrate' => 128, 'enabled' => false,
+    ]);
+
+    $source = ExternalSource::factory()->news()->create(['station_id' => $station->id]);
+
+    expect($source->resolveUrl())->toBe('https://teststation:geheim123@api.radioadmin.laut.fm/news/2');
+});
+
+test('an enabled laut.fm output wins over a disabled one', function () {
+    $station = Station::factory()->create();
+    $station->outputs()->create([
+        'type' => 'lautfm', 'host' => 'stream.laut.fm', 'port' => 80, 'mount' => '/alt',
+        'username' => 'alt', 'password' => 'altpass', 'bitrate' => 128, 'enabled' => false,
+    ]);
+    $station->outputs()->create([
+        'type' => 'lautfm', 'host' => 'stream.laut.fm', 'port' => 80, 'mount' => '/aktuell',
+        'username' => 'aktuell', 'password' => 'neupass', 'bitrate' => 128, 'enabled' => true,
+    ]);
+
+    expect($station->lautfmOutput()->username)->toBe('aktuell');
+});
+
+test('a laut.fm output without a password does not resolve', function () {
+    $station = Station::factory()->create();
+    $station->outputs()->create([
+        'type' => 'lautfm', 'host' => 'stream.laut.fm', 'port' => 80, 'mount' => '/teststation',
+        'username' => 'teststation', 'password' => null, 'bitrate' => 128, 'enabled' => true,
+    ]);
+
+    $source = ExternalSource::factory()->news()->create(['station_id' => $station->id]);
+
+    expect($station->lautfmOutput())->toBeNull()
+        ->and($source->resolveUrl())->toBeNull();
+});
