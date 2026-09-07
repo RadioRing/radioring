@@ -6,13 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Models\GeneratedPlaylistItem;
 use App\Models\Station;
 use App\Services\LiquidsoapStateService;
+use App\Services\RemoteFileFetcher;
 use Illuminate\Http\Response;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 
 class LiquidsoapNextTrackController extends Controller
 {
+    public function __construct(private readonly RemoteFileFetcher $fetcher) {}
+
     public function __invoke(string $slug, LiquidsoapStateService $stateService): Response
     {
         $station = Station::where('slug', $slug)->firstOrFail();
@@ -156,7 +158,8 @@ class LiquidsoapNextTrackController extends Controller
      */
     private function prepareInline(GeneratedPlaylistItem $item, string $stationSlug): void
     {
-        $url = $item->externalSource?->resolveUrl();
+        $source = $item->externalSource;
+        $url = $source?->resolveUrl();
 
         if ($url === null) {
             return;
@@ -165,14 +168,14 @@ class LiquidsoapNextTrackController extends Controller
         $path = "stations/{$stationSlug}/prepared/{$item->id}.mp3";
 
         try {
-            $response = Http::timeout(30)->get($url);
+            $body = $this->fetcher->fetch($url, $source->url_username, $source->url_password, timeoutSeconds: 30);
 
-            if ($response->successful() && $response->body() !== '') {
-                Storage::disk('local')->put($path, $response->body());
-                $item->update(['prepared_path' => $path, 'prepared_at' => now()]);
-            }
-        } catch (\Throwable) {
-            // Download fehlgeschlagen – prepared_path bleibt null.
+            Storage::disk('local')->put($path, $body);
+            $item->update(['prepared_path' => $path, 'prepared_at' => now()]);
+        } catch (\Throwable $e) {
+            // The item is skipped a moment later, so record why: without this the only
+            // trace of a wrong address or a rejected login is a silent gap.
+            $source->update(['last_fetched_at' => now(), 'last_error' => $e->getMessage()]);
         }
     }
 

@@ -146,7 +146,7 @@
                             <label class="form-label small fw-medium">{{ __('Art') }}</label>
                             <select wire:model.live="kind" class="form-select form-select-sm @error('kind') is-invalid @enderror"
                                     @disabled($kind === 'syndication')>
-                                <option value="url">{{ __('HTTP-URL (Syndication)') }}</option>
+                                <option value="url">{{ __('Address (HTTP/FTP)') }}</option>
                                 <option value="news_weather">{{ __('Nachrichten + Wetter (laut.fm)') }}</option>
                                 <option value="news">{{ __('Nachrichten (laut.fm)') }}</option>
                                 <option value="weather">{{ __('Wetter (laut.fm)') }}</option>
@@ -159,11 +159,31 @@
 
                         @if($kind === 'url')
                             <div class="col-12">
-                                <label class="form-label small fw-medium">{{ __('URL') }}</label>
-                                <input type="url" wire:model="url"
+                                <label class="form-label small fw-medium">{{ __('Address') }}</label>
+                                <input type="text" wire:model="url"
                                        class="form-control form-control-sm @error('url') is-invalid @enderror"
-                                       placeholder="https://...">
+                                       placeholder="https://... {{ __('or') }} ftps://...">
                                 @error('url') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                                <div class="form-text" style="font-size:.75rem">
+                                    {{ __('Allowed: http, https, ftp, ftps. ftps means FTP with mandatory TLS (implicit on port 990, otherwise AUTH TLS).') }}
+                                </div>
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label small fw-medium">{{ __('User name') }}</label>
+                                <input type="text" wire:model="urlUsername" autocomplete="off"
+                                       class="form-control form-control-sm @error('urlUsername') is-invalid @enderror"
+                                       placeholder="{{ __('optional') }}">
+                                @error('urlUsername') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label small fw-medium">{{ __('Password') }}</label>
+                                <input type="password" wire:model="urlPassword" autocomplete="new-password"
+                                       class="form-control form-control-sm @error('urlPassword') is-invalid @enderror"
+                                       placeholder="{{ $editingId ? __('leave empty to keep') : __('optional') }}">
+                                @error('urlPassword') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                                <div class="form-text" style="font-size:.75rem">
+                                    {{ __('Stored encrypted and sent as the FTP login or HTTP basic auth, never as part of the address.') }}
+                                </div>
                             </div>
                         @else
                             <div class="col-12">
@@ -251,7 +271,7 @@
         </div>
     @else
         @php
-            $kindLabels = ['url' => __('HTTP-URL'), 'news' => __('Nachrichten'), 'weather' => __('Wetter'), 'news_weather' => __('Nachrichten + Wetter'), 'syndication' => __('Syndication')];
+            $kindLabels = ['url' => __('Address'), 'news' => __('Nachrichten'), 'weather' => __('Wetter'), 'news_weather' => __('Nachrichten + Wetter'), 'syndication' => __('Syndication')];
             $kindBadge = ['url' => 'primary', 'syndication' => 'success'];
         @endphp
         <div class="card">
@@ -267,6 +287,9 @@
                             <div class="text-muted" style="font-size:.75rem">
                                 @if($source->kind === 'url')
                                     <i class="bi bi-link-45deg me-1"></i><span class="text-truncate">{{ $source->url }}</span>
+                                    @if($source->url_username)
+                                        <span class="ms-1" title="{{ __('Login stored') }}"><i class="bi bi-shield-lock me-1"></i>{{ $source->url_username }}</span>
+                                    @endif
                                 @elseif($source->kind === 'syndication')
                                     <i class="bi bi-broadcast me-1"></i>{{ __('S4R-Sendung #:id', ['id' => $source->syndication_sendung_id]) }} · {{ $source->syndication_variant === 'lfm' ? 'laut.fm' : __('Standard') }}@if($source->syndication_filename) · <span class="text-truncate">{{ $source->syndication_filename }}</span>@endif @if($source->expectedDurationFormatted())<span class="ms-1"><i class="bi bi-clock me-1"></i>{{ $source->expectedDurationFormatted() }}</span>@else<span class="ms-1 text-warning"><i class="bi bi-clock-history me-1"></i>{{ __('Länge unbekannt') }}</span>@endif
                                 @else

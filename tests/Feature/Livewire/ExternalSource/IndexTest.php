@@ -6,6 +6,7 @@ use App\Models\Station;
 use App\Models\User;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -109,4 +110,98 @@ test('editing loads the transition flags into the form', function () {
         ->call('startEdit', $source->id)
         ->assertSet('trimLeadingSilence', true)
         ->assertSet('fadeIn', false);
+});
+
+test('a url source accepts ftp and ftps addresses', function (string $url) {
+    Livewire::test(Index::class)
+        ->call('startCreate')
+        ->set('name', 'Zulieferung')
+        ->set('kind', 'url')
+        ->set('url', $url)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($this->station->externalSources()->first()->url)->toBe($url);
+})->with([
+    'ftp' => 'ftp://files.example.com/show.mp3',
+    'ftps' => 'ftps://files.example.com/show.mp3',
+]);
+
+test('a url source rejects a scheme the fetcher cannot download', function (string $url) {
+    Livewire::test(Index::class)
+        ->call('startCreate')
+        ->set('name', 'Falsches Schema')
+        ->set('kind', 'url')
+        ->set('url', $url)
+        ->call('save')
+        ->assertHasErrors(['url']);
+
+    expect($this->station->externalSources()->count())->toBe(0);
+})->with([
+    'sftp' => 'sftp://files.example.com/show.mp3',
+    'file' => 'file:///etc/passwd',
+    'nonsense' => 'files.example.com/show.mp3',
+]);
+
+test('url credentials are stored encrypted', function () {
+    Livewire::test(Index::class)
+        ->call('startCreate')
+        ->set('name', 'FTP-Zulieferung')
+        ->set('kind', 'url')
+        ->set('url', 'ftps://files.example.com/show.mp3')
+        ->set('urlUsername', 'radioring')
+        ->set('urlPassword', 'geheim123')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $source = $this->station->externalSources()->first();
+    expect($source->url_username)->toBe('radioring')
+        ->and($source->url_password)->toBe('geheim123');
+
+    $raw = DB::table('external_sources')->where('id', $source->id)->first();
+    expect($raw->url_password)->not->toBe('geheim123')
+        ->and($raw->url_username)->not->toBe('radioring');
+});
+
+test('an empty password field keeps the stored password', function () {
+    $source = ExternalSource::factory()->create([
+        'station_id' => $this->station->id,
+        'kind' => 'url',
+        'url' => 'ftp://files.example.com/show.mp3',
+        'url_username' => 'radioring',
+        'url_password' => 'geheim123',
+    ]);
+
+    Livewire::test(Index::class)
+        ->call('startEdit', $source->id)
+        // The plaintext is never rendered into the form, so the field starts blank.
+        ->assertSet('urlPassword', '')
+        ->assertSet('urlUsername', 'radioring')
+        ->set('urlUsername', 'radioring2')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($source->fresh()->url_password)->toBe('geheim123')
+        ->and($source->fresh()->url_username)->toBe('radioring2');
+});
+
+test('switching a source away from kind=url clears its credentials', function () {
+    $source = ExternalSource::factory()->create([
+        'station_id' => $this->station->id,
+        'kind' => 'url',
+        'url' => 'ftp://files.example.com/show.mp3',
+        'url_username' => 'radioring',
+        'url_password' => 'geheim123',
+    ]);
+
+    Livewire::test(Index::class)
+        ->call('startEdit', $source->id)
+        ->set('kind', 'news')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $source->refresh();
+    expect($source->url)->toBeNull()
+        ->and($source->url_username)->toBeNull()
+        ->and($source->url_password)->toBeNull();
 });

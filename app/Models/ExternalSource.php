@@ -18,6 +18,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'name',
     'kind',
     'url',
+    'url_username',
+    'url_password',
     'syndication_sendung_id',
     'syndication_variant',
     'syndication_filename',
@@ -40,6 +42,8 @@ class ExternalSource extends Model
     protected function casts(): array
     {
         return [
+            'url_username' => 'encrypted',
+            'url_password' => 'encrypted',
             'normalize' => 'boolean',
             'trim_leading_silence' => 'boolean',
             'fade_in' => 'boolean',

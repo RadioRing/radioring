@@ -7,15 +7,16 @@ use App\Models\GeneratedPlaylistItem;
 use App\Models\Station;
 use App\Services\AudioMetadataService;
 use App\Services\LoudnessAnalyzerService;
+use App\Services\RemoteFetchException;
+use App\Services\RemoteFileFetcher;
 use App\Services\SilenceTrimmerService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Holt dynamische externe HTTP-Inhalte kurz vor ihrer Ausspielung herunter, prüft/misst
+ * Holt dynamische externe Inhalte (HTTP/HTTPS/FTP/FTPS) kurz vor ihrer Ausspielung herunter, prüft/misst
  * sie und legt sie als lokale Kopie ab. Der /next-Endpunkt liefert dann die vorbereitete
  * Kopie (inkl. liq_amplify) statt der externen URL – mit Direkt-Passthrough als Fallback.
  *
@@ -28,7 +29,7 @@ class PrepareUpcomingHttpItemsJob implements ShouldQueue
     /** Kulanz nach der geschätzten Sendezeit, bis ein Item nicht mehr vorbereitet wird. */
     private const PAST_GRACE_SECONDS = 60;
 
-    public function handle(LoudnessAnalyzerService $analyzer, SilenceTrimmerService $trimmer, AudioMetadataService $metadata): void
+    public function handle(LoudnessAnalyzerService $analyzer, SilenceTrimmerService $trimmer, AudioMetadataService $metadata, RemoteFileFetcher $fetcher): void
     {
         $this->cleanupStalePreparedFiles();
 
@@ -52,7 +53,7 @@ class PrepareUpcomingHttpItemsJob implements ShouldQueue
                     continue;
                 }
 
-                $this->prepare($item, $source, $station, $analyzer, $trimmer, $metadata);
+                $this->prepare($item, $source, $station, $analyzer, $trimmer, $metadata, $fetcher);
             }
         }
     }
@@ -76,12 +77,12 @@ class PrepareUpcomingHttpItemsJob implements ShouldQueue
             && $item->prepared_at->lt(now()->subSeconds($source->freshness_seconds));
     }
 
-    private function prepare(GeneratedPlaylistItem $item, ExternalSource $source, Station $station, LoudnessAnalyzerService $analyzer, SilenceTrimmerService $trimmer, AudioMetadataService $metadata): void
+    private function prepare(GeneratedPlaylistItem $item, ExternalSource $source, Station $station, LoudnessAnalyzerService $analyzer, SilenceTrimmerService $trimmer, AudioMetadataService $metadata, RemoteFileFetcher $fetcher): void
     {
         $url = $source->resolveUrl();
 
         if ($url === null) {
-            $this->recordError($source, 'Keine URL auflösbar (laut.fm-Ausgang/Credentials fehlen?).');
+            $this->recordError($source, __('No address could be resolved (missing laut.fm output or credentials?).'));
 
             return;
         }
@@ -89,20 +90,18 @@ class PrepareUpcomingHttpItemsJob implements ShouldQueue
         $path = "stations/{$station->slug}/prepared/{$item->id}.mp3";
 
         try {
-            $response = Http::timeout(60)->get($url);
+            $body = $fetcher->fetch($url, $source->url_username, $source->url_password);
+        } catch (RemoteFetchException $e) {
+            $this->recordError($source, $e->getMessage());
 
-            if (! $response->successful() || $response->body() === '') {
-                $this->recordError($source, 'Download fehlgeschlagen (HTTP '.$response->status().').');
-
-                return;
-            }
-
-            Storage::disk('local')->put($path, $response->body());
+            return;
         } catch (\Throwable $e) {
-            $this->recordError($source, 'Download-Fehler: '.$e->getMessage());
+            $this->recordError($source, __('Download failed: :error', ['error' => $e->getMessage()]));
 
             return;
         }
+
+        Storage::disk('local')->put($path, $body);
 
         // Führende Stille offline wegschneiden (vor der Messung, damit auf dem
         // tatsächlich ausgelieferten Material gemessen wird).

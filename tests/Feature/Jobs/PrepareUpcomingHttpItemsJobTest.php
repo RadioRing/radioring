@@ -7,6 +7,7 @@ use App\Models\GeneratedPlaylistItem;
 use App\Models\Station;
 use App\Services\AudioMetadataService;
 use App\Services\LoudnessAnalyzerService;
+use App\Services\RemoteFileFetcher;
 use App\Services\SilenceTrimmerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -59,7 +60,7 @@ test('prepares a due external item: downloads, measures and caches it', function
     Http::fake(['example.com/*' => Http::response('AUDIO-BYTES', 200)]);
     fakeLoudnormResult('-20.0', '-5.0');
 
-    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class));
+    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class), app(RemoteFileFetcher::class));
 
     $item->refresh();
     expect($item->prepared_path)->not->toBeNull()
@@ -88,7 +89,7 @@ test('updates the source expected duration from the prepared file length', funct
         'title' => null, 'artist' => null, 'album' => null, 'duration' => 1234,
     ]);
 
-    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), $metadata);
+    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), $metadata, app(RemoteFileFetcher::class));
 
     expect($item->fresh()->prepared_path)->not->toBeNull()
         ->and($source->fresh()->expected_duration_seconds)->toBe(1234);
@@ -102,7 +103,7 @@ test('records an error and leaves the item unprepared on a failed download', fun
 
     Http::fake(['example.com/*' => Http::response('', 503)]);
 
-    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class));
+    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class), app(RemoteFileFetcher::class));
 
     expect($item->fresh()->prepared_path)->toBeNull()
         ->and($source->fresh()->last_error)->toContain('503');
@@ -118,7 +119,7 @@ test('does not prepare an item that is still beyond the prefetch lead', function
 
     Http::fake();
 
-    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class));
+    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class), app(RemoteFileFetcher::class));
 
     Http::assertNothingSent();
     expect($item->fresh()->prepared_path)->toBeNull();
@@ -135,7 +136,7 @@ test('runs an ffmpeg silenceremove pass when trim_leading_silence is enabled', f
     Http::fake(['example.com/*' => Http::response('AUDIO', 200)]);
     Process::fake();
 
-    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class));
+    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class), app(RemoteFileFetcher::class));
 
     Process::assertRan(fn ($process) => str_contains(implode(' ', (array) $process->command), 'silenceremove'));
     expect($item->fresh()->prepared_path)->not->toBeNull();
@@ -152,7 +153,7 @@ test('does not run a trim pass when trim_leading_silence is disabled', function 
     Http::fake(['example.com/*' => Http::response('AUDIO', 200)]);
     Process::fake();
 
-    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class));
+    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class), app(RemoteFileFetcher::class));
 
     Process::assertNothingRan();
 });
@@ -167,9 +168,41 @@ test('skips a normalize=false source without measuring loudness', function () {
     Http::fake(['example.com/*' => Http::response('AUDIO', 200)]);
     Process::fake();
 
-    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class));
+    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class), app(RemoteFileFetcher::class));
 
     Process::assertNothingRan();
     expect($item->fresh()->prepared_path)->not->toBeNull()
         ->and($item->fresh()->loudness_lufs)->toBeNull();
+});
+
+test('it sends the stored credentials as basic auth when preparing an http source', function () {
+    $source = ExternalSource::factory()->create([
+        'station_id' => $this->station->id, 'kind' => 'url',
+        'url' => 'https://example.com/protected.mp3', 'normalize' => false,
+        'url_username' => 'radioring', 'url_password' => 'geheim123',
+    ]);
+    $item = externalItem($this->station, $source, '10:01:00');
+
+    Http::fake(['example.com/*' => Http::response('AUDIO', 200)]);
+    Process::fake();
+
+    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class), app(RemoteFileFetcher::class));
+
+    Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Basic '.base64_encode('radioring:geheim123')));
+    expect($item->fresh()->prepared_path)->not->toBeNull();
+});
+
+test('it records a readable error for an address the fetcher cannot handle', function () {
+    $source = ExternalSource::factory()->create([
+        'station_id' => $this->station->id, 'kind' => 'url', 'url' => 'sftp://files.example.com/show.mp3',
+    ]);
+    $item = externalItem($this->station, $source, '10:01:00');
+
+    Http::fake();
+
+    (new PrepareUpcomingHttpItemsJob)->handle(app(LoudnessAnalyzerService::class), app(SilenceTrimmerService::class), app(AudioMetadataService::class), app(RemoteFileFetcher::class));
+
+    Http::assertNothingSent();
+    expect($item->fresh()->prepared_path)->toBeNull()
+        ->and($source->fresh()->last_error)->toContain('sftp');
 });

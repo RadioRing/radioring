@@ -4,6 +4,7 @@ namespace App\Livewire\ExternalSource;
 
 use App\Models\ExternalSource;
 use App\Models\Station;
+use App\Services\RemoteFileFetcher;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Client\RequestException;
 use Livewire\Attributes\Locked;
@@ -26,6 +27,11 @@ class Index extends Component
     public string $kind = 'url';
 
     public string $url = '';
+
+    public string $urlUsername = '';
+
+    /** Kept blank while editing: an empty field means "keep the stored password". */
+    public string $urlPassword = '';
 
     public ?int $expectedDuration = null;
 
@@ -70,13 +76,28 @@ class Index extends Component
         return [
             'name' => 'required|string|min:1|max:200',
             'kind' => 'required|in:url,news,weather,news_weather,syndication',
-            'url' => 'nullable|required_if:kind,url|url|max:2048',
+            // Only schemes RemoteFileFetcher can actually download. Laravel's bare "url"
+            // rule also accepts sftp:// and friends, which the form used to swallow while
+            // every broadcast then failed silently.
+            'url' => 'nullable|required_if:kind,url|url:'.implode(',', RemoteFileFetcher::SUPPORTED_SCHEMES).'|max:2048',
+            'urlUsername' => 'nullable|string|max:200',
+            'urlPassword' => 'nullable|string|max:200',
             'expectedDuration' => 'nullable|integer|min:1|max:86400',
             'prefetchLead' => 'required|integer|min:0|max:3600',
             'freshness' => 'required|integer|min:0|max:86400',
             'normalize' => 'boolean',
             'trimLeadingSilence' => 'boolean',
             'fadeIn' => 'boolean',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function messages(): array
+    {
+        return [
+            'url.url' => __('Please enter an http, https, ftp or ftps address.'),
         ];
     }
 
@@ -94,6 +115,8 @@ class Index extends Component
         $this->name = $source->name;
         $this->kind = $source->kind;
         $this->url = $source->url ?? '';
+        $this->urlUsername = $source->url_username ?? '';
+        $this->urlPassword = '';
         $this->expectedDuration = $source->expected_duration_seconds;
         $this->prefetchLead = $source->prefetch_lead_seconds;
         $this->freshness = $source->freshness_seconds;
@@ -111,6 +134,7 @@ class Index extends Component
             'name' => $data['name'],
             'kind' => $data['kind'],
             'url' => $data['kind'] === 'url' ? $data['url'] : null,
+            'url_username' => $data['kind'] === 'url' && $data['urlUsername'] !== '' ? $data['urlUsername'] : null,
             'expected_duration_seconds' => $data['expectedDuration'],
             'prefetch_lead_seconds' => $data['prefetchLead'],
             'freshness_seconds' => $data['freshness'],
@@ -118,6 +142,14 @@ class Index extends Component
             'trim_leading_silence' => $data['trimLeadingSilence'],
             'fade_in' => $data['fadeIn'],
         ];
+
+        // A blank password field keeps the stored one: the plaintext is never rendered
+        // into the form, so blank means "unchanged", not "clear it".
+        if ($data['kind'] !== 'url') {
+            $attributes['url_password'] = null;
+        } elseif ($data['urlPassword'] !== '') {
+            $attributes['url_password'] = $data['urlPassword'];
+        }
 
         if ($this->editingId) {
             $this->station->externalSources()->findOrFail($this->editingId)->update($attributes);
@@ -144,7 +176,7 @@ class Index extends Component
 
     private function resetForm(): void
     {
-        $this->reset('showForm', 'editingId', 'name', 'kind', 'url', 'expectedDuration', 'prefetchLead', 'freshness', 'normalize', 'trimLeadingSilence', 'fadeIn');
+        $this->reset('showForm', 'editingId', 'name', 'kind', 'url', 'urlUsername', 'urlPassword', 'expectedDuration', 'prefetchLead', 'freshness', 'normalize', 'trimLeadingSilence', 'fadeIn');
         $this->resetValidation();
     }
 
