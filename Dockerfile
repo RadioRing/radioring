@@ -1,5 +1,5 @@
 # ─── Stage 1: Vite build ───────────────────────────────────────────────────
-FROM node:22-alpine AS assets
+FROM node:26-alpine AS assets
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
