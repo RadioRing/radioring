@@ -86,6 +86,11 @@ test('generator fades the programme out before a hard cut', function () {
         ->toContain('thread.run(delay=0.0500, hard_cut_step)')
         ->toContain('cut_gain := 1.');
 
+    // The first tick is scheduled, not run inline: otherwise the ramp would start at t=0
+    // and only 15 of the 16 ticks would cost time, cutting at 0.75 s instead of 0.8 s.
+    expect($script)->toContain('    hard_cut_running := true
+    thread.run(delay=0.0500, hard_cut_step)');
+
     // The fallback takes the adjustable source, not the unadjusted one before it.
     expect($script)->toContain('fallback(track_sensitive=false, [live, program, blank()])');
 });

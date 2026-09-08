@@ -267,7 +267,7 @@ def flush_and_skip(_) =
     "busy"
   else
     hard_cut_running := true
-    hard_cut_step()
+    thread.run(delay={$delayLiq}, hard_cut_step)
     "ok"
   end
 end
