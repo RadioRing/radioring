@@ -16,20 +16,6 @@ use Livewire\Component;
 #[Title('Dashboard')]
 class Dashboard extends Component
 {
-    /**
-     * Kulanz in Sekunden, um die ein Track seine Dauer überschreiten darf, bevor er
-     * als beendet/Stille gilt (deckt kleine Dauer-Ungenauigkeiten und den kurzen
-     * Spalt bis zum nächsten on_metadata-Callback ab).
-     */
-    private const NOW_PLAYING_STALE_GRACE_SECONDS = 60;
-
-    /**
-     * Assumed length for a track whose duration is unknown: an item that was never
-     * measured, or airplay whose item was deleted by a regeneration. Without a bound the
-     * player would keep counting up forever once the callbacks stop.
-     */
-    private const NOW_PLAYING_UNKNOWN_DURATION_SECONDS = 900;
-
     public function mount(): void
     {
         $user = auth()->user();
@@ -184,17 +170,9 @@ class Dashboard extends Component
                     // überschreitet und kein neuer on_metadata-Callback mehr kam (z. B.
                     // Stille bei einer Programm-Lücke). Dann nicht weiter als „läuft"
                     // anzeigen – sonst friert der Player auf dem alten Track ein und der
-                    // Zähler läuft über die Dauer hinaus. Adbreaks haben auf laut.fm eine
-                    // variable Echtdauer und werden hier ausgenommen.
-                    // Ohne bekannte Dauer greift eine großzügige Obergrenze: sonst bliebe
-                    // ein Track ohne Dauer-Angabe für immer „läuft", auch wenn längst kein
-                    // Callback mehr kommt.
-                    $assumedDuration = $nowPlayingDuration ?? self::NOW_PLAYING_UNKNOWN_DURATION_SECONDS;
-
-                    $hasEnded = $nowPlayingSourceType !== 'adbreak'
-                        && $elapsedSeconds > $assumedDuration + self::NOW_PLAYING_STALE_GRACE_SECONDS;
-
-                    if ($hasEnded) {
+                    // Zähler läuft über die Dauer hinaus. Dieselbe Regel nutzt die
+                    // Playlist-Projektion, damit Player und Liste nicht auseinanderlaufen.
+                    if ($state->nowPlayingHasEnded()) {
                         $nowPlayingSourceType = 'music';
                         $nowPlayingDuration = null;
                         $elapsedSeconds = 0;

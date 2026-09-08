@@ -131,6 +131,46 @@ test('does not cut the same hard rundown twice when now_playing was cleared', fu
         ->and($state->hard_start_committed_rundown_id)->toBe($hard->id);
 });
 
+test('cuts a hard rundown that already started before its full hour', function () {
+    $this->station->stream()->create(['container_name' => 'radioring-'.$this->station->slug, 'status' => 'running']);
+    $hard = hardSetup($this->station);
+    $hardItem = $hard->items()->first();
+
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'current_rundown_id' => $hard->id,
+        'current_item_position' => 1,
+        'now_playing_item_id' => $hardItem->id,
+        'now_playing_started_at' => today()->setTime(11, 57, 0),
+    ]);
+
+    $this->mock(LiquidsoapCommandService::class)
+        ->shouldReceive('skip')->once()->andReturnTrue();
+
+    $this->artisan('radioring:enforce-hard-starts')->assertSuccessful();
+
+    $state = LiquidsoapState::where('station_id', $this->station->id)->first();
+    expect($state->current_rundown_id)->toBe($hard->id)
+        ->and($state->current_item_position)->toBe(0);
+});
+
+test('does not cut once the hard start window has passed', function () {
+    $this->station->stream()->create(['container_name' => 'radioring-'.$this->station->slug, 'status' => 'running']);
+    hardSetup($this->station);
+
+    $this->travelTo(today()->setHour(12)->setMinute(41));
+
+    LiquidsoapState::create(['station_id' => $this->station->id, 'current_rundown_id' => null, 'current_item_position' => 5]);
+
+    $this->mock(LiquidsoapCommandService::class)
+        ->shouldReceive('skip')->never();
+
+    $this->artisan('radioring:enforce-hard-starts')->assertSuccessful();
+
+    $state = LiquidsoapState::where('station_id', $this->station->id)->first();
+    expect($state->current_item_position)->toBe(5);
+});
+
 test('cuts again for the next hour despite an earlier commit', function () {
     $this->station->stream()->create(['container_name' => 'radioring-'.$this->station->slug, 'status' => 'running']);
     $previous = hardSetup($this->station);

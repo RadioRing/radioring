@@ -124,6 +124,26 @@ test('hard start of next hour pre-empts overrunning items with "–"', function 
         ->and($hardFirst->projectedStart->format('H:i:s'))->toBe('11:00:00');
 });
 
+test('ignores a stale now-playing snapshot and anchors on the current hour', function () {
+    [$stale, $staleItems] = makeRundown($this->station, 7, 'soft', 2, duration: 600);
+    [$current, $currentItems] = makeRundown($this->station, 10, 'soft', 2, duration: 600);
+
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'current_rundown_id' => $stale->id,
+        'now_playing_item_id' => $staleItems[0]->id,
+        'now_playing_duration_seconds' => 600,
+        'now_playing_started_at' => Carbon::parse('2026-05-12 07:00:00'),
+    ]);
+
+    $playlist = $this->service->project($this->station)->values();
+
+    expect($playlist)->toHaveCount(2)
+        ->and($playlist[0]->item->id)->toBe($currentItems[0]->id)
+        ->and($playlist->every(fn ($p) => ! $p->isPlaying))->toBeTrue()
+        ->and($playlist[0]->projectedStart->format('H:i:s'))->toBe('10:30:00');
+});
+
 test('falls back to the current hour rundown when nothing is playing', function () {
     [$rundown, $items] = makeRundown($this->station, 10, 'soft', 2, duration: 600);
 

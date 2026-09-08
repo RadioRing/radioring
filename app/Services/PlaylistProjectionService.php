@@ -28,9 +28,11 @@ class PlaylistProjectionService
             ->with(['nowPlayingItem.generatedPlaylist'])
             ->first();
 
-        $nowPlayingItem = $state?->nowPlayingItem;
+        $isStale = $state === null || $state->nowPlayingHasEnded();
+
+        $nowPlayingItem = $isStale ? null : $state->nowPlayingItem;
         $anchorRundown = $nowPlayingItem?->generatedPlaylist;
-        $anchorTime = $state?->now_playing_started_at
+        $anchorTime = ! $isStale && $state->now_playing_started_at
             ? CarbonImmutable::parse($state->now_playing_started_at)
             : CarbonImmutable::now();
 

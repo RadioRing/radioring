@@ -34,6 +34,9 @@ class StationLog extends Model
 
     public const EVENT_RUNDOWN_GENERATED = 'rundown_generated';
 
+    /** Playout was running behind schedule and skipped ahead to the current hour. */
+    public const EVENT_SCHEDULE_CATCH_UP = 'schedule_catch_up';
+
     protected function casts(): array
     {
         return [

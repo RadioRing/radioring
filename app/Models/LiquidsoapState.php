@@ -25,6 +25,20 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class LiquidsoapState extends Model
 {
+    /**
+     * Grace period in seconds a track may exceed its own duration before the snapshot
+     * counts as stale. Covers small duration inaccuracies and the short gap until the
+     * next on_metadata callback arrives.
+     */
+    public const NOW_PLAYING_STALE_GRACE_SECONDS = 60;
+
+    /**
+     * Assumed length for a track whose duration is unknown: an item that was never
+     * measured, or airplay whose item was deleted by a regeneration. Without a bound the
+     * snapshot would count as running forever once the callbacks stop.
+     */
+    public const NOW_PLAYING_UNKNOWN_DURATION_SECONDS = 900;
+
     protected function casts(): array
     {
         return [
@@ -49,5 +63,29 @@ class LiquidsoapState extends Model
     public function nowPlayingItem(): BelongsTo
     {
         return $this->belongsTo(GeneratedPlaylistItem::class, 'now_playing_item_id');
+    }
+
+    /**
+     * Has the snapshot outlived the track it describes?
+     *
+     * True once airtime exceeds the track's duration by more than the grace period and no
+     * fresh on_metadata callback has arrived - typically silence during a schedule gap or
+     * a container that stopped reporting. Adbreaks are exempt: their real length on laut.fm
+     * is variable and not known here.
+     */
+    public function nowPlayingHasEnded(): bool
+    {
+        if (! $this->now_playing_started_at) {
+            return true;
+        }
+
+        if ($this->now_playing_source_type === 'adbreak') {
+            return false;
+        }
+
+        $assumedDuration = $this->now_playing_duration_seconds ?? self::NOW_PLAYING_UNKNOWN_DURATION_SECONDS;
+
+        return (int) $this->now_playing_started_at->diffInSeconds(now())
+            > $assumedDuration + self::NOW_PLAYING_STALE_GRACE_SECONDS;
     }
 }

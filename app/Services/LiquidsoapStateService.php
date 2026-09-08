@@ -7,6 +7,7 @@ use App\Models\GeneratedPlaylistItem;
 use App\Models\LiquidsoapState;
 use App\Models\Station;
 use App\Models\StationLog;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 
 class LiquidsoapStateService
@@ -57,7 +58,9 @@ class LiquidsoapStateService
                     return null;
                 }
 
-                $item = $rundown->items()->where('position', 0)->first();
+                $startPosition = $state->current_item_position;
+
+                $item = $rundown->items()->where('position', $startPosition)->first();
 
                 if (! $item) {
                     $state->update(['last_pulled_at' => now()]);
@@ -67,7 +70,7 @@ class LiquidsoapStateService
 
                 $state->update([
                     'current_rundown_id' => $rundown->id,
-                    'current_item_position' => 1,
+                    'current_item_position' => $startPosition + 1,
                     'last_pulled_at' => now(),
                 ]);
             } else {
@@ -399,7 +402,7 @@ class LiquidsoapStateService
     {
         $hard = $this->findHardRundownForNow($station);
 
-        if (! $hard) {
+        if (! $hard || ! $this->hardStartWindowOpen($hard)) {
             return null;
         }
 
@@ -417,7 +420,19 @@ class LiquidsoapStateService
         // voraus und steht zur vollen Stunde oft schon im Hard-Rundown, während
         // hörbar noch der Überhang der Vorstunde läuft. Würde man den Cursor prüfen,
         // bliebe der Cut aus und die Vorstunde liefe einfach weiter.
-        if ($state?->nowPlayingItem?->generated_playlist_id === $hard->id) {
+        //
+        // Läuft der Hard-Rundown zwar schon, ist er aber VOR seiner vollen Stunde
+        // angelaufen (Frühstart, z. B. weil die Vorstunde leer auslief), gilt er als
+        // nicht gestartet: dann wird zur vollen Stunde trotzdem auf Position 0
+        // geschnitten. Ohne diese Prüfung liefe eine zu frühe Ausspielung durch, ohne
+        // je korrigiert zu werden.
+        $isOnAir = $state?->nowPlayingItem?->generated_playlist_id === $hard->id;
+
+        $startedEarly = $isOnAir
+            && $state->now_playing_started_at
+            && $state->now_playing_started_at->lt($this->startOf($hard));
+
+        if ($isOnAir && ! $startedEarly) {
             return null;
         }
 
@@ -588,9 +603,14 @@ class LiquidsoapStateService
                 // anderer, fertiger Rundown mit start_mode=hard bereitsteht, wird
                 // der Überhang am nächsten Track-Übergang abgeschnitten und auf den
                 // neuen Rundown gewechselt. (soft / leere Stunde → weiterlaufen)
+                //
+                // NUR im Zeitfenster um die volle Stunde: ohne dieses Tor sprang der
+                // Cursor zu JEDER Minute auf Position 0 des harten Rundowns, sobald das
+                // Programm nachlief – die Nachrichten liefen dann z. B. um 12:57 an.
+                // Ausserhalb des Fensters holt advanceToNextRundown wanduhr-genau auf.
                 $hardNow = $this->findHardRundownForNow($station);
 
-                if ($hardNow && $hardNow->id !== $current->id) {
+                if ($hardNow && $hardNow->id !== $current->id && $this->hardStartWindowOpen($hardNow)) {
                     // Nur den Pull-Cursor umsetzen. 'played' wird NICHT hier gesetzt,
                     // sondern erst wenn now_playing tatsächlich auf den neuen Rundown
                     // wechselt (siehe setNowPlaying) – sonst läuft der Status dem Audio
@@ -612,7 +632,22 @@ class LiquidsoapStateService
     }
 
     /**
-     * Wechselt zum nächsten verfügbaren Rundown (nächste Stunde oder folgende).
+     * Wie viele Rundowns ab dem erschöpften Cursor höchstens betrachtet werden, um den
+     * fälligen zu finden. Zwei Tage Programm reichen für jeden realen Rückstand und
+     * deckeln zugleich die geladene Menge.
+     */
+    private const ADVANCE_LOOKAHEAD = 48;
+
+    /**
+     * Wechselt zum nächsten fälligen Rundown – und holt dabei einen Rückstand auf.
+     *
+     * Überzieht eine Stunde, startet die folgende verspätet und schiebt damit den
+     * gesamten Rest des Tages nach hinten. Ohne Aufholen summiert sich dieser Versatz
+     * ungebremst: das Programm arbeitet dann um 13:55 noch die 11-Uhr-Stunde ab.
+     * Deshalb wird nicht stumpf der nächste, sondern der SPÄTESTE bereits fällige
+     * Rundown angefahren – übersprungene Stunden entfallen und die Wanduhr stimmt
+     * wieder. Ist noch keiner fällig (Programm-Lücke), bleibt der Cursor stehen und
+     * Liquidsoap bekommt bis zur geplanten Stunde Silence.
      */
     private function advanceToNextRundown(Station $station, LiquidsoapState $state, GeneratedPlaylist $current): ?GeneratedPlaylist
     {
@@ -621,8 +656,8 @@ class LiquidsoapStateService
         // Rundown „played", obwohl noch Tracks daraus laufen. 'played' setzt
         // setNowPlaying anhand des tatsächlichen Airplays.
 
-        // Nächsten Rundown suchen: gleicher Tag spätere Stunde, oder Folgetag
-        $next = GeneratedPlaylist::where('station_id', $station->id)
+        // Folgende Rundowns in Sendereihenfolge: gleicher Tag spätere Stunde, oder Folgetag.
+        $candidates = GeneratedPlaylist::where('station_id', $station->id)
             ->where('status', 'ready')
             ->where(function ($query) use ($current) {
                 $query->where('broadcast_date', '>', $current->broadcast_date)
@@ -634,25 +669,58 @@ class LiquidsoapStateService
             ->orderBy('broadcast_date')
             ->orderBy('broadcast_hour')
             ->with('playlist')
-            ->first();
+            ->limit(self::ADVANCE_LOOKAHEAD)
+            ->get();
 
-        // Programm-Lücke: Ist der nächste Rundown erst später geplant (z. B. läuft die
-        // Stunde leer aus und der nächste belegte Slot ist erst Stunden später), darf er
-        // NICHT vorgezogen werden – sonst startet etwa der 18-Uhr-Rundown schon um 16 Uhr.
-        // Cursor bleibt dann auf dem erschöpften Rundown; Liquidsoap pollt /next
-        // (retry_delay=1s) und bekommt bis zur geplanten Stunde Silence.
-        if ($next && ! $this->mayStartRundownNow($next)) {
+        // Der späteste Rundown, dessen Sendezeit laut Wanduhr erreicht ist. Die Startzeiten
+        // steigen monoton, die fälligen bilden also einen Präfix der Liste.
+        $next = $candidates->last(fn (GeneratedPlaylist $rundown): bool => $this->mayStartRundownNow($rundown));
+
+        if (! $next) {
             return null;
         }
 
-        if ($next) {
-            $state->update([
-                'current_rundown_id' => $next->id,
-                'current_item_position' => 0,
+        // Wurde mindestens eine Stunde übersprungen, läuft das Programm einem Rückstand
+        // hinterher: dann nicht bei Position 0 einsteigen (das wiederholte eine längst
+        // vergangene Stunde von vorn), sondern an der Wanduhr ausrichten.
+        $isCatchUp = $next->isNot($candidates->first());
+
+        $state->update([
+            'current_rundown_id' => $next->id,
+            'current_item_position' => $isCatchUp ? $this->wallClockPosition($next) : 0,
+        ]);
+
+        if ($isCatchUp) {
+            StationLog::create([
+                'station_id' => $station->id,
+                'event' => StationLog::EVENT_SCHEDULE_CATCH_UP,
+                'generated_playlist_id' => $next->id,
+                'message' => __('Program was running behind: caught up to :hour.', [
+                    'hour' => sprintf('%02d:00', $next->broadcast_hour),
+                ]),
+                'occurred_at' => now(),
             ]);
         }
 
         return $next;
+    }
+
+    /**
+     * Position innerhalb eines Rundowns, die laut Wanduhr gerade dran wäre: das letzte
+     * Item, dessen geplante Sendezeit bereits erreicht ist. Ohne geplante Zeiten (ältere
+     * Rundowns) bleibt es bei Position 0.
+     */
+    private function wallClockPosition(GeneratedPlaylist $rundown): int
+    {
+        // reorder() verwirft das Standard-orderBy('position') der Relation – sonst
+        // gewinnt die Positions-Sortierung und first() liefert immer Position 0.
+        $dueItem = $rundown->items()
+            ->whereNotNull('absolute_broadcast_at')
+            ->where('absolute_broadcast_at', '<=', now())
+            ->reorder('absolute_broadcast_at', 'desc')
+            ->first();
+
+        return $dueItem?->position ?? 0;
     }
 
     /**
@@ -672,11 +740,38 @@ class LiquidsoapStateService
      */
     private function mayStartRundownNow(GeneratedPlaylist $rundown): bool
     {
-        $start = $rundown->broadcast_date->copy()->setTime($rundown->broadcast_hour, 0, 0);
-
         $lead = $this->isHardStart($rundown) ? 0 : self::SOFT_ADVANCE_LEAD_SECONDS;
 
-        return now()->gte($start->subSeconds($lead));
+        return now()->gte($this->startOf($rundown)->subSeconds($lead));
+    }
+
+    /**
+     * Zeitfenster nach der vollen Stunde, in dem ein Hard-Start noch erzwungen wird.
+     *
+     * Breit genug für den Überhang eines einzelnen Titels aus der Vorstunde (der Cut
+     * greift dort erst am nächsten Track-Übergang) und für einen verpassten Durchlauf
+     * von EnforceHardStarts. Danach gilt die Stunde als laufend: ein harter Rundown
+     * wird NICHT mehr mitten in seiner Stunde von vorn gestartet – sonst liefen z. B.
+     * die Nachrichten um :57 an. Ab da holt advanceToNextRundown wanduhr-genau auf.
+     */
+    private const HARD_START_WINDOW_SECONDS = 600;
+
+    /**
+     * Ist die volle Stunde des Hard-Rundowns gerade erreicht (und noch nicht lange her)?
+     */
+    private function hardStartWindowOpen(GeneratedPlaylist $rundown): bool
+    {
+        $start = $this->startOf($rundown);
+
+        return now()->gte($start) && now()->lt($start->copy()->addSeconds(self::HARD_START_WINDOW_SECONDS));
+    }
+
+    /**
+     * Geplanter Sendebeginn eines Rundowns (Sendedatum + volle Stunde).
+     */
+    private function startOf(GeneratedPlaylist $rundown): CarbonInterface
+    {
+        return $rundown->broadcast_date->copy()->setTime($rundown->broadcast_hour, 0, 0);
     }
 
     private function isHardStart(GeneratedPlaylist $rundown): bool

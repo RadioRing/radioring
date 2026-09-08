@@ -14,6 +14,23 @@ to stand on its own.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Playout catches up instead of drifting.** An hour that overran used to push the whole
+  rest of the day back, and nothing ever pulled it forward again: a station could still be
+  working off the 11:00 hour at 13:55. When a rundown is exhausted, playout now moves to
+  the hour that is actually due and enters it at the position the clock calls for. Skipped
+  hours are no longer aired late; every catch-up is recorded in the protocol.
+- **Hard starts no longer begin in the middle of their hour.** If the programme was behind,
+  a hard-start rundown took over the moment the previous track ended - the news could go on
+  air at 12:57. A hard start is now enforced only around the top of the hour (a single
+  track's overhang is still cut); later the catch-up above takes over.
+- **A hard start that began too early is corrected at the top of the hour** instead of
+  being treated as already done.
+- **The dashboard playlist no longer sticks to a dead now-playing report.** When the
+  container stops reporting, the list falls back to the current hour instead of anchoring
+  on the frozen track and projecting all air times into the past.
+
 ## [0.3.0] - 2026-09-08
 
 **New in this release: backups.** RadioRing can now secure its own configuration and

@@ -84,6 +84,11 @@
                                             <i class="bi bi-arrow-repeat me-1"></i>{{ __('Rundown') }}
                                         </span>
                                         @break
+                                    @case(\App\Models\StationLog::EVENT_SCHEDULE_CATCH_UP)
+                                        <span class="badge text-bg-warning-subtle text-warning">
+                                            <i class="bi bi-fast-forward-fill me-1"></i>{{ __('Caught up') }}
+                                        </span>
+                                        @break
                                 @endswitch
                             </td>
                             <td class="fw-medium">

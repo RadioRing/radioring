@@ -257,5 +257,7 @@
     "Size": "Größe",
     "Remove": "Entfernen",
     "Save": "Speichern",
-    "Action": "Aktion"
+    "Action": "Aktion",
+    "Caught up": "Aufgeholt",
+    "Program was running behind: caught up to :hour.": "Programm lief hinterher: auf :hour aufgeholt."
 }
