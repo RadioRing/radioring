@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
+use Throwable;
 
 /**
  * Instance-wide settings the operator can change at runtime, without a redeploy.
@@ -33,8 +34,11 @@ class Setting extends Model
     /**
      * Reads a setting, falling back to the given default.
      *
-     * Tolerates a missing table so the application still boots before migrations have
-     * run. Artisan itself has to come up in that state.
+     * Never throws. Settings are read while the console kernel boots, so an unreachable
+     * cache store or a database that has not been migrated yet would otherwise take down
+     * every Artisan command, `key:generate` on a fresh installation included. An
+     * unreachable cache falls back to a direct query, an unreachable database to the
+     * default.
      */
     public static function get(string $key, ?string $default = null): ?string
     {
@@ -49,6 +53,14 @@ class Setting extends Model
             );
         } catch (QueryException) {
             return $default;
+        } catch (Throwable) {
+            // The cache store itself is unavailable (Redis down, misconfigured). The
+            // database is the authority anyway, the cache only saves it a query.
+            try {
+                $value = static::query()->where('key', $key)->value('value');
+            } catch (QueryException) {
+                return $default;
+            }
         }
 
         self::$memo[$key] = $value;
@@ -61,7 +73,13 @@ class Setting extends Model
         static::query()->updateOrCreate(['key' => $key], ['value' => $value]);
 
         self::$memo[$key] = $value;
-        Cache::forget(self::cacheKey($key));
+
+        try {
+            Cache::forget(self::cacheKey($key));
+        } catch (Throwable) {
+            // An unreachable cache must not undo a write that already landed in the
+            // database. Nothing was cached in that state either.
+        }
     }
 
     /**
