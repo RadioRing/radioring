@@ -105,6 +105,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Hard hourly cut: fade out before the cut
+    |--------------------------------------------------------------------------
+    | A hard start (and a manual skip) cuts the running track off via a telnet
+    | command. Without a fade the music breaks off mid-bar. This duration ramps
+    | the programme volume down to zero beforehand; the following element (news
+    | with a time signal, say) then starts hard and at full volume. 0 restores
+    | the previous behaviour, an immediate cut.
+    |
+    | The cut lands later by this duration. Below a second that is irrelevant
+    | next to the one-minute cadence of radioring:enforce-hard-starts.
+    |
+    */
+    'hard_cut_fade_out_seconds' => (float) env('HARD_CUT_FADE_OUT_SECONDS', 0.8),
+
+    /*
+    |--------------------------------------------------------------------------
     | Musik-Rotation: Titel-Cooldown
     |--------------------------------------------------------------------------
     | Reduziert Wiederholungen desselben Titels über den Tag. Innerhalb des

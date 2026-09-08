@@ -65,6 +65,37 @@ test('generator registers the flush_and_skip telnet command for hard cuts', func
         ->toContain('"flush_and_skip"');
 });
 
+test('generator fades the programme out before a hard cut', function () {
+    config()->set('radioring.hard_cut_fade_out_seconds', 0.8);
+
+    $script = app(LiquidsoapScriptGenerator::class)->generate($this->station);
+
+    // Adjustable programme volume - with an override key the /next API never emits,
+    // otherwise amplify would apply the loudness correction (liq_amplify) a second time.
+    expect($script)
+        ->toContain('cut_gain = ref(1.)')
+        ->toContain('amplify({cut_gain()}, override="liq_hard_cut_gain"')
+        ->not->toContain('amplify({cut_gain()}, override="liq_amplify"')
+        // ... ramping down to zero in steps before the cut and returning afterwards.
+        ->toContain('def rec hard_cut_step()')
+        ->toContain('cut_gain() - 0.0625')
+        ->toContain('thread.run(delay=0.0500, hard_cut_step)')
+        ->toContain('cut_gain := 1.');
+
+    // The fallback takes the adjustable source, not the unadjusted one before it.
+    expect($script)->toContain('fallback(track_sensitive=false, [live, program, blank()])');
+});
+
+test('a fade-out of zero keeps the immediate cut', function () {
+    config()->set('radioring.hard_cut_fade_out_seconds', 0.0);
+
+    $script = app(LiquidsoapScriptGenerator::class)->generate($this->station);
+
+    expect($script)
+        ->toContain('def flush_and_skip(')
+        ->not->toContain('hard_cut_step');
+});
+
 test('generator wraps every http call in try/catch so a curl error cannot crash the engine', function () {
     // Ein einzelner Verbindungsabbruch (z. B. CURLE_RECV_ERROR) warf früher einen
     // "uncaught" Runtime-Error und killte die ganze Liquidsoap-Engine. Alle drei
@@ -141,7 +172,7 @@ test('generator adds loudness normalization by default', function () {
     expect($script)
         ->not->toContain('enable_autocue_metadata')
         ->toContain('normalized = amplify(1., override="liq_amplify", source)')
-        ->toContain('[live, faded, blank()]');
+        ->toContain('[live, program, blank()]');
 });
 
 test('generator wires a per-element fade.in driven by the liq_fade_in annotation', function () {
@@ -152,7 +183,9 @@ test('generator wires a per-element fade.in driven by the liq_fade_in annotation
     // fade.in (Default seit Liquidsoap 2.2: false) nur einmal beim Start der Source ein.
     expect($script)
         ->toContain('faded = fade.in(track_sensitive=true, override_duration="liq_fade_in", duration=0., normalized)')
-        ->toContain('[live, faded, blank()]');
+        // The fade sits BEFORE the adjustable programme volume that feeds the fallback.
+        ->toContain('program = amplify({cut_gain()}, override="liq_hard_cut_gain", faded)')
+        ->toContain('[live, program, blank()]');
 });
 
 test('loudness normalization does not overwrite the request.dynamic source', function () {

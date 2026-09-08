@@ -27,6 +27,12 @@ to stand on its own.
   track's overhang is still cut); later the catch-up above takes over.
 - **A hard start that began too early is corrected at the top of the hour** instead of
   being treated as already done.
+- **Music no longer breaks off mid-bar at a hard cut.** The running track is faded out
+  over 0.8 seconds before the cut, then the next element (news with a time signal, for
+  instance) starts hard and at full volume - which the fade-in on the incoming element
+  could not achieve. The duration is configurable with `HARD_CUT_FADE_OUT_SECONDS`, and 0
+  restores the previous immediate cut. Manual skips from the dashboard use the same fade.
+  This change requires a restart of the station container.
 - **The dashboard playlist no longer sticks to a dead now-playing report.** When the
   container stops reporting, the list falls back to the current hour instead of anchoring
   on the frozen track and projecting all air times into the past.

@@ -58,6 +58,8 @@ class LiquidsoapStateService
                     return null;
                 }
 
+                // Entry position comes from advanceToNextRundown: 0 for a regular hour
+                // change, the wall-clock aligned position when catching up on a backlog.
                 $startPosition = $state->current_item_position;
 
                 $item = $rundown->items()->where('position', $startPosition)->first();
@@ -421,11 +423,10 @@ class LiquidsoapStateService
         // hörbar noch der Überhang der Vorstunde läuft. Würde man den Cursor prüfen,
         // bliebe der Cut aus und die Vorstunde liefe einfach weiter.
         //
-        // Läuft der Hard-Rundown zwar schon, ist er aber VOR seiner vollen Stunde
-        // angelaufen (Frühstart, z. B. weil die Vorstunde leer auslief), gilt er als
-        // nicht gestartet: dann wird zur vollen Stunde trotzdem auf Position 0
-        // geschnitten. Ohne diese Prüfung liefe eine zu frühe Ausspielung durch, ohne
-        // je korrigiert zu werden.
+        // A hard rundown that is on air but started BEFORE its full hour (an early start,
+        // because the previous hour ran dry, say) counts as not started: the cut to
+        // position 0 still happens at the full hour. Without this check a too early
+        // broadcast would run on and never be corrected.
         $isOnAir = $state?->nowPlayingItem?->generated_playlist_id === $hard->id;
 
         $startedEarly = $isOnAir
@@ -604,10 +605,10 @@ class LiquidsoapStateService
                 // der Überhang am nächsten Track-Übergang abgeschnitten und auf den
                 // neuen Rundown gewechselt. (soft / leere Stunde → weiterlaufen)
                 //
-                // NUR im Zeitfenster um die volle Stunde: ohne dieses Tor sprang der
-                // Cursor zu JEDER Minute auf Position 0 des harten Rundowns, sobald das
-                // Programm nachlief – die Nachrichten liefen dann z. B. um 12:57 an.
-                // Ausserhalb des Fensters holt advanceToNextRundown wanduhr-genau auf.
+                // ONLY within the window around the full hour: without that gate the cursor
+                // jumped to position 0 of the hard rundown at ANY minute as soon as the
+                // programme ran behind - which put the news on air at 12:57. Outside the
+                // window advanceToNextRundown catches up on the wall clock instead.
                 $hardNow = $this->findHardRundownForNow($station);
 
                 if ($hardNow && $hardNow->id !== $current->id && $this->hardStartWindowOpen($hardNow)) {
@@ -632,22 +633,21 @@ class LiquidsoapStateService
     }
 
     /**
-     * Wie viele Rundowns ab dem erschöpften Cursor höchstens betrachtet werden, um den
-     * fälligen zu finden. Zwei Tage Programm reichen für jeden realen Rückstand und
-     * deckeln zugleich die geladene Menge.
+     * How many rundowns past the exhausted cursor are considered at most when looking for
+     * the one that is due. Two days of programme cover any realistic backlog and cap the
+     * number of rows loaded at the same time.
      */
     private const ADVANCE_LOOKAHEAD = 48;
 
     /**
-     * Wechselt zum nächsten fälligen Rundown – und holt dabei einen Rückstand auf.
+     * Moves on to the next rundown that is due, catching up on a backlog on the way.
      *
-     * Überzieht eine Stunde, startet die folgende verspätet und schiebt damit den
-     * gesamten Rest des Tages nach hinten. Ohne Aufholen summiert sich dieser Versatz
-     * ungebremst: das Programm arbeitet dann um 13:55 noch die 11-Uhr-Stunde ab.
-     * Deshalb wird nicht stumpf der nächste, sondern der SPÄTESTE bereits fällige
-     * Rundown angefahren – übersprungene Stunden entfallen und die Wanduhr stimmt
-     * wieder. Ist noch keiner fällig (Programm-Lücke), bleibt der Cursor stehen und
-     * Liquidsoap bekommt bis zur geplanten Stunde Silence.
+     * An hour that overruns starts the next one late and pushes the whole rest of the day
+     * back. Without catching up that offset accumulates unchecked: at 13:55 the programme
+     * would still be working off the 11:00 hour. So it is not the next rundown that is
+     * picked but the LATEST one already due - skipped hours are dropped and the wall clock
+     * is back in sync. If none is due yet (a gap in the schedule), the cursor stays put and
+     * Liquidsoap gets silence until the scheduled hour.
      */
     private function advanceToNextRundown(Station $station, LiquidsoapState $state, GeneratedPlaylist $current): ?GeneratedPlaylist
     {
@@ -656,7 +656,7 @@ class LiquidsoapStateService
         // Rundown „played", obwohl noch Tracks daraus laufen. 'played' setzt
         // setNowPlaying anhand des tatsächlichen Airplays.
 
-        // Folgende Rundowns in Sendereihenfolge: gleicher Tag spätere Stunde, oder Folgetag.
+        // Following rundowns in broadcast order: same day later hour, or the next day.
         $candidates = GeneratedPlaylist::where('station_id', $station->id)
             ->where('status', 'ready')
             ->where(function ($query) use ($current) {
@@ -672,17 +672,17 @@ class LiquidsoapStateService
             ->limit(self::ADVANCE_LOOKAHEAD)
             ->get();
 
-        // Der späteste Rundown, dessen Sendezeit laut Wanduhr erreicht ist. Die Startzeiten
-        // steigen monoton, die fälligen bilden also einen Präfix der Liste.
+        // The latest rundown whose broadcast time the wall clock has reached. Start times
+        // increase monotonically, so the due ones form a prefix of the list.
         $next = $candidates->last(fn (GeneratedPlaylist $rundown): bool => $this->mayStartRundownNow($rundown));
 
         if (! $next) {
             return null;
         }
 
-        // Wurde mindestens eine Stunde übersprungen, läuft das Programm einem Rückstand
-        // hinterher: dann nicht bei Position 0 einsteigen (das wiederholte eine längst
-        // vergangene Stunde von vorn), sondern an der Wanduhr ausrichten.
+        // Skipping at least one hour means the programme is running behind: do not enter at
+        // position 0 then (that would replay a long past hour from the top), but align with
+        // the wall clock instead.
         $isCatchUp = $next->isNot($candidates->first());
 
         $state->update([
@@ -706,14 +706,14 @@ class LiquidsoapStateService
     }
 
     /**
-     * Position innerhalb eines Rundowns, die laut Wanduhr gerade dran wäre: das letzte
-     * Item, dessen geplante Sendezeit bereits erreicht ist. Ohne geplante Zeiten (ältere
-     * Rundowns) bleibt es bei Position 0.
+     * The position inside a rundown the wall clock calls for: the last item whose planned
+     * broadcast time has been reached. Without planned times (older rundowns) it stays at
+     * position 0.
      */
     private function wallClockPosition(GeneratedPlaylist $rundown): int
     {
-        // reorder() verwirft das Standard-orderBy('position') der Relation – sonst
-        // gewinnt die Positions-Sortierung und first() liefert immer Position 0.
+        // reorder() drops the relation's default orderBy('position') - otherwise the
+        // position sorting wins and first() always returns position 0.
         $dueItem = $rundown->items()
             ->whereNotNull('absolute_broadcast_at')
             ->where('absolute_broadcast_at', '<=', now())
@@ -746,18 +746,18 @@ class LiquidsoapStateService
     }
 
     /**
-     * Zeitfenster nach der vollen Stunde, in dem ein Hard-Start noch erzwungen wird.
+     * Time window after the full hour in which a hard start is still enforced.
      *
-     * Breit genug für den Überhang eines einzelnen Titels aus der Vorstunde (der Cut
-     * greift dort erst am nächsten Track-Übergang) und für einen verpassten Durchlauf
-     * von EnforceHardStarts. Danach gilt die Stunde als laufend: ein harter Rundown
-     * wird NICHT mehr mitten in seiner Stunde von vorn gestartet – sonst liefen z. B.
-     * die Nachrichten um :57 an. Ab da holt advanceToNextRundown wanduhr-genau auf.
+     * Wide enough for the overhang of a single track from the previous hour (the cut only
+     * takes effect at the next track transition) and for one missed run of
+     * EnforceHardStarts. After that the hour counts as running: a hard rundown is NOT
+     * started from the top in the middle of its own hour any more - that is what put the
+     * news on air at :57. From there advanceToNextRundown catches up on the wall clock.
      */
     private const HARD_START_WINDOW_SECONDS = 600;
 
     /**
-     * Ist die volle Stunde des Hard-Rundowns gerade erreicht (und noch nicht lange her)?
+     * Has the full hour of the hard rundown just been reached (and not long ago)?
      */
     private function hardStartWindowOpen(GeneratedPlaylist $rundown): bool
     {
@@ -767,7 +767,7 @@ class LiquidsoapStateService
     }
 
     /**
-     * Geplanter Sendebeginn eines Rundowns (Sendedatum + volle Stunde).
+     * Planned start of a rundown (broadcast date plus its full hour).
      */
     private function startOf(GeneratedPlaylist $rundown): CarbonInterface
     {

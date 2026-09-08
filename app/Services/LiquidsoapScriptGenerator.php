@@ -77,6 +77,17 @@ class LiquidsoapScriptGenerator
         $lines[] = "faded = fade.in(track_sensitive=true, override_duration=\"liq_fade_in\", duration=0., {$programSource})";
         $programSource = 'faded';
 
+        // Adjustable overall volume of the programme, which flush_and_skip fades out with
+        // before a hard cut (see hardCutCommand). Deliberately on the programme branch only,
+        // not on "radio": a hard cut must not turn down a live takeover.
+        //
+        // The override deliberately points at a metadata key the /next API never emits:
+        // amplify reads "liq_amplify" by default and would otherwise apply the loudness
+        // correction a second time.
+        $lines[] = 'cut_gain = ref(1.)';
+        $lines[] = "program = amplify({cut_gain()}, override=\"liq_hard_cut_gain\", {$programSource})";
+        $programSource = 'program';
+
         $lines[] = '';
         $lines[] = $this->hardCutCommand();
         $lines[] = '';
@@ -175,6 +186,12 @@ end
 LIQ;
     }
 
+    /**
+     * Step size of the fade-out ramp in seconds. 50 ms is fine enough for the staircase to
+     * stay inaudible and coarse enough not to flood the scheduler.
+     */
+    private const HARD_CUT_RAMP_STEP_SECONDS = 0.05;
+
     private function hardCutCommand(): string
     {
         // Wird vom Container-Relay als Telnet-Befehl "radioring.flush_and_skip"
@@ -183,7 +200,10 @@ LIQ;
         // bereits vorgeladenen Tracks (z. B. Überhang der Vorstunde) würden
         // weiterlaufen. Für einen harten Stundencut muss die Prefetch-Queue erst
         // geleert werden, damit Liquidsoap sofort neu von /next zieht.
-        return <<<'LIQ'
+        $fadeOut = (float) config('radioring.hard_cut_fade_out_seconds', 0.8);
+
+        if ($fadeOut <= 0.0) {
+            return <<<'LIQ'
 def flush_and_skip(_) =
   source.set_queue([])
   source.skip()
@@ -191,6 +211,59 @@ def flush_and_skip(_) =
 end
 server.register(namespace="radioring", description="Prefetch-Queue leeren und zum nächsten Track springen", "flush_and_skip", flush_and_skip)
 LIQ;
+        }
+
+        // Fading out BEFORE the cut. A crossfade is out of the question here: cross and
+        // crossfade need lookahead and delay the whole branch, and a skip announces no end
+        // of track to blend into. So a chain of short timers ramps the programme volume down
+        // to zero, cuts, and restores the volume right away - the following element (news
+        // with a time signal) starts hard and at full volume.
+        $step = (float) self::HARD_CUT_RAMP_STEP_SECONDS;
+        $stepSize = min(1.0, $step / $fadeOut);
+
+        $delay = $this->liqFloat($step);
+        $size = $this->liqFloat($stepSize);
+
+        return <<<LIQ
+hard_cut_running = ref(false)
+
+def hard_cut_now() =
+  source.set_queue([])
+  source.skip()
+  cut_gain := 1.
+  hard_cut_running := false
+end
+
+def rec hard_cut_step() =
+  gain = cut_gain() - {$size}
+  if gain <= 0. then
+    hard_cut_now()
+  else
+    cut_gain := gain
+    thread.run(delay={$delay}, hard_cut_step)
+  end
+end
+
+def flush_and_skip(_) =
+  if hard_cut_running() then
+    "busy"
+  else
+    hard_cut_running := true
+    hard_cut_step()
+    "ok"
+  end
+end
+server.register(namespace="radioring", description="Fade the programme out, flush the prefetch queue and skip to the next track", "flush_and_skip", flush_and_skip)
+LIQ;
+    }
+
+    /**
+     * Float literal for Liquidsoap: a decimal point is mandatory there (1 is an int, 1. a
+     * float), and the web server's locale must not bleed through.
+     */
+    private function liqFloat(float $value): string
+    {
+        return number_format($value, 4, '.', '');
     }
 
     private function nowPlayingCallback(): string
