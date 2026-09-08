@@ -76,9 +76,13 @@ test('generator fades the programme out before a hard cut', function () {
         ->toContain('cut_gain = ref(1.)')
         ->toContain('amplify({cut_gain()}, override="liq_hard_cut_gain"')
         ->not->toContain('amplify({cut_gain()}, override="liq_amplify"')
-        // ... ramping down to zero in steps before the cut and returning afterwards.
+        // ... ramping down before the cut and returning afterwards. The ramp is
+        // logarithmic (constant dB per tick), so 0.8 s show up as 16 ticks of 0.05 s with
+        // a factor of 10^(-60/320) and a floor at -60 dB.
+        ->toContain('# Hard cut: fade out over 0.8000s (16 steps of 0.0500s), then cut.')
         ->toContain('def rec hard_cut_step()')
-        ->toContain('cut_gain() - 0.0625')
+        ->toContain('cut_gain() * 0.6494')
+        ->toContain('if gain <= 0.0010 then')
         ->toContain('thread.run(delay=0.0500, hard_cut_step)')
         ->toContain('cut_gain := 1.');
 

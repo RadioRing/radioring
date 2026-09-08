@@ -192,6 +192,12 @@ LIQ;
      */
     private const HARD_CUT_RAMP_STEP_SECONDS = 0.05;
 
+    /**
+     * Attenuation in dB the ramp covers before the cut. Below -60 dB the programme is
+     * inaudible next to the element that follows, so cutting there is silent.
+     */
+    private const HARD_CUT_RAMP_ATTENUATION_DB = 60.0;
+
     private function hardCutCommand(): string
     {
         // Wird vom Container-Relay als Telnet-Befehl "radioring.flush_and_skip"
@@ -209,22 +215,34 @@ def flush_and_skip(_) =
   source.skip()
   "ok"
 end
-server.register(namespace="radioring", description="Prefetch-Queue leeren und zum nächsten Track springen", "flush_and_skip", flush_and_skip)
+server.register(namespace="radioring", description="Flush the prefetch queue and skip to the next track", "flush_and_skip", flush_and_skip)
 LIQ;
         }
 
         // Fading out BEFORE the cut. A crossfade is out of the question here: cross and
         // crossfade need lookahead and delay the whole branch, and a skip announces no end
-        // of track to blend into. So a chain of short timers ramps the programme volume down
-        // to zero, cuts, and restores the volume right away - the following element (news
-        // with a time signal) starts hard and at full volume.
-        $step = (float) self::HARD_CUT_RAMP_STEP_SECONDS;
-        $stepSize = min(1.0, $step / $fadeOut);
+        // of track to blend into. So a chain of short timers ramps the programme volume
+        // down, cuts, and restores the volume right away - the following element (news with
+        // a time signal) starts hard and at full volume.
+        //
+        // The ramp is logarithmic, one constant dB step per tick. A linear ramp on the
+        // amplitude spends half its time in the top 6 dB, where next to nothing is audible,
+        // and drops the remaining 20 dB in its last few ticks - which still sounds like a
+        // cut. Equal dB per tick is what an operator hears as an even fade.
+        $steps = max(1, (int) round($fadeOut / self::HARD_CUT_RAMP_STEP_SECONDS));
 
-        $delay = $this->liqFloat($step);
-        $size = $this->liqFloat($stepSize);
+        // Derived rather than taken as given, so the ramp lasts exactly the configured time.
+        $delay = $fadeOut / $steps;
+        $factor = 10 ** (-self::HARD_CUT_RAMP_ATTENUATION_DB / (20 * $steps));
+        $floor = 10 ** (-self::HARD_CUT_RAMP_ATTENUATION_DB / 20);
+
+        $fadeOutLiq = $this->liqFloat($fadeOut);
+        $delayLiq = $this->liqFloat($delay);
+        $factorLiq = $this->liqFloat($factor);
+        $floorLiq = $this->liqFloat($floor);
 
         return <<<LIQ
+# Hard cut: fade out over {$fadeOutLiq}s ({$steps} steps of {$delayLiq}s), then cut.
 hard_cut_running = ref(false)
 
 def hard_cut_now() =
@@ -235,12 +253,12 @@ def hard_cut_now() =
 end
 
 def rec hard_cut_step() =
-  gain = cut_gain() - {$size}
-  if gain <= 0. then
+  gain = cut_gain() * {$factorLiq}
+  if gain <= {$floorLiq} then
     hard_cut_now()
   else
     cut_gain := gain
-    thread.run(delay={$delay}, hard_cut_step)
+    thread.run(delay={$delayLiq}, hard_cut_step)
   end
 end
 
