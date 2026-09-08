@@ -46,6 +46,17 @@ gradually rather than in one sweep.
 `tests/Feature/TranslationsTest.php` checks that `lang/de.json` is valid and that
 placeholders such as `:name` survive translation.
 
+### Changelog
+
+Anything an operator would notice gets one line under `## [Unreleased]` in `CHANGELOG.md`,
+in the same pull request. New features, fixed behaviour, changed defaults, anything that
+needs a manual step on update. Internal refactors, test changes and dependency bumps that
+change nothing for an operator stay out.
+
+Write it for somebody deciding whether to update today, not as a summary of the diff. The
+release workflow publishes that section as the release notes and refuses to build a tag
+that has none.
+
 ### Tests
 
 Every change needs a test. Write a new one or extend an existing one, then run the affected

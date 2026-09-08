@@ -21,8 +21,21 @@ jobs:
   tests:
     uses: ./.github/workflows/tests.yml
 
+  # Fails before any image is built, because a release without notes is not one.
+  notes:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+
+      - name: The changelog has a section for this tag
+        run: sh .github/scripts/changelog-section.sh "${{ github.event.inputs.tag || github.ref_name }}"
+
   app-image:
-    needs: [lint, tests]
+    needs: [lint, tests, notes]
     permissions:
       contents: read
       packages: write
@@ -30,14 +43,14 @@ jobs:
     uses: ./.github/workflows/docker.yml
 
   station-image:
-    needs: [lint, tests]
+    needs: [lint, tests, notes]
     permissions:
       contents: read
       packages: write
     uses: ./.github/workflows/liquidsoap-station.yml
 
   icecast-image:
-    needs: [lint, tests]
+    needs: [lint, tests, notes]
     permissions:
       contents: read
       packages: write
@@ -109,3 +122,39 @@ jobs:
           docker compose config --quiet
           COMPOSE_PROFILES=driver-docker,bundled-db,bundled-redis,traefik \
             docker compose config --quiet
+
+  # The changelog is the single source of the release notes, so the page on GitHub
+  # and the file in the repository cannot drift apart.
+  publish:
+    needs: [verify]
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+
+      - name: Publish the release with its changelog section
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          sh .github/scripts/changelog-section.sh "$TAG" > notes.md
+
+          # The whole 0.x line is a prerelease: update.sh treats it as such, and
+          # /releases/latest must not start pointing at it by accident.
+          prerelease=""
+          case "${TAG#v}" in
+              0.*) prerelease="--prerelease" ;;
+          esac
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+              gh release edit "$TAG" --notes-file notes.md
+          else
+              # shellcheck disable=SC2086
+              gh release create "$TAG" --title "$TAG" --notes-file notes.md $prerelease
+          fi

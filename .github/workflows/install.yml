@@ -27,13 +27,14 @@ jobs:
       # The scripts run under dash or ash on the target server, not bash.
       # -s sh checks exactly that subset.
       - name: ShellCheck
-        run: shellcheck -s sh install.sh update.sh
+        run: shellcheck -s sh install.sh update.sh .github/scripts/changelog-section.sh
 
       - name: Parse with a real POSIX shell
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq dash
           dash -n install.sh
           dash -n update.sh
+          dash -n .github/scripts/changelog-section.sh
 
   compose:
     runs-on: ubuntu-latest

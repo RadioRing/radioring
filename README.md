@@ -185,6 +185,7 @@ language rule and the typography rule (no em dashes, no ellipsis characters) whi
 | [`docs/en/operations.md`](docs/en/operations.md) | Operators. Variables, containers, control commands. |
 | [`docs/de/betrieb.md`](docs/de/betrieb.md) | The same, German. Authoritative. |
 | [`docs/architecture.md`](docs/architecture.md) | Contributors. Why the playout path looks the way it does. |
+| [`CHANGELOG.md`](CHANGELOG.md) | Operators. What changed per release, and what to do on update. |
 | [`SECURITY.md`](SECURITY.md) | Threat model, hardening, reporting. |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contributors. |
 
