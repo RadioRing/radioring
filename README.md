@@ -35,6 +35,9 @@ hands it to Liquidsoap track by track, and streams the result to Icecast or laut
 - **Outputs** to Icecast or laut.fm, optionally through Thimeo Stereo Tool.
 - **Dashboard** with start/stop/restart, skip, current track and the next items.
 - **Multi-station**: several stations share one media library and one team.
+- **Backups** of configuration and database, manual or nightly, with retention, an optional
+  passphrase and a restore command. Media files are backed up separately, see
+  [`docs/en/operations.md`](docs/en/operations.md#8-backups).
 
 ## How it fits together
 

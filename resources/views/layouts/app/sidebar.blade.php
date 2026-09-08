@@ -115,6 +115,13 @@
                                 <i class="bi bi-sliders me-2"></i>{{ __('Instance settings') }}
                             </a>
                         </li>
+                        <li class="nav-item">
+                            <a href="{{ route('admin.backups') }}"
+                               class="nav-link {{ request()->routeIs('admin.backups') ? 'active' : '' }}"
+                               wire:navigate>
+                                <i class="bi bi-shield-check me-2"></i>{{ __('Backups') }}
+                            </a>
+                        </li>
                     @endif
 
                     <li class="nav-item mt-auto">
@@ -303,6 +310,13 @@
                                class="nav-link {{ request()->routeIs('admin.settings') ? 'active' : '' }}"
                                wire:navigate data-bs-dismiss="offcanvas">
                                 <i class="bi bi-sliders me-2"></i>{{ __('Instance settings') }}
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{{ route('admin.backups') }}"
+                               class="nav-link {{ request()->routeIs('admin.backups') ? 'active' : '' }}"
+                               wire:navigate>
+                                <i class="bi bi-shield-check me-2"></i>{{ __('Backups') }}
                             </a>
                         </li>
                     @endif

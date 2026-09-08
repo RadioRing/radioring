@@ -408,6 +408,10 @@ Nur für Nutzer mit Admin-Rechten sichtbar (Block **ADMINISTRATION**).
   koennen. Ohne gueltigen Code ist keine Registrierung moeglich.
 - **Instanz-Einstellungen**: den Betriebsmodus zwischen *standalone* und *cloud*
   umschalten. Die Aenderung wirkt sofort, ohne erneutes Deployment.
+- **Backups**: Sicherung der Konfiguration und der Datenbank, manuell oder jede Nacht,
+  mit Aufbewahrungsgrenze und optionaler Passphrase. Das Archiv lässt sich hier
+  herunterladen. Mediendateien sind bewusst nicht enthalten. Wiederherstellen läuft
+  über die Kommandozeile, siehe `docs/de/betrieb.md`, Abschnitt 8.
 
 Welche Bedienelemente erscheinen, haengt vom Betriebsmodus ab. Im **Standalone**-Modus
 entfallen Stations-Quota, Impersonation und das Sperren von Konten, weil eine Installation

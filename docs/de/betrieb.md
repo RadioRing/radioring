@@ -179,6 +179,17 @@ php artisan media:measure-loudness [--station=slug]
 php artisan media:prune-chunks [--hours=2]
 ```
 
+### Sicherungen
+
+```sh
+php artisan backup:run [--auto] [--passphrase=...] [--queue]
+php artisan backup:restore {id|dateiname|pfad} [--passphrase=...] [--force]
+```
+
+`backup:run` schreibt ein Konfigurations-Backup nach `storage/app/private/backups` und
+wendet danach die eingestellte Aufbewahrung an. `--auto` ist der naechtliche Lauf: er
+verwendet die im Panel hinterlegte Passphrase. Details in [Abschnitt 8](#8-sicherungen).
+
 ### Diagnose
 
 ```sh
@@ -209,6 +220,7 @@ Registriert in `routes/console.php`:
 | minütlich | `radioring:enforce-hard-starts` | Umschalten auf eine Stunde mit hartem Start |
 | minütlich | `PrepareUpcomingHttpItemsJob` | Externe Quellen kurz vor Ausspielung holen |
 | stündlich | `media:prune-chunks` | Verwaiste Upload-Chunks aufräumen |
+| täglich, einstellbar | `backup:run --auto` | Konfigurations-Backup, nur wenn im Panel aktiviert |
 
 **Ohne laufenden Scheduler und Queue-Worker entstehen keine Rundowns**, die Station fällt
 nach der aktuellen Stunde in Stille. Mit `APP_MODE=all` laufen beide im App-Container. Wer
@@ -243,17 +255,122 @@ Station-Containers**, kein Deployment der App.
 
 ## 8. Sicherungen
 
-Drei Dinge, und alle drei zählen:
+Zwei Dinge, und beide zählen:
 
-1. **Die Datenbank.** Alles außer den Audiodateien.
-2. **`storage/`.** Die Audiodateien. Im ausgelieferten Compose ist das das
-   `storage`-Volume.
-3. **`APP_KEY`, getrennt von der Datenbank.** Station-Tokens, Ausgangs- und
-   Live-Passwörter sowie Partner-Tokens sind damit verschlüsselt. **Ohne den Schlüssel
-   sind diese Werte aus einer Datenbanksicherung nicht wiederherstellbar.**
+1. **Konfiguration und Datenbank.** Alles außer den Audiodateien. Dafür gibt es die
+   eingebaute Backup-Funktion, siehe unten.
+2. **`storage/`.** Die Audiodateien. Bewusst **nicht** Teil der eingebauten Backups: eine
+   Medienbibliothek ist um Größenordnungen größer als der Rest und will anders
+   gesichert werden. Anleitung weiter unten.
 
-Ist der Schlüssel verloren, hilft nur: jeden Station-Token per `station:rotate-token`
-rotieren und die Ausgangspasswörter neu eintragen.
+Der `APP_KEY` verschlüsselt Station-Tokens sowie Ausgangs-, Live- und Partner-Passwörter.
+**Ohne diesen Schlüssel sind diese Werte aus einer Datenbanksicherung nicht
+wiederherstellbar.** Er steckt deshalb im Konfigurations-Backup mit drin. Ist der Schlüssel
+verloren und liegt kein Backup vor, hilft nur: jeden Station-Token per
+`station:rotate-token` rotieren und die Ausgangspasswörter neu eintragen.
+
+### 8.1 Konfigurations-Backup
+
+Im Panel unter **Administration → Backups**. Ein Backup enthält einen Datenbank-Dump, die
+`.env` (falls die Installation eine hat) und ein Manifest mit dem `APP_KEY`. Zusammen ist
+das ein vollständiger Satz Schlüssel zur Installation, deshalb:
+
+- Ein Archiv, das den Server verlässt, bekommt eine **Passphrase**. Es wird dann mit
+  AES-256-GCM verschlüsselt (`.zip.enc`). Eine verlorene Passphrase lässt sich nicht
+  wiederherstellen, das Archiv ist damit wertlos.
+- Der Download geht nur an angemeldete Administratoren. Es gibt bewusst keinen öffentlichen
+  Link.
+
+Automatische Backups laufen nächtlich zur eingestellten Uhrzeit, sofern der **Scheduler**
+läuft (siehe Abschnitt 6). Die Aufbewahrung löscht die ältesten Archive, sobald die
+eingestellte Anzahl erreicht ist; fehlgeschlagene Läufe bleiben in der Liste stehen, damit
+ein wochenlang kaputtes Backup auffällt.
+
+Auf der Kommandozeile:
+
+```sh
+docker compose exec -T app php artisan backup:run --passphrase='...'
+```
+
+Die Archive liegen im Container unter `storage/app/private/backups`, also im
+`storage`-Volume. Wer sie außerhalb haben will, holt sie über das Panel oder kopiert sie
+heraus:
+
+```sh
+docker compose cp app:/app/storage/app/private/backups ./backups
+```
+
+### 8.2 Wiederherstellen
+
+Eine Wiederherstellung **ersetzt alle Daten** dieser Installation und läuft deshalb nur
+auf der Kommandozeile, nie über das Panel.
+
+```sh
+# 1. Archiv bereitlegen: entweder liegt es schon im Backup-Verzeichnis der
+#    Installation, oder du kopierst es hinein.
+docker compose cp ./radioring-config-2026-09-08_030000-ab12.zip.enc \
+    app:/app/storage/app/private/backups/
+
+# 2. Wiederherstellen. Der Befehl zeigt zuerst Datum, Version und Datenbanktreiber
+#    des Archivs und fragt dann nach.
+docker compose exec app php artisan backup:restore \
+    radioring-config-2026-09-08_030000-ab12.zip.enc --passphrase='...'
+
+# 3. Station-Container neu starten, damit sie die wiederhergestellte
+#    Konfiguration übernehmen (im Dashboard oder per Neustart des Stacks).
+```
+
+Statt des Dateinamens geht auch die ID aus der Backup-Liste oder ein absoluter Pfad.
+
+Worauf der Befehl vorher prüft, und warum er notfalls abbricht:
+
+- **Datenbanktreiber.** Ein SQLite-Archiv lässt sich nicht in eine MySQL-Installation
+  zurücksichern und umgekehrt. Der Dump enthält das native Schema der Quelldatenbank.
+- **`APP_KEY`.** Weicht der Schlüssel der Installation von dem im Archiv ab, bricht der
+  Befehl ab. Die verschlüsselten Spalten wären sonst unlesbar. Der richtige Schlüssel
+  steht im Archiv in `manifest.json` und in der Datei `env`. Setze ihn in der `.env` neben
+  dem Compose-File, starte den Stack neu und wiederhole den Befehl. `--force` erzwingt die
+  Wiederherstellung trotzdem, dann sind Station-Tokens und Passwörter danach neu zu
+  setzen.
+
+Nach der Wiederherstellung ist die Backup-Liste im Panel leer: sie zeigt auf Archive
+dieses Hosts und wird deshalb nicht mitgesichert. Die Dateien im Backup-Verzeichnis
+bleiben liegen.
+
+Auf einen frischen Host: erst `install.sh` wie üblich, dann den `APP_KEY` aus dem Archiv
+in die `.env` eintragen, Stack starten, Archiv hineinkopieren, `backup:restore`. Die
+Mediendateien kommen getrennt zurück (siehe unten), sonst zeigen alle Rundowns auf
+fehlende Dateien.
+
+### 8.3 Mediendateien sichern
+
+Die Audiodateien liegen im `storage`-Volume unter `storage/app/private/tenants/`. Sie
+ändern sich selten und wachsen stetig, deshalb passt hier ein **inkrementeller Sync**
+besser als ein Archiv. Ein Beispiel mit `rsync` auf einen anderen Rechner:
+
+```sh
+# Volume-Pfad auf dem Host ermitteln
+docker volume inspect radioring_storage --format '{{ .Mountpoint }}'
+
+# Täglich per Cron, nur Geändertes:
+rsync -a --delete \
+    /var/lib/docker/volumes/radioring_storage/_data/app/private/tenants/ \
+    backup@example.org:/srv/radioring-media/
+```
+
+Hinweise dazu:
+
+- **Nicht packen.** MP3, AAC und FLAC sind bereits komprimiert; ein `tar.gz` kostet volle
+  CPU-Last und spart ein bis zwei Prozent.
+- Der Ordner `storage/app/private/chunks` enthält nur angefangene Uploads und kann weg
+  bleiben.
+- Datenbank und Medien sollten **zeitnah zueinander** gesichert werden. Eine Datei, die in
+  der Datenbank steht, aber in der Mediensicherung fehlt, fällt erst beim Ausspielen auf.
+- Wer keinen Zugriff auf den Host hat, kommt auch so an die Dateien:
+  `docker compose cp app:/app/storage/app/private/tenants ./media`.
+
+Zurückspielen: die Dateien an dieselbe Stelle im `storage`-Volume legen, mit denselben
+relativen Pfaden. Die Datenbank verweist auf genau diese Pfade.
 
 ---
 

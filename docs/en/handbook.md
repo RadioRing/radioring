@@ -364,6 +364,10 @@ Visible only to administrators.
   register.
 - **Instance settings**: switch the operating mode between *standalone* and *cloud*. The
   change applies immediately, without a redeployment.
+- **Backups**: secure the configuration and the database, manually or every night, with a
+  retention limit and an optional passphrase. The archive can be downloaded here. Media
+  files are deliberately not included. Restoring runs on the command line, see
+  `docs/en/operations.md`, section 8.
 
 Which controls appear depends on the operating mode. In **standalone** mode, station quota,
 impersonation and account bans are hidden, because a single-tenant installation does not

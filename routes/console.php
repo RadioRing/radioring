@@ -3,6 +3,7 @@
 use App\Jobs\GenerateDailyRundownsJob;
 use App\Jobs\PreloadNextRundownJob;
 use App\Jobs\PrepareUpcomingHttpItemsJob;
+use App\Services\Backup\BackupSettings;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -28,3 +29,11 @@ Schedule::command('radioring:enforce-hard-starts')->everyMinute()->withoutOverla
 
 // Jede Minute – dynamische externe HTTP-Inhalte kurz vor Ausspielung holen/messen/cachen
 Schedule::job(new PrepareUpcomingHttpItemsJob)->everyMinute()->withoutOverlapping();
+
+// Nightly configuration backup. Time and retention come from the settings table, so the
+// operator can change them at runtime; the schedule is rebuilt on every `schedule:run`
+// and therefore picks the current value up without a redeploy.
+Schedule::command('backup:run --auto')
+    ->dailyAt(BackupSettings::autoTime())
+    ->when(fn () => BackupSettings::autoEnabled())
+    ->withoutOverlapping();

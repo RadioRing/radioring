@@ -1,8 +1,10 @@
 <?php
 
+use App\Http\Controllers\Admin\BackupDownloadController;
 use App\Http\Controllers\Admin\ImpersonationController;
 use App\Http\Controllers\MediaPreviewController;
 use App\Http\Controllers\MediaUploadController;
+use App\Livewire\Admin\Backups as AdminBackups;
 use App\Livewire\Admin\InviteCodes as AdminInviteCodes;
 use App\Livewire\Admin\Settings as AdminSettings;
 use App\Livewire\Admin\Stations as AdminStations;
@@ -58,6 +60,8 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->group(functio
     Route::livewire('stations', AdminStations::class)->name('admin.stations');
     Route::livewire('invite-codes', AdminInviteCodes::class)->name('admin.invite-codes');
     Route::livewire('settings', AdminSettings::class)->name('admin.settings');
+    Route::livewire('backups', AdminBackups::class)->name('admin.backups');
+    Route::get('backups/{backup}/download', BackupDownloadController::class)->name('admin.backups.download');
 
     // Der Betriebsmodus wird im Controller geprüft, nicht bei der Registrierung: er ist
     // zur Laufzeit umschaltbar, Routen werden aber beim Start gecacht.
