@@ -310,5 +310,10 @@
     "Preset deleted.": "Preset gelöscht.",
     "Delete the preset :name?": "Preset :name löschen?",
     "That does not look like a Stereo Tool preset (.sts).": "Das sieht nicht nach einem Stereo-Tool-Preset (.sts) aus.",
-    "Restarting the player so the processing change takes effect.": "Player wird neu gestartet, damit die Änderung am Processing wirkt."
+    "Restarting the player so the processing change takes effect.": "Player wird neu gestartet, damit die Änderung am Processing wirkt.",
+    "UNDERRUN": "UNDERRUN",
+    "Underrun": "Underrun",
+    "Programme underrun: the station is sending silence.": "Programm-Underrun: die Station sendet Stille.",
+    "Nothing has been available to play for :duration. The rundown of this hour ran out early - check whether an element was shorter than planned.": "Seit :duration ist nichts zum Abspielen verfügbar. Der Rundown dieser Stunde ist zu früh leer gelaufen – prüfe, ob ein Element kürzer war als geplant.",
+    "Programme underrun: nothing left to play since :time, the station is sending silence.": "Programm-Underrun: seit :time nichts mehr zum Abspielen, die Station sendet Stille."
 }

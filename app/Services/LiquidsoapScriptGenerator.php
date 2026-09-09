@@ -95,6 +95,8 @@ class LiquidsoapScriptGenerator
         $lines[] = '';
         $lines[] = "live = input.harbor(\"live\", port={$livePort}, password=\"{$livePassword}\", buffer=5., max=60., on_connect=on_live_connect, on_disconnect=on_live_disconnect)";
         $lines[] = "radio = fallback(track_sensitive=false, [live, {$programSource}, blank()])";
+        $lines[] = '';
+        $lines[] = $this->requestQueueWatchdog($programSource);
 
         if ($station->stereoToolActive()) {
             $lines[] = '';
@@ -282,6 +284,43 @@ LIQ;
     private function liqFloat(float $value): string
     {
         return number_format($value, 4, '.', '');
+    }
+
+    /**
+     * How often the watchdog looks at the programme branch, in seconds.
+     */
+    private const WATCHDOG_INTERVAL_SECONDS = 10;
+
+    /**
+     * Wakes request.dynamic back up while the programme branch is off air.
+     *
+     * When /next hands out nothing (a rundown that ran dry, an hour whose successor is not
+     * released yet), the prefetch queue empties and the source becomes unavailable. The
+     * fallback then stops asking it for frames, so the queue-feeding task of
+     * request.dynamic gets no wake-up from a track end either and can stay asleep after the
+     * programme is available again - the station keeps sending silence until someone hits
+     * skip. Seen in production on 2026-09-09: 21 minutes of blank after the rundown ended,
+     * and playout only resumed on a manual skip.
+     *
+     * set_queue is what the manual skip does too, and it is the wake-up the source needs.
+     * It is called only while the programme is NOT ready, so the queue is empty by
+     * definition and no prefetched element is thrown away.
+     */
+    private function requestQueueWatchdog(string $programSource): string
+    {
+        $interval = $this->liqFloat((float) self::WATCHDOG_INTERVAL_SECONDS);
+
+        return <<<LIQ
+# Watchdog: poke the request queue while the programme branch is unavailable.
+def rec request_queue_watchdog() =
+  if not {$programSource}.is_ready() then
+    log(level=3, label="radioring", "Watchdog: programme source is not ready, waking the request queue.")
+    source.set_queue([])
+  end
+  thread.run(delay={$interval}, request_queue_watchdog)
+end
+thread.run(delay={$interval}, request_queue_watchdog)
+LIQ;
     }
 
     private function nowPlayingCallback(): string

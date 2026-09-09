@@ -40,7 +40,7 @@ class LiquidsoapStateService
             $rundown = $this->resolveCurrentRundown($station, $state);
 
             if (! $rundown) {
-                $state->update(['last_pulled_at' => now()]);
+                $this->recordUnderrun($station, $state);
 
                 return null;
             }
@@ -53,7 +53,7 @@ class LiquidsoapStateService
                 $rundown = $this->advanceToNextRundown($station, $state, $rundown);
 
                 if (! $rundown) {
-                    $state->update(['last_pulled_at' => now()]);
+                    $this->recordUnderrun($station, $state);
 
                     return null;
                 }
@@ -65,7 +65,7 @@ class LiquidsoapStateService
                 $item = $rundown->items()->where('position', $startPosition)->first();
 
                 if (! $item) {
-                    $state->update(['last_pulled_at' => now()]);
+                    $this->recordUnderrun($station, $state);
 
                     return null;
                 }
@@ -74,6 +74,7 @@ class LiquidsoapStateService
                     'current_rundown_id' => $rundown->id,
                     'current_item_position' => $startPosition + 1,
                     'last_pulled_at' => now(),
+                    ...$this->underrunCleared($state),
                 ]);
             } else {
                 $state->update([
@@ -82,11 +83,67 @@ class LiquidsoapStateService
                     'current_rundown_id' => $rundown->id,
                     'current_item_position' => $state->current_item_position + 1,
                     'last_pulled_at' => now(),
+                    ...$this->underrunCleared($state),
                 ]);
             }
 
             return $item;
         }, self::TRANSACTION_ATTEMPTS);
+    }
+
+    /**
+     * Notes that this pull had nothing to hand out - the station is sending silence.
+     *
+     * The start time is kept so the dashboard can say how long the hole has been open.
+     * The protocol line is written only once the gap exceeds the alert threshold: the
+     * container pulls every second, and the seconds-long gap at an hour boundary (the next
+     * rundown is released shortly before its airtime) is normal, not an incident.
+     */
+    private function recordUnderrun(Station $station, LiquidsoapState $state): void
+    {
+        $startedAt = $state->underrun_started_at ?? now();
+
+        $state->update([
+            'last_pulled_at' => now(),
+            'underrun_started_at' => $startedAt,
+        ]);
+
+        if ($state->underrun_logged_at !== null) {
+            return;
+        }
+
+        $threshold = (int) config('radioring.underrun_alert_seconds', 30);
+
+        if ((int) $startedAt->diffInSeconds(now()) < $threshold) {
+            return;
+        }
+
+        $state->update(['underrun_logged_at' => now()]);
+
+        StationLog::create([
+            'station_id' => $station->id,
+            'event' => StationLog::EVENT_UNDERRUN,
+            'generated_playlist_id' => $state->current_rundown_id,
+            'message' => __('Programme underrun: nothing left to play since :time, the station is sending silence.', [
+                'time' => $startedAt->format('H:i:s'),
+            ]),
+            'occurred_at' => $startedAt,
+        ]);
+    }
+
+    /**
+     * Fields that end a running underrun, to be spread into the state update that hands
+     * out an item. Empty when there is no underrun, so a normal pull writes nothing extra.
+     *
+     * @return array{underrun_started_at?: null, underrun_logged_at?: null}
+     */
+    private function underrunCleared(LiquidsoapState $state): array
+    {
+        if ($state->underrun_started_at === null && $state->underrun_logged_at === null) {
+            return [];
+        }
+
+        return ['underrun_started_at' => null, 'underrun_logged_at' => null];
     }
 
     /**

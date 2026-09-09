@@ -70,6 +70,7 @@ class Index extends Component
             'live_track' => $query->where('event', StationLog::EVENT_TRACK)->where('source', 'live'),
             'live_switch' => $query->whereIn('event', [StationLog::EVENT_LIVE_STARTED, StationLog::EVENT_LIVE_STOPPED]),
             'rundown' => $query->where('event', StationLog::EVENT_RUNDOWN_GENERATED),
+            'underrun' => $query->where('event', StationLog::EVENT_UNDERRUN),
             default => null,
         };
     }

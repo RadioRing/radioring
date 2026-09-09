@@ -226,6 +226,7 @@ class Dashboard extends Component
             'liveTitle' => $state?->live_title,
             'liveArtist' => $state?->live_artist,
             'liveStartedAt' => $state?->live_started_at,
+            'underrunSeconds' => $state?->underrunSeconds(),
         ])->layout('layouts.app');
     }
 }

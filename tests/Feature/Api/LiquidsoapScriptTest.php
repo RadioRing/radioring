@@ -340,3 +340,15 @@ test('station output password is encrypted at rest', function () {
     expect($output->getRawOriginal('password_enc'))->not->toBe('hackme');
     expect($output->fresh()->password)->toBe('hackme');
 });
+
+test('generator installs the watchdog that wakes a stalled request queue', function () {
+    $script = app(LiquidsoapScriptGenerator::class)->generate($this->station);
+
+    // Vorfall vom 09.09.2026: nach einem leer gelaufenen Rundown blieb request.dynamic
+    // stehen und die Station sendete 21 Minuten Stille, bis jemand skip gedrueckt hat.
+    expect($script)
+        ->toContain('def rec request_queue_watchdog()')
+        ->toContain('.is_ready()')
+        ->toContain('source.set_queue([])')
+        ->toContain('thread.run(delay=10.0000, request_queue_watchdog)');
+});

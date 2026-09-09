@@ -22,6 +22,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'live_artist',
     'live_started_at',
     'last_pulled_at',
+    'underrun_started_at',
+    'underrun_logged_at',
 ])]
 class LiquidsoapState extends Model
 {
@@ -39,11 +41,22 @@ class LiquidsoapState extends Model
      */
     public const NOW_PLAYING_UNKNOWN_DURATION_SECONDS = 900;
 
+    /**
+     * Assumed length of an adbreak. Its real length is decided by laut.fm and unknown
+     * here, so the snapshot cannot expire with the signal file, which is over after a
+     * second. Without an upper bound the dashboard stays on START_AD_BREAK forever once
+     * the programme runs dry behind it - which is exactly how a 21 minute hole went
+     * unnoticed.
+     */
+    public const ADBREAK_ASSUMED_DURATION_SECONDS = 1;
+
     protected function casts(): array
     {
         return [
             'now_playing_started_at' => 'datetime',
             'last_pulled_at' => 'datetime',
+            'underrun_started_at' => 'datetime',
+            'underrun_logged_at' => 'datetime',
             'now_playing_duration_seconds' => 'integer',
             'live_active' => 'boolean',
             'live_started_at' => 'datetime',
@@ -70,8 +83,8 @@ class LiquidsoapState extends Model
      *
      * True once airtime exceeds the track's duration by more than the grace period and no
      * fresh on_metadata callback has arrived - typically silence during a schedule gap or
-     * a container that stopped reporting. Adbreaks are exempt: their real length on laut.fm
-     * is variable and not known here.
+     * a container that stopped reporting. Adbreaks have no duration of their own and fall
+     * back to ADBREAK_ASSUMED_DURATION_SECONDS.
      */
     public function nowPlayingHasEnded(): bool
     {
@@ -79,13 +92,40 @@ class LiquidsoapState extends Model
             return true;
         }
 
-        if ($this->now_playing_source_type === 'adbreak') {
-            return false;
-        }
-
-        $assumedDuration = $this->now_playing_duration_seconds ?? self::NOW_PLAYING_UNKNOWN_DURATION_SECONDS;
+        $assumedDuration = match (true) {
+            $this->now_playing_source_type === 'adbreak' => self::ADBREAK_ASSUMED_DURATION_SECONDS,
+            default => $this->now_playing_duration_seconds ?? self::NOW_PLAYING_UNKNOWN_DURATION_SECONDS,
+        };
 
         return (int) $this->now_playing_started_at->diffInSeconds(now())
             > $assumedDuration + self::NOW_PLAYING_STALE_GRACE_SECONDS;
+    }
+
+    /**
+     * Is the station in a confirmed programme underrun?
+     *
+     * True once /next has been handing out nothing for longer than the configured
+     * threshold. The threshold keeps the normal seconds-long gap at an hour boundary from
+     * raising an alarm.
+     */
+    public function isUnderrun(): bool
+    {
+        return $this->underrunSeconds() !== null;
+    }
+
+    /**
+     * How long the confirmed underrun has been going on, or null if there is none.
+     */
+    public function underrunSeconds(): ?int
+    {
+        if (! $this->underrun_started_at) {
+            return null;
+        }
+
+        $seconds = (int) $this->underrun_started_at->diffInSeconds(now());
+
+        return $seconds >= (int) config('radioring.underrun_alert_seconds', 30)
+            ? $seconds
+            : null;
     }
 }

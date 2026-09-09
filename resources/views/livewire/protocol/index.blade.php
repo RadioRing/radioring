@@ -20,6 +20,7 @@
                 <option value="live_track">{{ __('Titel – Live') }}</option>
                 <option value="live_switch">{{ __('Live-Wechsel') }}</option>
                 <option value="rundown">{{ __('Rundown generiert') }}</option>
+                <option value="underrun">{{ __('Underrun') }}</option>
             </select>
         </div>
         <div class="col-12 col-sm">
@@ -87,6 +88,11 @@
                                     @case(\App\Models\StationLog::EVENT_SCHEDULE_CATCH_UP)
                                         <span class="badge text-bg-warning-subtle text-warning">
                                             <i class="bi bi-fast-forward-fill me-1"></i>{{ __('Caught up') }}
+                                        </span>
+                                        @break
+                                    @case(\App\Models\StationLog::EVENT_UNDERRUN)
+                                        <span class="badge text-bg-danger-subtle text-danger">
+                                            <i class="bi bi-exclamation-octagon me-1"></i>{{ __('Underrun') }}
                                         </span>
                                         @break
                                 @endswitch

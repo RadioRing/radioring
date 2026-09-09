@@ -108,3 +108,43 @@ test('player keeps showing an adbreak past its signal duration', function () {
         ->assertSee('Werbeblock')
         ->assertDontSee('Kein Track aktiv');
 });
+
+test('an adbreak stuck far past its assumed length is no longer shown as running', function () {
+    // Incident of 2026-09-09: the rundown ran dry behind an adbreak, so the player froze
+    // on START_AD_BREAK for 21 minutes. Adbreaks have no duration of their own, but they
+    // must still expire.
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'now_playing_title' => 'START_AD_BREAK',
+        'now_playing_source_type' => 'adbreak',
+        'now_playing_started_at' => now()->subMinutes(40),
+    ]);
+
+    Livewire::test(Dashboard::class)
+        ->assertDontSee('ON AIR');
+});
+
+test('a confirmed underrun is reported on the dashboard', function () {
+    config(['radioring.underrun_alert_seconds' => 30]);
+
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'underrun_started_at' => now()->subMinutes(5),
+    ]);
+
+    Livewire::test(Dashboard::class)
+        ->assertSee('UNDERRUN')
+        ->assertSee('Programme underrun: the station is sending silence.');
+});
+
+test('a gap shorter than the alert threshold raises no underrun alarm', function () {
+    config(['radioring.underrun_alert_seconds' => 30]);
+
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'underrun_started_at' => now()->subSeconds(5),
+    ]);
+
+    Livewire::test(Dashboard::class)
+        ->assertDontSee('UNDERRUN');
+});

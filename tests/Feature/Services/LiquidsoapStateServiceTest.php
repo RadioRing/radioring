@@ -285,3 +285,86 @@ test('prepareSkip does nothing without a now-playing track', function () {
     $state = LiquidsoapState::where('station_id', $this->station->id)->first();
     expect($state->current_item_position)->toBe(3);
 });
+
+test('pullNextItem opens an underrun and logs it once the gap exceeds the threshold', function () {
+    config(['radioring.underrun_alert_seconds' => 30]);
+
+    // Aktuelle Stunde ist erschöpft, der Folge-Rundown ist noch nicht freigegeben.
+    $current = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id,
+        'broadcast_date' => today(),
+        'broadcast_hour' => now()->hour,
+        'status' => 'ready',
+        'start_mode' => 'soft',
+    ]);
+
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'current_rundown_id' => $current->id,
+        'current_item_position' => 0,
+    ]);
+
+    expect($this->service->pullNextItem($this->station))->toBeNull();
+
+    $state = LiquidsoapState::where('station_id', $this->station->id)->first();
+    expect($state->underrun_started_at)->not->toBeNull()
+        ->and($state->underrun_logged_at)->toBeNull();
+
+    $openedAt = $state->underrun_started_at;
+
+    // Innerhalb der Schwelle bleibt es still – eine Sekunde Lücke ist kein Vorfall.
+    $this->travel(20)->seconds();
+    expect($this->service->pullNextItem($this->station))->toBeNull();
+    expect(StationLog::where('station_id', $this->station->id)
+        ->where('event', StationLog::EVENT_UNDERRUN)->count())->toBe(0);
+
+    // Jenseits der Schwelle: genau ein Protokolleintrag, egal wie oft weiter gezogen wird.
+    $this->travel(20)->seconds();
+    expect($this->service->pullNextItem($this->station))->toBeNull();
+    expect($this->service->pullNextItem($this->station))->toBeNull();
+
+    $logs = StationLog::where('station_id', $this->station->id)
+        ->where('event', StationLog::EVENT_UNDERRUN)->get();
+
+    expect($logs)->toHaveCount(1)
+        ->and($logs->first()->generated_playlist_id)->toBe($current->id);
+
+    // Der Beginn wandert nicht mit: die Lücke wird ab dem ersten leeren Pull gemessen.
+    $state->refresh();
+    expect($state->underrun_started_at->timestamp)->toBe($openedAt->timestamp)
+        ->and($state->underrun_logged_at)->not->toBeNull();
+});
+
+test('pullNextItem closes the underrun as soon as an item is available again', function () {
+    config(['radioring.underrun_alert_seconds' => 30]);
+
+    $rundown = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id,
+        'broadcast_date' => today(),
+        'broadcast_hour' => now()->hour,
+        'status' => 'ready',
+        'start_mode' => 'soft',
+    ]);
+
+    $item = GeneratedPlaylistItem::factory()->create([
+        'generated_playlist_id' => $rundown->id,
+        'media_file_id' => MediaFile::factory()->create(['tenant_id' => $this->station->tenant_id, 'type' => 'music', 'file_path' => "tenants/{$this->station->tenant_id}/media/back.mp3", 'title' => 'Back'])->id,
+        'position' => 0,
+        'source_type' => 'template_item',
+        'title' => 'Back',
+    ]);
+
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'current_rundown_id' => $rundown->id,
+        'current_item_position' => 0,
+        'underrun_started_at' => now()->subMinutes(10),
+        'underrun_logged_at' => now()->subMinutes(9),
+    ]);
+
+    expect($this->service->pullNextItem($this->station)->id)->toBe($item->id);
+
+    $state = LiquidsoapState::where('station_id', $this->station->id)->first();
+    expect($state->underrun_started_at)->toBeNull()
+        ->and($state->underrun_logged_at)->toBeNull();
+});

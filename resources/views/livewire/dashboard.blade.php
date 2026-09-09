@@ -165,6 +165,19 @@
         </div>
     @endif
 
+    {{-- Programm-Underrun: /next liefert nichts mehr, die Station sendet Stille --}}
+    @if($underrunSeconds !== null && ! $liveActive)
+        <div class="alert alert-danger d-flex align-items-start gap-2 mb-4" role="alert">
+            <i class="bi bi-exclamation-octagon-fill mt-1"></i>
+            <div>
+                <div class="fw-semibold">{{ __('Programme underrun: the station is sending silence.') }}</div>
+                <div class="small mb-0">
+                    {{ __('Nothing has been available to play for :duration. The rundown of this hour ran out early - check whether an element was shorter than planned.', ['duration' => gmdate('H:i:s', $underrunSeconds)]) }}
+                </div>
+            </div>
+        </div>
+    @endif
+
     {{-- Player-Widget --}}
     <div class="card mb-4 border-0 shadow-sm">
         <div class="card-header d-flex align-items-center justify-content-between py-2"
@@ -180,6 +193,8 @@
                         <span class="rounded-circle bg-white d-inline-block" style="width:6px;height:6px;animation:blink 1s step-end infinite"></span>
                         {{ $liveActive ? __('ON AIR - LIVE') : __('ON AIR') }}
                     </span>
+                @elseif($underrunSeconds !== null)
+                    <span class="badge bg-danger" style="font-size:.7rem">{{ __('UNDERRUN') }}</span>
                 @elseif($isRunning || $isStarting)
                     <span class="badge bg-warning text-dark" style="font-size:.7rem">{{ __('NO PLAYOUT') }}</span>
                 @else

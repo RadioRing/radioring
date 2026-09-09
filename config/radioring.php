@@ -121,6 +121,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Programm-Underrun: Schwelle fuer den Alarm
+    |--------------------------------------------------------------------------
+    | Liefert /next nichts mehr, sendet die Station Stille. Ein paar Sekunden davon
+    | sind an der Stundengrenze normal (der naechste Rundown wird erst kurz vor seiner
+    | Sendezeit freigegeben). Erst ab dieser Dauer gilt die Luecke als Underrun: das
+    | Dashboard warnt, und das Protokoll bekommt einen Eintrag.
+    |
+    */
+    'underrun_alert_seconds' => (int) env('UNDERRUN_ALERT_SECONDS', 30),
+
+    /*
+    |--------------------------------------------------------------------------
     | Musik-Rotation: Titel-Cooldown
     |--------------------------------------------------------------------------
     | Reduziert Wiederholungen desselben Titels über den Tag. Innerhalb des

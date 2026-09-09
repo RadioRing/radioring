@@ -21,6 +21,14 @@ to stand on its own.
 
 ### Fixed
 
+- **Silence after a rundown ran dry no longer lasts until someone hits skip.** When the
+  hour was played out and the next one was not released yet, the player stopped asking for
+  new tracks altogether: it kept sending silence even after the following rundown became
+  available. A watchdog in the station script now wakes the request queue while the
+  programme is off air.
+- **A gap in the programme is now visible.** If nothing is available to play, the dashboard
+  says so and the protocol gets an entry, instead of the player freezing on the last title.
+  A stuck ad break in particular used to stay on the dashboard as if it were still running.
 - **Playout catches up instead of drifting.** An hour that overran used to push the whole
   rest of the day back, and nothing ever pulled it forward again: a station could still be
   working off the 11:00 hour at 13:55. When a rundown is exhausted, playout now moves to

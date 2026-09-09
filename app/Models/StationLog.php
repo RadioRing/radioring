@@ -37,6 +37,9 @@ class StationLog extends Model
     /** Playout was running behind schedule and skipped ahead to the current hour. */
     public const EVENT_SCHEDULE_CATCH_UP = 'schedule_catch_up';
 
+    /** The rundown ran dry: /next had nothing to hand out, so the station sent silence. */
+    public const EVENT_UNDERRUN = 'underrun';
+
     protected function casts(): array
     {
         return [
