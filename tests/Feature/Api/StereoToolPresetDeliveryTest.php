@@ -90,8 +90,10 @@ test('the generated script points at the fetched preset file only when one resol
     $preset = StereoToolPreset::factory()->withFile()->create(['station_id' => $this->station->id]);
     $this->station->update(['stereo_tool_preset' => $preset->identifier()]);
 
+    // load_type="processing" keeps a preset from applying the [Stereo Tool Configuration]
+    // block it may carry (CPU threads, affinities, web interface).
     expect($generator->generate($this->station->fresh()))
-        ->toContain('preset="/app/liquidsoap/stereotool-preset.sts"');
+        ->toContain('preset="/app/liquidsoap/stereotool-preset.sts", load_type="processing"');
 });
 
 test('a preset shipped with radioring resolves to its file in the repository', function () {

@@ -359,6 +359,12 @@ LIQ;
         if (StereoToolPresetLibrary::resolve($station) !== null) {
             $preset = (string) config('radioring.stereo_tool.active_preset_file');
             $arguments[] = "preset=\"{$preset}\"";
+
+            // A .sts can carry a full [Stereo Tool Configuration] block: CPU thread count,
+            // affinities, web interface. Liquidsoap defaults to load_type="totalinit",
+            // which applies all of it. An uploaded preset decides how the station sounds,
+            // never how the container runs.
+            $arguments[] = 'load_type="processing"';
         }
 
         $arguments[] = 'radio';
