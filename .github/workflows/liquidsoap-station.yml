@@ -86,7 +86,7 @@ jobs:
           # are matched on the file name rather than on a path. Kantar ships a second copy
           # of the Intel build under its own directory; -j would flatten both onto the same
           # name, so it is excluded rather than left to overwrite order.
-          unzip -oj stereotool.zip "$member" -x '*Kantar*' -d .
+          unzip -oj stereotool.zip "$member" -x '*Kantar*' -d . || [ "$?" -le 1 ]
           rm stereotool.zip
 
           extracted=$(find . -maxdepth 1 -name 'libStereoTool*.so')
