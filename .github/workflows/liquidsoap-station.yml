@@ -40,6 +40,76 @@ jobs:
       - name: Platform slug
         run: echo "PLATFORM_PAIR=${{ matrix.platform }}" | tr '/' '-' >> "$GITHUB_ENV"
 
+      - name: Fetch Stereo Tool
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        working-directory: ./docker/liquidsoap-station/stereotool
+        run: |
+          set -euo pipefail
+
+          # Proprietary Thimeo files, shipped with permission and under Thimeo's licence
+          # (see LICENSE-Thimeo.md). Not in git: pinned by URL + SHA-256 in sources.json,
+          # so the shipped version is reviewable and a version bump is a one-file change.
+          #
+          # Thimeo publishes one archive for every platform behind an unversioned URL, so
+          # the checksum is the only thing pinning the version. A Thimeo release therefore
+          # fails this step until someone bumps sources.json, which is the intended
+          # behaviour: the audio processor in the signal path does not change silently.
+          #
+          # An empty URL means "build without Stereo Tool", which is a valid image: the
+          # Liquidsoap script only references the library for stations that have it
+          # enabled, and operators can mount their own and repoint the env variables.
+
+          url=$(jq -r '.url // ""' sources.json)
+          sum=$(jq -r '.sha256 // ""' sources.json)
+          member=$(jq -r --arg p "$PLATFORM" '.library_member[$p] // ""' sources.json)
+
+          if [ -z "$url" ]; then
+            echo "::notice::No Stereo Tool archive configured, building without it"
+            exit 0
+          fi
+
+          if [ -z "$member" ]; then
+            echo "::notice::sources.json has no Stereo Tool build for ${PLATFORM}, building without it"
+            exit 0
+          fi
+
+          if [ -z "$sum" ]; then
+            echo "::error::sources.json sets a URL but no sha256"
+            exit 1
+          fi
+
+          curl -fsSL --retry 3 --retry-delay 5 -o stereotool.zip "$url"
+          echo "${sum}  stereotool.zip" | sha256sum -c -
+
+          # The archive is built on Windows and uses backslashes as separators, so members
+          # are matched on the file name rather than on a path. Kantar ships a second copy
+          # of the Intel build under its own directory; -j would flatten both onto the same
+          # name, so it is excluded rather than left to overwrite order.
+          unzip -oj stereotool.zip "$member" -x '*Kantar*' -d .
+          rm stereotool.zip
+
+          extracted=$(find . -maxdepth 1 -name 'libStereoTool*.so')
+          case $(printf '%s\n' "$extracted" | grep -c .) in
+            1) mv "$extracted" libStereoTool.so ;;
+            0) echo "::error::${member} did not match anything in the archive"; exit 1 ;;
+            *) echo "::error::${member} matched more than one file: ${extracted}"; exit 1 ;;
+          esac
+
+          # Guard against shipping the wrong architecture, which would only surface as a
+          # container that fails to load the operator at runtime.
+          case "$PLATFORM" in
+            linux/amd64) expected='x86-64' ;;
+            linux/arm64) expected='aarch64' ;;
+            *) expected='' ;;
+          esac
+          if [ -n "$expected" ] && ! file -b libStereoTool.so | grep -q "$expected"; then
+            echo "::error::libStereoTool.so is not ${expected}: $(file -b libStereoTool.so)"
+            exit 1
+          fi
+
+          echo "::notice::Stereo Tool $(jq -r '.version // "?"' sources.json) bundled for ${PLATFORM}"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 

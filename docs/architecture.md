@@ -34,10 +34,18 @@ the critical path for playout. Hence the fallbacks described below.
 
 A station's container is created once and stays up. It is not recreated per show.
 
-On boot it fetches its own Liquidsoap script from
+Before every Liquidsoap start, not only on boot, it fetches its own Liquidsoap script from
 `GET /api/liquidsoap/{slug}/script`, generated per station from its outputs, its live input
-and its Stereo Tool settings. That means a configuration change needs a container restart,
-not a rebuild.
+and its Stereo Tool settings. A configuration change therefore needs a Liquidsoap restart,
+not a rebuild and not a container recreation: `LiquidsoapCommandService::restart()` asks
+the supervisor in the entrypoint for exactly that.
+
+The selected Stereo Tool preset comes down the same way, from
+`GET /api/liquidsoap/{slug}/stereo-tool/preset`, and lands next to the script. Presets are
+therefore not in the station image: one endpoint serves both the presets shipped with
+RadioRing (files in `resources/stereo-tool-presets`) and the ones a station uploaded for
+itself, and a new preset costs an app deploy rather than an image build. A 404 there means
+"no preset selected", which is normal: Stereo Tool then runs with its factory settings.
 
 The container authenticates with the station API token, passed to it as an environment
 variable and sent as an `Authorization: Bearer` header. The token is stored encrypted in

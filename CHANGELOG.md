@@ -14,6 +14,11 @@ to stand on its own.
 
 ## [Unreleased]
 
+### Added
+- **Stereo Tool Integration from Thimeo.** Stations can now use stereo tool as a sound
+  processor. The configuration is done in the station settings. Each station will require
+  its own license key and a preset. Without preset the sound processing runs in default mode.
+
 ### Fixed
 
 - **Playout catches up instead of drifting.** An hour that overran used to push the whole

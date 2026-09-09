@@ -35,6 +35,37 @@ fetch_script() {
   echo "Script written to ${SCRIPT_PATH}."
 }
 
+# ===================== Fetch the Stereo Tool preset =====================
+# Must match config('radioring.stereo_tool.active_preset_file').
+: "${STEREO_TOOL_PRESET_PATH:=${LS_WORKDIR}/stereotool-preset.sts}"
+
+fetch_stereo_tool_preset() {
+  local http_code
+  http_code=$(curl -s -o "${STEREO_TOOL_PRESET_PATH}.tmp" -w "%{http_code}" \
+    -H "Authorization: Bearer ${TOKEN}" \
+    "${API_URL}/api/liquidsoap/${SLUG}/stereo-tool/preset")
+
+  if [[ "$http_code" == "200" && -s "${STEREO_TOOL_PRESET_PATH}.tmp" ]]; then
+    mv "${STEREO_TOOL_PRESET_PATH}.tmp" "${STEREO_TOOL_PRESET_PATH}"
+    echo "Stereo Tool preset written to ${STEREO_TOOL_PRESET_PATH}."
+    return 0
+  fi
+
+  rm -f "${STEREO_TOOL_PRESET_PATH}.tmp"
+
+  if [[ "$http_code" == "404" ]]; then
+    # Nothing selected: the old file has to go, or the station keeps running the preset it
+    # was just unassigned from.
+    rm -f "${STEREO_TOOL_PRESET_PATH}"
+    echo "No Stereo Tool preset selected (http=404)."
+  else
+    # Unreachable API: keep the existing file, so an outage does not change how it sounds.
+    echo "Stereo Tool preset not fetched (http=${http_code}), keeping the existing file."
+  fi
+
+  return 0
+}
+
 if [[ "$SCRIPT_REFRESH" == "true" || ! -f "$SCRIPT_PATH" ]]; then
   for attempt in {1..5}; do
     if fetch_script; then break; fi
@@ -72,7 +103,22 @@ SUPERVISOR_STOP=/tmp/liquidsoap.stop   # "restart"-Befehl: einmaliger Neustart, 
 cd "$LS_WORKDIR" || exit 1
 
 supervise_liquidsoap() {
+  local first_start=true
+
   while true; do
+    # On EVERY restart, not only on container start: otherwise the "restart" command would
+    # keep running the old script. A single attempt on purpose, so a crash restart does not
+    # wait 25s on an unreachable API; fetch_script writes through .tmp and a failure leaves
+    # the existing script alone.
+    if [[ "$first_start" != "true" && "$SCRIPT_REFRESH" == "true" ]]; then
+      fetch_script || echo "Script refresh failed, using the existing script."
+    fi
+    first_start=false
+
+    # Before the first start too: the script references the path, so the file has to exist
+    # when Liquidsoap evaluates the stereotool operator.
+    fetch_stereo_tool_preset
+
     reset_cursor
 
     echo "Starting Liquidsoap with ${SCRIPT_PATH} ..."

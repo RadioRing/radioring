@@ -30,7 +30,8 @@ class LiquidsoapCommandService
     }
 
     /**
-     * Startet den Liquidsoap-Prozess im Container neu (lädt das Script neu).
+     * Restarts Liquidsoap without touching the container. The supervisor refetches script
+     * and preset while doing so, which is how a configuration change takes effect.
      */
     public function restart(Station $station): bool
     {

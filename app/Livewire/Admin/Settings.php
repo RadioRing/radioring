@@ -4,6 +4,7 @@ namespace App\Livewire\Admin;
 
 use App\Enums\AppMode;
 use App\Models\Tenant;
+use App\Support\StereoToolTerms;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -13,9 +14,13 @@ class Settings extends Component
 {
     public string $mode = '';
 
+    /** Bound to the licence checkbox, not persisted until the operator confirms. */
+    public bool $stereoToolTermsAgreed = false;
+
     public function mount(): void
     {
         $this->mode = AppMode::current()->value;
+        $this->stereoToolTermsAgreed = StereoToolTerms::accepted();
     }
 
     #[Computed]
@@ -41,6 +46,64 @@ class Settings extends Component
     public function switchingToStandaloneIsAmbiguous(): bool
     {
         return AppMode::current()->isCloud() && $this->tenantCount() > 1;
+    }
+
+    #[Computed]
+    public function stereoToolTermsAccepted(): bool
+    {
+        return StereoToolTerms::accepted();
+    }
+
+    #[Computed]
+    public function stereoToolAcceptance(): ?string
+    {
+        $at = StereoToolTerms::acceptedAt();
+
+        if (! $at) {
+            return null;
+        }
+
+        return __('Accepted on :date by :name.', [
+            'date' => $at->isoFormat('LLL'),
+            'name' => StereoToolTerms::acceptedBy()?->name ?? __('a deleted account'),
+        ]);
+    }
+
+    /**
+     * Records instance-wide acceptance of the Thimeo licence. Until this happens, no
+     * station can have Stereo Tool enabled (see Admin\Stations::toggleStereoTool).
+     */
+    public function acceptStereoToolTerms(): void
+    {
+        if (! $this->stereoToolTermsAgreed) {
+            $this->addError('stereoToolTermsAgreed', __('Please confirm that you accept the Stereo Tool licence.'));
+
+            return;
+        }
+
+        StereoToolTerms::accept(auth()->user());
+
+        unset($this->stereoToolTermsAccepted, $this->stereoToolAcceptance);
+
+        $this->dispatch('notify', message: __('Stereo Tool licence accepted.'), type: 'success');
+    }
+
+    /**
+     * Withdraws acceptance. Stereo Tool is switched off on every station, because running
+     * it on a licence the instance no longer accepts is exactly what acceptance prevents.
+     */
+    public function revokeStereoToolTerms(): void
+    {
+        StereoToolTerms::revoke();
+
+        $this->stereoToolTermsAgreed = false;
+
+        unset($this->stereoToolTermsAccepted, $this->stereoToolAcceptance);
+
+        $this->dispatch('notify',
+            message: __('Stereo Tool licence withdrawn and disabled on all stations.'),
+            type: 'success',
+        );
     }
 
     public function save(): void
@@ -70,6 +133,7 @@ class Settings extends Component
         return view('livewire.admin.settings', [
             'modes' => AppMode::cases(),
             'currentMode' => AppMode::current(),
+            'stereoToolLicenceUrl' => StereoToolTerms::licenceUrl(),
         ])->layout('layouts.app');
     }
 }

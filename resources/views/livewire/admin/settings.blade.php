@@ -52,4 +52,51 @@
             </button>
         </div>
     </div>
+
+    <div class="card mt-4" style="max-width: 720px;">
+        <div class="card-header fw-medium">
+            <i class="bi bi-sliders me-1"></i>{{ __('Stereo Tool licence') }}
+        </div>
+        <div class="card-body">
+            <p class="text-muted-sm">
+                {{ __('Stereo Tool, its presets and its shared library are proprietary software by Thimeo and are not covered by the RadioRing licence. They ship inside the station image with permission from Thimeo.') }}
+                <a href="{{ $stereoToolLicenceUrl }}" target="_blank" rel="noopener noreferrer">{{ __('Read the licence') }}</a>
+            </p>
+
+            <ul class="text-muted-sm ps-3">
+                <li>{{ __('Each station needs its own Thimeo licence key: the licence is per stream.') }}</li>
+                <li>{{ __('Without a valid key Stereo Tool runs in demo mode and mixes noise into the audio at intervals.') }}</li>
+                <li>{{ __('If you redistribute a modified RadioRing image yourself, you need your own permission from Thimeo.') }}</li>
+            </ul>
+
+            @if($this->stereoToolTermsAccepted())
+                <div class="alert alert-success py-2">
+                    <i class="bi bi-check-circle me-1"></i>{{ $this->stereoToolAcceptance() }}
+                </div>
+
+                <button class="btn btn-outline-danger btn-sm"
+                        @click="$dispatch('confirm-dialog', { message: @js(__('Withdraw acceptance? Stereo Tool will be disabled on every station immediately. Licence keys and presets are kept.')), confirmText: @js(__('Withdraw')), confirmClass: 'btn-danger', onConfirm: () => $wire.revokeStereoToolTerms() })">
+                    <i class="bi bi-x-lg me-1"></i>{{ __('Withdraw acceptance') }}
+                </button>
+            @else
+                <div class="form-check mb-3">
+                    <input class="form-check-input @error('stereoToolTermsAgreed') is-invalid @enderror"
+                           type="checkbox" wire:model="stereoToolTermsAgreed" id="stereoToolTermsAgreed">
+                    <label class="form-check-label" for="stereoToolTermsAgreed">
+                        {{ __('I accept the Thimeo licence for Stereo Tool, its presets and its shared library.') }}
+                    </label>
+                    @error('stereoToolTermsAgreed')
+                        <div class="invalid-feedback d-block">{{ $message }}</div>
+                    @enderror
+                </div>
+
+                <button class="btn btn-primary btn-sm" wire:click="acceptStereoToolTerms">
+                    <i class="bi bi-check-lg me-1"></i>{{ __('Accept') }}
+                </button>
+                <span class="d-block text-muted-sm mt-2">
+                    {{ __('Until this is accepted, Stereo Tool cannot be enabled for any station.') }}
+                </span>
+            @endif
+        </div>
+    </div>
 </div>

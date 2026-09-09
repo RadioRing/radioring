@@ -17,11 +17,15 @@ RUN chmod +x /app/entrypoint.sh
 # config('radioring.adbreak_signal_path') passen.
 COPY ad_break.mp3 /opt/ad_break.mp3
 
-# Stereo Tool (Thimeo): proprietäre Shared-Library + .sts-Presets. Werden nur für
-# Stationen genutzt, die ein Admin freigeschaltet hat. Pfade müssen zu
-# config('radioring.stereo_tool.*') passen (libStereoTool.so + presets/<name>.sts).
-# Inhalt liegt unter ./stereotool/ (siehe stereotool/README.md) und wird NICHT
-# öffentlich verteilt – das Image gehört in eine private Registry.
+# Stereo Tool (Thimeo): proprietary shared library, shipped with Thimeo's permission and
+# under Thimeo's licence, NOT under RadioRing's AGPL. See stereotool/LICENSE-Thimeo.md,
+# which is copied along with it. Presets are NOT here: the entrypoint fetches the selected
+# .sts from the API before every Liquidsoap start.
+#
+# The binary is not in git. CI fetches it into this directory from stereotool/sources.json
+# before the build (see .github/workflows/liquidsoap-station.yml); a local build either has
+# it placed here by hand or produces an image without Stereo Tool. The path must match
+# config('radioring.stereo_tool.library_file').
 COPY stereotool/ /opt/stereotool/
 
 ENTRYPOINT ["/app/entrypoint.sh"]

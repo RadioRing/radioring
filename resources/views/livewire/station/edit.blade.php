@@ -62,16 +62,26 @@
         <div class="card mb-4" style="max-width: 480px;">
             <div class="card-body">
                 <h6 class="fw-semibold">
-                    <i class="bi bi-sliders me-1 text-primary"></i>{{ __('Stereo Tool (Audio-Processing)') }}
+                    <i class="bi bi-sliders me-1 text-primary"></i>{{ __('Stereo Tool (audio processing)') }}
                 </h6>
-                <p class="text-muted-sm">{{ __('Von einem Administrator für diese Station freigeschaltet. Hinterlege deinen Thimeo-Lizenzschlüssel und wähle ein Preset. Ohne gültige Lizenz und Preset bleibt das Processing inaktiv.') }}</p>
+                <p class="text-muted-sm">{{ __('Enabled for this station by an administrator. Store your Thimeo licence key to switch the processing on. A preset is optional: without one Stereo Tool uses its factory settings.') }}</p>
+
+                <div class="alert alert-warning py-2 text-muted-sm">
+                    <p class="mb-1">
+                        <i class="bi bi-info-circle me-1"></i>{{ __('Stereo Tool, its presets and its shared library are proprietary software by Thimeo and are not covered by the RadioRing licence.') }}
+                        <a href="{{ $stereoToolLicenceUrl }}" target="_blank" rel="noopener noreferrer">{{ __('Read the licence') }}</a>
+                    </p>
+                    <p class="mb-0">
+                        {{ __('The licence is per stream, so this station needs its own key. Without a valid key Stereo Tool runs in demo mode and mixes noise into the audio at intervals.') }}
+                    </p>
+                </div>
 
                 <form wire:submit="save">
                     <div class="mb-3">
-                        <label for="stereoToolLicenseKey" class="form-label fw-medium">{{ __('Lizenzschlüssel') }}</label>
+                        <label for="stereoToolLicenseKey" class="form-label fw-medium">{{ __('Licence key') }}</label>
                         <input id="stereoToolLicenseKey" type="text" wire:model="stereoToolLicenseKey"
                                class="form-control @error('stereoToolLicenseKey') is-invalid @enderror"
-                               autocomplete="off" placeholder="{{ __('Thimeo-Lizenzschlüssel') }}">
+                               autocomplete="off" placeholder="{{ __('Thimeo licence key') }}">
                         @error('stereoToolLicenseKey')
                             <div class="invalid-feedback">{{ $message }}</div>
                         @enderror
@@ -81,18 +91,78 @@
                         <label for="stereoToolPreset" class="form-label fw-medium">{{ __('Preset') }}</label>
                         <select id="stereoToolPreset" wire:model="stereoToolPreset"
                                 class="form-select @error('stereoToolPreset') is-invalid @enderror">
-                            <option value="">{{ __('– kein Processing –') }}</option>
-                            @foreach($stereoToolPresets as $value => $label)
-                                <option value="{{ $value }}">{{ $label }}</option>
+                            <option value="">{{ __('Factory settings (no preset)') }}</option>
+                            @foreach($stereoToolPresetGroups as $group => $presets)
+                                <optgroup label="{{ $group }}">
+                                    @foreach($presets as $identifier => $label)
+                                        <option value="{{ $identifier }}">{{ $label }}</option>
+                                    @endforeach
+                                </optgroup>
                             @endforeach
                         </select>
                         @error('stereoToolPreset')
                             <div class="invalid-feedback">{{ $message }}</div>
                         @enderror
+                        <div class="form-text">{{ __('Saving a change here restarts the player, which interrupts the stream briefly.') }}</div>
                     </div>
 
                     <button type="submit" class="btn btn-primary btn-sm">
-                        <i class="bi bi-check-lg me-1"></i>{{ __('Speichern') }}
+                        <i class="bi bi-check-lg me-1"></i>{{ __('Save') }}
+                    </button>
+                </form>
+
+                <hr class="my-4">
+
+                <h6 class="fw-semibold">{{ __('Your presets') }}</h6>
+                <p class="text-muted-sm">
+                    {{ __('Upload .sts files you exported from the Stereo Tool GUI. They stay private to this station.') }}
+                </p>
+
+                @if($stereoToolUploads->isNotEmpty())
+                    <ul class="list-group list-group-flush mb-3">
+                        @foreach($stereoToolUploads as $preset)
+                            <li class="list-group-item d-flex align-items-center justify-content-between px-0" wire:key="preset-{{ $preset->id }}">
+                                <div>
+                                    <div class="fw-medium">{{ $preset->name }}</div>
+                                    <div class="text-muted-sm">
+                                        {{ number_format($preset->size / 1024, 1) }} kB
+                                        @if($station->stereo_tool_preset === $preset->identifier())
+                                            <span class="badge text-bg-success ms-1">{{ __('Active') }}</span>
+                                        @endif
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-outline-danger btn-sm"
+                                        @click="$dispatch('confirm-dialog', { message: @js(__('Delete the preset :name?', ['name' => $preset->name])), confirmText: @js(__('Delete')), confirmClass: 'btn-danger', onConfirm: () => $wire.deletePreset({{ $preset->id }}) })">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </li>
+                        @endforeach
+                    </ul>
+                @endif
+
+                <form wire:submit="uploadPreset">
+                    <div class="mb-2">
+                        <label for="presetUpload" class="form-label fw-medium">{{ __('Preset file (.sts)') }}</label>
+                        <input id="presetUpload" type="file" wire:model="presetUpload"
+                               class="form-control form-control-sm @error('presetUpload') is-invalid @enderror" accept=".sts">
+                        @error('presetUpload')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
+                    </div>
+
+                    <div class="mb-2">
+                        <label for="presetName" class="form-label fw-medium">{{ __('Name (optional)') }}</label>
+                        <input id="presetName" type="text" wire:model="presetName"
+                               class="form-control form-control-sm @error('presetName') is-invalid @enderror"
+                               placeholder="{{ __('Taken from the file if left empty') }}">
+                        @error('presetName')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
+                    </div>
+
+                    <button type="submit" class="btn btn-outline-primary btn-sm" wire:loading.attr="disabled">
+                        <i class="bi bi-upload me-1"></i>{{ __('Upload preset') }}
+                        <span wire:loading wire:target="presetUpload,uploadPreset" class="spinner-border spinner-border-sm ms-1"></span>
                     </button>
                 </form>
             </div>

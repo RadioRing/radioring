@@ -3,6 +3,7 @@
 use App\Livewire\Admin\Stations;
 use App\Models\Station;
 use App\Models\User;
+use App\Support\StereoToolTerms;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 
@@ -14,6 +15,10 @@ beforeEach(function () {
 });
 
 test('an admin can enable and disable stereo tool for a station', function () {
+    // Enabling requires the Thimeo licence to be accepted for the instance first, see
+    // StereoToolTermsTest for the gate itself.
+    StereoToolTerms::accept($this->admin);
+
     $station = Station::factory()->create();
 
     expect($station->fresh()->stereo_tool_enabled)->toBeFalse();

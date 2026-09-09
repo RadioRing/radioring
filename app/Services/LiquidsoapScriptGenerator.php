@@ -2,9 +2,9 @@
 
 namespace App\Services;
 
-use App\Enums\StereoToolPreset;
 use App\Models\Station;
 use App\Models\StationOutput;
+use App\Support\StereoToolPresetLibrary;
 
 class LiquidsoapScriptGenerator
 {
@@ -338,22 +338,32 @@ LIQ;
     }
 
     /**
-     * Finales Stereo-Tool-Processing (Thimeo) auf die fertige radio-Source – also
-     * inklusive Live-Übernahme. Bewusst EINMAL auf "radio" statt pro Output, damit die
-     * teure Verarbeitung nur einmal läuft. Der native stereotool-Operator lädt die
-     * proprietäre Shared-Library, den Lizenzschlüssel und das gewählte Preset (.sts).
-     * Nur aktiv, wenn die Station freigeschaltet UND vollständig konfiguriert ist
-     * (siehe Station::stereoToolActive) – sonst liefe Stereo Tool im Demo-Modus.
+     * Applied ONCE to "radio" rather than per output, so the expensive processing runs
+     * once and covers the live takeover too.
+     *
+     * The preset path is hard wired and says nothing about WHICH preset is selected: the
+     * entrypoint fetches the file there before every Liquidsoap start. Omitting it makes
+     * Stereo Tool use its factory settings, which is the only alternative, since the
+     * presets built into the GUI are unreachable through the plugin API.
      */
     private function stereoToolBlock(Station $station): string
     {
         $libraryFile = (string) config('radioring.stereo_tool.library_file');
         $licenseKey = addslashes((string) $station->stereo_tool_license_key);
-        $preset = StereoToolPreset::from($station->stereo_tool_preset)->filePath();
 
-        return <<<LIQ
-        radio = stereotool(library_file="{$libraryFile}", license_key="{$licenseKey}", preset="{$preset}", radio)
-        LIQ;
+        $arguments = [
+            "library_file=\"{$libraryFile}\"",
+            "license_key=\"{$licenseKey}\"",
+        ];
+
+        if (StereoToolPresetLibrary::resolve($station) !== null) {
+            $preset = (string) config('radioring.stereo_tool.active_preset_file');
+            $arguments[] = "preset=\"{$preset}\"";
+        }
+
+        $arguments[] = 'radio';
+
+        return 'radio = stereotool('.implode(', ', $arguments).')';
     }
 
     private function outputBlock(StationOutput $output, Station $station): string

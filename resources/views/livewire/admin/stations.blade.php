@@ -35,22 +35,29 @@
                             <td>
                                 @if($station->stereo_tool_enabled)
                                     @if($station->stereoToolActive())
-                                        <span class="badge text-bg-success">{{ __('Aktiv') }}</span>
+                                        <span class="badge text-bg-success">{{ __('Active') }}</span>
                                     @else
-                                        <span class="badge text-bg-warning">{{ __('Freigeschaltet – nicht konfiguriert') }}</span>
+                                        <span class="badge text-bg-warning">{{ __('Enabled, not configured') }}</span>
                                     @endif
                                 @else
-                                    <span class="badge text-bg-light border text-muted">{{ __('Nicht freigeschaltet') }}</span>
+                                    <span class="badge text-bg-light border text-muted">{{ __('Not enabled') }}</span>
                                 @endif
                             </td>
                             <td class="text-end">
-                                <button class="btn btn-sm {{ $station->stereo_tool_enabled ? 'btn-outline-danger' : 'btn-outline-primary' }}"
-                                        @click="$dispatch('confirm-dialog', { message: @js($station->stereo_tool_enabled
-                                            ? __('Stereo Tool für „:name" deaktivieren?', ['name' => $station->name])
-                                            : __('Stereo Tool für „:name" freischalten? Das erhöht die CPU-Last des Containers dauerhaft.', ['name' => $station->name])), confirmClass: @js($station->stereo_tool_enabled ? 'btn-danger' : 'btn-primary'), onConfirm: () => $wire.toggleStereoTool({{ $station->id }}) })">
-                                    <i class="bi {{ $station->stereo_tool_enabled ? 'bi-toggle-on' : 'bi-toggle-off' }} me-1"></i>
-                                    {{ $station->stereo_tool_enabled ? __('Deaktivieren') : __('Freischalten') }}
-                                </button>
+                                @if(! $station->stereo_tool_enabled && ! $stereoToolTermsAccepted)
+                                    <a href="{{ route('admin.settings') }}" class="btn btn-sm btn-outline-secondary" wire:navigate
+                                       title="{{ __('Accept the Stereo Tool licence in the instance settings first.') }}">
+                                        <i class="bi bi-shield-exclamation me-1"></i>{{ __('Licence not accepted') }}
+                                    </a>
+                                @else
+                                    <button class="btn btn-sm {{ $station->stereo_tool_enabled ? 'btn-outline-danger' : 'btn-outline-primary' }}"
+                                            @click="$dispatch('confirm-dialog', { message: @js($station->stereo_tool_enabled
+                                                ? __('Disable Stereo Tool for :name?', ['name' => $station->name])
+                                                : __('Enable Stereo Tool for :name? This raises the CPU load of the container permanently, and the station needs its own Thimeo licence key.', ['name' => $station->name])), confirmClass: @js($station->stereo_tool_enabled ? 'btn-danger' : 'btn-primary'), onConfirm: () => $wire.toggleStereoTool({{ $station->id }}) })">
+                                        <i class="bi {{ $station->stereo_tool_enabled ? 'bi-toggle-on' : 'bi-toggle-off' }} me-1"></i>
+                                        {{ $station->stereo_tool_enabled ? __('Disable') : __('Enable') }}
+                                    </button>
+                                @endif
                             </td>
                         </tr>
                     @empty

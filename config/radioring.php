@@ -168,18 +168,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Stereo Tool (Thimeo) – optionales Audio-Processing pro Station
+    | Stereo Tool (Thimeo): optional audio processing per station
     |--------------------------------------------------------------------------
-    | CPU-intensives finales Processing über den nativen Liquidsoap-stereotool-
-    | Operator. Wird pro Station von einem Admin freigeschaltet (stereo_tool_enabled),
-    | der Betreiber hinterlegt seinen eigenen Thimeo-Lizenzschlüssel und wählt ein
-    | Preset. Die proprietäre Shared-Library und die .sts-Presets liegen im (privaten)
-    | Station-Image unter diesen Pfaden – NICHT im Repo eingecheckt.
+    | CPU intensive final processing through the native Liquidsoap stereotool operator.
+    | An admin enables it per station (stereo_tool_enabled), the operator supplies their
+    | own Thimeo licence key and optionally picks a preset. The shared library is
+    | proprietary and falls under Thimeo's licence; it sits in the station image at
+    | library_file. To run a different build, mount it into the container and point
+    | STEREO_TOOL_LIBRARY_FILE at it.
+    |
+    | Presets are NOT in the image: the entrypoint fetches the selected .sts from the API
+    | before every Liquidsoap start and drops it at active_preset_file (see
+    | StereoToolPresetLibrary). Without a preset Stereo Tool runs with factory settings.
+    |
+    | licence_url points at the licence text an admin has to accept in the portal before
+    | Stereo Tool can be enabled for any station (StereoToolTerms).
     |
     */
     'stereo_tool' => [
         'library_file' => env('STEREO_TOOL_LIBRARY_FILE', '/opt/stereotool/libStereoTool.so'),
-        'presets_path' => env('STEREO_TOOL_PRESETS_PATH', '/opt/stereotool/presets'),
+        'active_preset_file' => env('STEREO_TOOL_ACTIVE_PRESET_FILE', '/app/liquidsoap/stereotool-preset.sts'),
+        'licence_url' => env('STEREO_TOOL_LICENCE_URL', 'https://www.thimeo.com/stereo-tool/'),
     ],
 
     /*

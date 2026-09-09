@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 #[Fillable(['user_id', 'tenant_id', 'name', 'slug', 'status', 'api_token', 's4r_partner_token', 'regenerate_rundowns_nightly', 'stereo_tool_license_key', 'stereo_tool_preset'])]
@@ -36,15 +37,14 @@ class Station extends Model
     }
 
     /**
-     * Ist Stereo Tool für diese Station betriebsbereit? Freigeschaltet (Admin) UND
-     * vom Betreiber vollständig konfiguriert (Lizenz + Preset). Ohne Lizenz liefe
-     * Stereo Tool im Demo-Modus mit periodischen Aussetzern – dann lieber weglassen.
+     * Without a licence Stereo Tool would run in demo mode with periodic dropouts, so it
+     * is left out entirely instead. A preset is NOT required: without one it processes
+     * with its factory settings.
      */
     public function stereoToolActive(): bool
     {
         return $this->stereo_tool_enabled
-            && filled($this->stereo_tool_license_key)
-            && filled($this->stereo_tool_preset);
+            && filled($this->stereo_tool_license_key);
     }
 
     /** Ist diese Station mit Syndications4Radio verknüpft (Partner-Token hinterlegt)? */
@@ -182,6 +182,17 @@ class Station extends Model
     public function outputs(): HasMany
     {
         return $this->hasMany(StationOutput::class);
+    }
+
+    /** Presets shipped with RadioRing are files, not rows here (StereoToolPresetLibrary). */
+    public function stereoToolPresets(): HasMany
+    {
+        return $this->hasMany(StereoToolPreset::class);
+    }
+
+    public function stereoToolPresetDirectory(): string
+    {
+        return 'stereo-tool-presets/'.$this->id;
     }
 
     /**
@@ -409,6 +420,10 @@ class Station extends Model
             $station->members()->syncWithoutDetaching([
                 $station->user_id => ['role' => 'owner'],
             ]);
+        });
+
+        static::deleted(function (Station $station) {
+            Storage::disk('local')->deleteDirectory($station->stereoToolPresetDirectory());
         });
     }
 }

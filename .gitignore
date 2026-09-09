@@ -27,3 +27,7 @@ yarn-error.log
 /CLAUDE.md
 /boost.json
 /.mcp.json
+
+# Stereo Tool library: proprietary, fetched at build time, never committed.
+# See docker/liquidsoap-station/stereotool/README.md
+/docker/liquidsoap-station/stereotool/libStereoTool.so

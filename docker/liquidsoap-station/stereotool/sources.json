@@ -1,0 +1,10 @@
+{
+    "_comment": "Stereo Tool build inputs. See README.md. One archive covers every platform; library_member picks the right build out of it. sha256 pins the archive, because the URL is not versioned. Empty url = skip, image builds without Stereo Tool.",
+    "version": "11.05",
+    "url": "https://download.thimeo.com/Stereo_Tool_Generic_plugin.zip",
+    "sha256": "08ad70fe846cb5084f388f8030de6e485112489779a8d86e3eba4e64774faf74",
+    "library_member": {
+        "linux/amd64": "*libStereoTool_intel64.so",
+        "linux/arm64": "*libStereoTool_noX11_arm64.so"
+    }
+}

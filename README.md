@@ -219,3 +219,32 @@ Support can however only be done at best-effort basis.
 The AGPL matters here: if you run a modified RadioRing as a network service, you have to
 offer your users the modified source. Running it unmodified for your own station places no
 such obligation on you.
+
+### Third-party components
+
+Not everything in the published images is RadioRing's to license.
+
+**Stereo Tool** (optional audio processing) is proprietary software by Thimeo Audio
+Technology B.V. Its shared library ships inside the `liquidsoap-station` image and is
+**not** covered by the AGPL. They are used under
+[Thimeo's own licence](https://www.thimeo.com/stereo-tool/), and Thimeo granted the
+RadioRing project permission to distribute them on the condition that this is stated
+clearly. Details in
+[`docker/liquidsoap-station/stereotool/LICENSE-Thimeo.md`](docker/liquidsoap-station/stereotool/LICENSE-Thimeo.md).
+
+Two things follow from that:
+
+- **A fork is not covered.** The permission was granted to this project. If you publish
+  your own station image containing Stereo Tool, get your own permission from Thimeo.
+- **You need your own licence key.** It is licensed per stream, is not shipped, and is
+  stored per station. Without one Stereo Tool runs in demo mode and mixes noise into the
+  audio at intervals, so RadioRing leaves the processing switched off until a key is
+  present.
+
+`.sts` presets are a separate matter: they are settings files, not Thimeo software. Those
+shipped with RadioRing live in
+[`resources/stereo-tool-presets`](resources/stereo-tool-presets) and are contributed by
+pull request; stations can also upload their own, which stay private to that station.
+
+An administrator has to accept the Thimeo licence once per instance, under
+instance settings, before Stereo Tool can be enabled for any station.

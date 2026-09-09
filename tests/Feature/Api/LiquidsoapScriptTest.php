@@ -269,10 +269,10 @@ test('generator omits stereo tool when the station is not enabled', function () 
     expect($script)->not->toContain('stereotool(');
 });
 
-test('generator omits stereo tool when enabled but not fully configured', function () {
-    // Freigeschaltet, aber ohne Lizenz/Preset – dann liefe Stereo Tool nur im
-    // Demo-Modus mit Aussetzern, also lieber ganz weglassen. stereo_tool_enabled
-    // ist bewusst nicht fillable (Admin-only), daher forceFill.
+test('generator omits stereo tool when enabled but without a license key', function () {
+    // Enabled but without a licence, which would leave Stereo Tool in demo mode with
+    // dropouts, so it is left out entirely. stereo_tool_enabled is deliberately not
+    // fillable (admin only), hence forceFill.
     $this->station->forceFill(['stereo_tool_enabled' => true])->save();
 
     $script = app(LiquidsoapScriptGenerator::class)->generate($this->station->fresh());
@@ -280,25 +280,40 @@ test('generator omits stereo tool when enabled but not fully configured', functi
     expect($script)->not->toContain('stereotool(');
 });
 
-test('generator wires stereo tool on the final radio source when fully configured', function () {
-    config([
-        'radioring.stereo_tool.library_file' => '/opt/stereotool/libStereoTool.so',
-        'radioring.stereo_tool.presets_path' => '/opt/stereotool/presets',
-    ]);
+test('generator wires stereo tool without a preset argument when no preset is chosen', function () {
+    config(['radioring.stereo_tool.library_file' => '/opt/stereotool/libStereoTool.so']);
 
+    // A preset is optional: the Liquidsoap operator declares it nullable and leaves it
+    // out when absent, so Stereo Tool runs with its factory settings.
     $this->station->forceFill([
         'stereo_tool_enabled' => true,
         'stereo_tool_license_key' => 'my-license-key',
-        'stereo_tool_preset' => 'pop',
+        'stereo_tool_preset' => null,
     ])->save();
 
     $script = app(LiquidsoapScriptGenerator::class)->generate($this->station->fresh());
 
-    // Processing läuft EINMAL auf die fertige radio-Source (inkl. Live-Übernahme).
     expect($script)
-        ->toContain('radio = stereotool(library_file="/opt/stereotool/libStereoTool.so", license_key="my-license-key", preset="/opt/stereotool/presets/pop.sts", radio)');
+        ->toContain('radio = stereotool(library_file="/opt/stereotool/libStereoTool.so", license_key="my-license-key", radio)')
+        ->not->toContain('preset=');
+});
 
-    // Muss NACH dem fallback und VOR den Outputs stehen.
+test('generator wires stereo tool on the final radio source when fully configured', function () {
+    config(['radioring.stereo_tool.library_file' => '/opt/stereotool/libStereoTool.so']);
+
+    $this->station->forceFill([
+        'stereo_tool_enabled' => true,
+        'stereo_tool_license_key' => 'my-license-key',
+    ])->save();
+
+    $script = app(LiquidsoapScriptGenerator::class)->generate($this->station->fresh());
+
+    // Processing runs ONCE on the finished radio source, live takeover included.
+    // The preset argument has its own test, see StereoToolPresetDeliveryTest.
+    expect($script)
+        ->toContain('radio = stereotool(library_file="/opt/stereotool/libStereoTool.so", license_key="my-license-key", radio)');
+
+    // Must sit AFTER the fallback and BEFORE the outputs.
     expect(strpos($script, 'radio = fallback'))
         ->toBeLessThan(strpos($script, 'radio = stereotool'));
     expect(strpos($script, 'radio = stereotool'))
