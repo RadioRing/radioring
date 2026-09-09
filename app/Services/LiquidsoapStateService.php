@@ -92,31 +92,33 @@ class LiquidsoapStateService
     }
 
     /**
-     * Notes that this pull had nothing to hand out - the station is sending silence.
+     * Notes that this pull had nothing to hand out.
      *
-     * The start time is kept so the dashboard can say how long the hole has been open.
-     * The protocol line is written only once the gap exceeds the alert threshold: the
-     * container pulls every second, and the seconds-long gap at an hour boundary (the next
-     * rundown is released shortly before its airtime) is normal, not an incident.
+     * That on its own is NOT an incident: with prefetch=3 the cursor runs minutes ahead of
+     * the airplay, so it runs dry long before the listener hears anything. Only the start
+     * time is written here; whether the station is audibly silent is decided by
+     * LiquidsoapState::underrunSeconds(), which waits for the on-air snapshot to expire.
+     * The protocol line follows that same verdict, once per episode - the container pulls
+     * every second.
      */
     private function recordUnderrun(Station $station, LiquidsoapState $state): void
     {
-        $startedAt = $state->underrun_started_at ?? now();
-
         $state->update([
             'last_pulled_at' => now(),
-            'underrun_started_at' => $startedAt,
+            'underrun_started_at' => $state->underrun_started_at ?? now(),
         ]);
 
         if ($state->underrun_logged_at !== null) {
             return;
         }
 
-        $threshold = (int) config('radioring.underrun_alert_seconds', 30);
+        $seconds = $state->underrunSeconds();
 
-        if ((int) $startedAt->diffInSeconds(now()) < $threshold) {
+        if ($seconds === null) {
             return;
         }
+
+        $silenceSince = now()->copy()->subSeconds($seconds);
 
         $state->update(['underrun_logged_at' => now()]);
 
@@ -125,9 +127,9 @@ class LiquidsoapStateService
             'event' => StationLog::EVENT_UNDERRUN,
             'generated_playlist_id' => $state->current_rundown_id,
             'message' => __('Programme underrun: nothing left to play since :time, the station is sending silence.', [
-                'time' => $startedAt->format('H:i:s'),
+                'time' => $silenceSince->format('H:i:s'),
             ]),
-            'occurred_at' => $startedAt,
+            'occurred_at' => $silenceSince,
         ]);
     }
 
@@ -179,6 +181,11 @@ class LiquidsoapStateService
                 'now_playing_source_type' => $item?->source_type,
                 'now_playing_duration_seconds' => $item?->duration_seconds,
                 'now_playing_started_at' => $item ? now() : null,
+                // Ein Track auf Sendung beendet eine offene Underrun-Episode: die Station
+                // ist hörbar wieder da. Ohne das bliebe die Warnung stehen, solange der
+                // Cursor trocken läuft - obwohl der Prefetch-Puffer noch spielt.
+                'underrun_started_at' => $item ? null : $state->underrun_started_at,
+                'underrun_logged_at' => $item ? null : $state->underrun_logged_at,
                 // Ein regulärer (oder leerer) Track bedeutet: keine Live-Übernahme mehr.
                 'live_active' => false,
                 'live_title' => null,

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -89,8 +90,21 @@ class LiquidsoapState extends Model
      */
     public function nowPlayingHasEnded(): bool
     {
+        $endsAt = $this->nowPlayingEndsAt();
+
+        return $endsAt === null
+            || now()->gt($endsAt->copy()->addSeconds(self::NOW_PLAYING_STALE_GRACE_SECONDS));
+    }
+
+    /**
+     * When the track described by the snapshot is expected to be over, or null if nothing
+     * is on air. Adbreaks have no duration of their own and fall back to
+     * ADBREAK_ASSUMED_DURATION_SECONDS.
+     */
+    public function nowPlayingEndsAt(): ?CarbonInterface
+    {
         if (! $this->now_playing_started_at) {
-            return true;
+            return null;
         }
 
         $assumedDuration = match (true) {
@@ -98,8 +112,7 @@ class LiquidsoapState extends Model
             default => $this->now_playing_duration_seconds ?? self::NOW_PLAYING_UNKNOWN_DURATION_SECONDS,
         };
 
-        return (int) $this->now_playing_started_at->diffInSeconds(now())
-            > $assumedDuration + self::NOW_PLAYING_STALE_GRACE_SECONDS;
+        return $this->now_playing_started_at->copy()->addSeconds($assumedDuration);
     }
 
     /**
@@ -115,15 +128,30 @@ class LiquidsoapState extends Model
     }
 
     /**
-     * How long the confirmed underrun has been going on, or null if there is none.
+     * How long the station has audibly been sending silence, or null if it has not.
+     *
+     * A dry pull alone means nothing: with prefetch=3 the pull cursor runs minutes ahead of
+     * what is on air, so /next runs out of items long before the listener notices - the
+     * first version of this raised the alarm while the track was plainly still playing.
+     * The audible side decides, so the snapshot has to have expired as well. A live
+     * takeover is on air by definition and never counts.
+     *
+     * The gap is measured from the end of the last track, not from the first dry pull,
+     * which for the same reason lies well before the silence.
      */
     public function underrunSeconds(): ?int
     {
-        if (! $this->underrun_started_at) {
+        if (! $this->underrun_started_at || $this->live_active || ! $this->nowPlayingHasEnded()) {
             return null;
         }
 
-        $seconds = (int) $this->underrun_started_at->diffInSeconds(now());
+        $silenceSince = $this->nowPlayingEndsAt();
+
+        if ($silenceSince === null || $this->underrun_started_at->gt($silenceSince)) {
+            $silenceSince = $this->underrun_started_at;
+        }
+
+        $seconds = (int) $silenceSince->diffInSeconds(now());
 
         return $seconds >= (int) config('radioring.underrun_alert_seconds', 30)
             ? $seconds

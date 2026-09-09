@@ -125,6 +125,25 @@ test('an adbreak stuck past its assumed length is no longer shown as running', f
         ->assertDontSee('ON AIR');
 });
 
+test('a dry pull cursor raises no underrun alarm while a track is playing', function () {
+    config(['radioring.underrun_alert_seconds' => 30]);
+
+    // Der Cursor laeuft dem Ton per Prefetch voraus: eine trockene Stelle dort ist kein
+    // Loch auf Sendung, solange der Player noch einen laufenden Track hat.
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'now_playing_title' => 'Laufender Song',
+        'now_playing_source_type' => 'music',
+        'now_playing_duration_seconds' => 180,
+        'now_playing_started_at' => now()->subSeconds(30),
+        'underrun_started_at' => now()->subMinutes(5),
+    ]);
+
+    Livewire::test(Dashboard::class)
+        ->assertSee('Laufender Song')
+        ->assertDontSee('UNDERRUN');
+});
+
 test('the alert threshold decides whether a gap is reported as an underrun', function () {
     config(['radioring.underrun_alert_seconds' => 30]);
 

@@ -443,3 +443,104 @@ test('upcomingHardStart announces only within its lead window', function () {
     $this->travelTo(today()->setTime(13, 0, 0));
     expect($this->service->upcomingHardStart($this->station))->toBeNull();
 });
+
+test('a dry pull raises no underrun while a track is still audibly running', function () {
+    config(['radioring.underrun_alert_seconds' => 30]);
+
+    // Der Rundown ist am Cursor erschoepft, hoerbar laeuft aber noch ein Track aus dem
+    // Prefetch-Puffer. Genau hier schlug die Warnung frueher an, obwohl die Station sendete.
+    $rundown = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id,
+        'broadcast_date' => today(),
+        'broadcast_hour' => now()->hour,
+        'status' => 'ready',
+        'start_mode' => 'soft',
+    ]);
+
+    $state = LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'current_rundown_id' => $rundown->id,
+        'current_item_position' => 0,
+        'now_playing_title' => 'Laufender Song',
+        'now_playing_source_type' => 'music',
+        'now_playing_duration_seconds' => 180,
+        'now_playing_started_at' => now(),
+    ]);
+
+    $this->travel(90)->seconds();
+
+    expect($this->service->pullNextItem($this->station))->toBeNull();
+
+    $state->refresh();
+
+    // Der Zeitpunkt wird gemerkt, gemeldet wird nichts.
+    expect($state->underrun_started_at)->not->toBeNull()
+        ->and($state->underrunSeconds())->toBeNull()
+        ->and($state->underrun_logged_at)->toBeNull();
+
+    expect(StationLog::where('station_id', $this->station->id)
+        ->where('event', StationLog::EVENT_UNDERRUN)->count())->toBe(0);
+
+    // Erst wenn der Track abgelaufen ist und nichts nachkommt, ist es ein Underrun - und
+    // gezaehlt wird ab dem Ende des Tracks, nicht ab dem ersten trockenen Pull.
+    $this->travel(240)->seconds();
+
+    expect($this->service->pullNextItem($this->station))->toBeNull();
+
+    $state->refresh();
+    expect($state->underrunSeconds())->toBe(150)
+        ->and($state->underrun_logged_at)->not->toBeNull();
+
+    expect(StationLog::where('station_id', $this->station->id)
+        ->where('event', StationLog::EVENT_UNDERRUN)->count())->toBe(1);
+});
+
+test('a track going on air closes an open underrun episode', function () {
+    config(['radioring.underrun_alert_seconds' => 30]);
+
+    $rundown = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id,
+        'broadcast_date' => today(),
+        'broadcast_hour' => now()->hour,
+        'status' => 'ready',
+        'start_mode' => 'soft',
+    ]);
+
+    $item = GeneratedPlaylistItem::factory()->create([
+        'generated_playlist_id' => $rundown->id,
+        'media_file_id' => MediaFile::factory()->create(['tenant_id' => $this->station->tenant_id, 'type' => 'music', 'file_path' => "tenants/{$this->station->tenant_id}/media/on.mp3", 'title' => 'On'])->id,
+        'position' => 0,
+        'source_type' => 'template_item',
+        'title' => 'On',
+        'duration_seconds' => 180,
+    ]);
+
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'current_rundown_id' => $rundown->id,
+        'current_item_position' => 1,
+        'underrun_started_at' => now()->subMinutes(10),
+        'underrun_logged_at' => now()->subMinutes(9),
+    ]);
+
+    // Ein Track aus dem Prefetch-Puffer geht auf Sendung: die Station ist hoerbar da.
+    $this->service->setNowPlaying($this->station, $item);
+
+    $state = LiquidsoapState::where('station_id', $this->station->id)->first();
+    expect($state->underrun_started_at)->toBeNull()
+        ->and($state->underrun_logged_at)->toBeNull()
+        ->and($state->underrunSeconds())->toBeNull();
+});
+
+test('a live takeover is never reported as an underrun', function () {
+    config(['radioring.underrun_alert_seconds' => 30]);
+
+    $state = LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'live_active' => true,
+        'underrun_started_at' => now()->subMinutes(10),
+    ]);
+
+    // Waehrend einer Uebernahme liefert /next nichts, gesendet wird trotzdem.
+    expect($state->underrunSeconds())->toBeNull();
+});
