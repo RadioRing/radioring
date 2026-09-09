@@ -42,11 +42,12 @@ class LiquidsoapState extends Model
     public const NOW_PLAYING_UNKNOWN_DURATION_SECONDS = 900;
 
     /**
-     * Assumed length of an adbreak. Its real length is decided by laut.fm and unknown
-     * here, so the snapshot cannot expire with the signal file, which is over after a
-     * second. Without an upper bound the dashboard stays on START_AD_BREAK forever once
-     * the programme runs dry behind it - which is exactly how a 21 minute hole went
-     * unnoticed.
+     * Assumed length of an adbreak. Its real length is decided by laut.fm and unknown here,
+     * so the value is deliberately the length of the signal file itself: together with
+     * NOW_PLAYING_STALE_GRACE_SECONDS the snapshot survives roughly a minute, long enough
+     * for a normal break and short enough to expire. It used to be exempt from the check
+     * altogether, which is how the dashboard sat on START_AD_BREAK for 21 minutes while the
+     * programme ran dry behind it.
      */
     public const ADBREAK_ASSUMED_DURATION_SECONDS = 1;
 

@@ -95,13 +95,14 @@ test('a stopped container is shown as off air', function () {
 });
 
 test('player keeps showing an adbreak past its signal duration', function () {
-    // Adbreaks haben auf laut.fm eine variable Echtdauer → nicht als beendet werten.
+    // Die Signaldatei ist nach Sekunden durch, der Werbeblock auf laut.fm laeuft weiter:
+    // innerhalb der Grace-Periode bleibt er deshalb der laufende Titel.
     LiquidsoapState::create([
         'station_id' => $this->station->id,
         'now_playing_title' => 'Werbeblock',
         'now_playing_source_type' => 'adbreak',
         'now_playing_duration_seconds' => 5,
-        'now_playing_started_at' => now()->subSeconds(120),
+        'now_playing_started_at' => now()->subSeconds(30),
     ]);
 
     Livewire::test(Dashboard::class)
@@ -109,10 +110,10 @@ test('player keeps showing an adbreak past its signal duration', function () {
         ->assertDontSee('Kein Track aktiv');
 });
 
-test('an adbreak stuck far past its assumed length is no longer shown as running', function () {
-    // Incident of 2026-09-09: the rundown ran dry behind an adbreak, so the player froze
-    // on START_AD_BREAK for 21 minutes. Adbreaks have no duration of their own, but they
-    // must still expire.
+test('an adbreak stuck past its assumed length is no longer shown as running', function () {
+    // Gegenstueck zum Test darueber: Vorfall vom 09.09.2026, hinter einem Werbeblock lief
+    // der Rundown leer und der Player stand 21 Minuten auf START_AD_BREAK. Die Echtdauer
+    // eines Blocks kennt RadioRing nicht, eine Obergrenze braucht sie trotzdem.
     LiquidsoapState::create([
         'station_id' => $this->station->id,
         'now_playing_title' => 'START_AD_BREAK',
