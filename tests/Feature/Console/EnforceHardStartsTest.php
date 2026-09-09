@@ -200,3 +200,82 @@ test('cuts again for the next hour despite an earlier commit', function () {
         ->and($state->current_item_position)->toBe(0)
         ->and($state->hard_start_committed_rundown_id)->toBe($next->id);
 });
+
+test('announces the next hard start before its full hour and leaves the cursor alone', function () {
+    $this->station->stream()->create(['container_name' => 'radioring-'.$this->station->slug, 'status' => 'running']);
+
+    $running = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 12,
+        'status' => 'ready', 'start_mode' => 'soft',
+    ]);
+
+    $hard = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 13,
+        'status' => 'ready', 'start_mode' => 'hard',
+    ]);
+    GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $hard->id, 'position' => 0, 'source_type' => 'news_weather', 'title' => 'Nachrichten']);
+
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'current_rundown_id' => $running->id,
+        'current_item_position' => 5,
+    ]);
+
+    $this->travelTo(today()->setTime(12, 59, 0));
+
+    // 60 Sekunden Vorlauf: der Container legt den Fade so, dass der Cut auf 13:00:00 faellt.
+    $this->mock(LiquidsoapCommandService::class)
+        ->shouldReceive('skip')->once()->with(Mockery::any(), 60.0)->andReturnTrue();
+
+    $this->artisan('radioring:enforce-hard-starts')->assertSuccessful();
+
+    $state = LiquidsoapState::where('station_id', $this->station->id)->first();
+
+    // Der Cursor darf NICHT mitwandern: sonst zoege der Prefetch die Nachrichten noch vor
+    // dem Schnitt, und das set_queue([]) des Cuts wuerfe genau sie weg.
+    expect($state->hard_start_committed_rundown_id)->toBe($hard->id)
+        ->and($state->current_rundown_id)->toBe($running->id)
+        ->and($state->current_item_position)->toBe(5);
+});
+
+test('announces a hard start only once', function () {
+    $this->station->stream()->create(['container_name' => 'radioring-'.$this->station->slug, 'status' => 'running']);
+
+    $hard = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 13,
+        'status' => 'ready', 'start_mode' => 'hard',
+    ]);
+    GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $hard->id, 'position' => 0, 'source_type' => 'news_weather', 'title' => 'Nachrichten']);
+
+    LiquidsoapState::create(['station_id' => $this->station->id, 'current_item_position' => 5]);
+
+    $this->travelTo(today()->setTime(12, 59, 0));
+
+    $this->mock(LiquidsoapCommandService::class)
+        ->shouldReceive('skip')->once()->andReturnTrue();
+
+    $this->artisan('radioring:enforce-hard-starts')->assertSuccessful();
+
+    // Der Lauf zur vollen Stunde darf nicht ein zweites Mal schneiden.
+    $this->travelTo(today()->setTime(13, 0, 0));
+    $this->artisan('radioring:enforce-hard-starts')->assertSuccessful();
+});
+
+test('does not announce a soft start', function () {
+    $this->station->stream()->create(['container_name' => 'radioring-'.$this->station->slug, 'status' => 'running']);
+
+    $soft = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 13,
+        'status' => 'ready', 'start_mode' => 'soft',
+    ]);
+    GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $soft->id, 'position' => 0, 'source_type' => 'template_item', 'title' => 'S0']);
+
+    LiquidsoapState::create(['station_id' => $this->station->id, 'current_item_position' => 5]);
+
+    $this->travelTo(today()->setTime(12, 59, 0));
+
+    $this->mock(LiquidsoapCommandService::class)
+        ->shouldReceive('skip')->never();
+
+    $this->artisan('radioring:enforce-hard-starts')->assertSuccessful();
+});

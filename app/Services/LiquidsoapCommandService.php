@@ -14,11 +14,15 @@ use Illuminate\Support\Facades\Redis;
 class LiquidsoapCommandService
 {
     /**
-     * Springt sofort zum nächsten Track (request.dynamic-Source "radioring").
+     * Springt zum nächsten Track (request.dynamic-Source "radioring").
+     *
+     * $leadSeconds verschiebt den Schnitt in die Zukunft: Der Container plant ihn dann
+     * selbst und blendet so aus, dass der Cut GENAU nach dieser Zeit liegt. So faded ein
+     * um 14:58 gestarteter Titel vor 15:00:00 aus, statt erst danach. 0 = sofort.
      */
-    public function skip(Station $station): bool
+    public function skip(Station $station, float $leadSeconds = 0.0): bool
     {
-        return $this->publish($station, 'skip');
+        return $this->publish($station, 'skip', ['lead' => round(max(0.0, $leadSeconds), 2)]);
     }
 
     /**
@@ -38,7 +42,10 @@ class LiquidsoapCommandService
         return $this->publish($station, 'restart');
     }
 
-    protected function publish(Station $station, string $command): bool
+    /**
+     * @param  array<string, mixed>  $extra  Zusätzliche Felder der Befehls-Nachricht.
+     */
+    protected function publish(Station $station, string $command, array $extra = []): bool
     {
         $containerName = $station->stream?->container_name ?? 'radioring-'.$station->slug;
         $channel = (string) config('radioring.control_channel');
@@ -46,6 +53,7 @@ class LiquidsoapCommandService
         $payload = json_encode([
             'command' => $command,
             'container_name' => $containerName,
+            ...$extra,
         ], JSON_THROW_ON_ERROR);
 
         try {

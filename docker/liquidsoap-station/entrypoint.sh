@@ -166,6 +166,12 @@ control_loop() {
     cmd=$(printf '%s' "$payload" | jq -r '.command // empty' 2>/dev/null)
     tgt=$(printf '%s' "$payload" | jq -r '.container_name // empty' 2>/dev/null)
 
+    # Vorlauf in Sekunden bis zum Schnitt (Hard-Start-Ankuendigung). Liquidsoap plant den
+    # Cut damit selbst und blendet so aus, dass er auf der vollen Stunde liegt.
+    # Bewusst streng geprueft: der Wert landet direkt in der Telnet-Befehlszeile.
+    lead=$(printf '%s' "$payload" | jq -r '.lead // 0' 2>/dev/null)
+    [[ "$lead" =~ ^[0-9]+(\.[0-9]+)?$ ]] || lead=0
+
     echo "Relay: Nachricht empfangen (cmd='${cmd}' target='${tgt}', erwartet='${CONTAINER_NAME:-}')"
 
     if [[ "$tgt" != "${CONTAINER_NAME:-}" ]]; then
@@ -176,7 +182,8 @@ control_loop() {
 
     case "$cmd" in
       skip)
-        printf 'radioring.flush_and_skip\nquit\n' | nc -w 1 127.0.0.1 1234 || echo "skip: telnet nicht erreichbar"
+        echo "skip: Schnitt in ${lead}s"
+        printf 'radioring.flush_and_skip %s\nquit\n' "$lead" | nc -w 1 127.0.0.1 1234 || echo "skip: telnet nicht erreichbar"
         ;;
       restart)
         echo "restart → beende Liquidsoap (Supervisor startet es neu)"
@@ -185,7 +192,7 @@ control_loop() {
         ;;
       stop)
         # Liquidsoap kennt kein sauberes Output-Stop per Telnet → best effort skip.
-        printf 'radioring.flush_and_skip\nquit\n' | nc -w 1 127.0.0.1 1234 || true
+        printf 'radioring.flush_and_skip 0\nquit\n' | nc -w 1 127.0.0.1 1234 || true
         ;;
       *)
         echo "Unbekannter Befehl: ${cmd}"

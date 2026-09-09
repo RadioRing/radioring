@@ -202,19 +202,31 @@ LIQ;
 
     private function hardCutCommand(): string
     {
-        // Wird vom Container-Relay als Telnet-Befehl "radioring.flush_and_skip"
+        // Wird vom Container-Relay als Telnet-Befehl "radioring.flush_and_skip <sekunden>"
         // aufgerufen (siehe docker/liquidsoap-station/entrypoint.sh). Ein einfacher
         // skip würde nur den laufenden Track droppen – die bis zu 3 per prefetch
         // bereits vorgeladenen Tracks (z. B. Überhang der Vorstunde) würden
         // weiterlaufen. Für einen harten Stundencut muss die Prefetch-Queue erst
         // geleert werden, damit Liquidsoap sofort neu von /next zieht.
+        //
+        // Das Argument ist der Vorlauf bis zum Schnitt. Der Container plant ihn selbst,
+        // weil nur er die Uhr sample-genau treffen kann: EnforceHardStarts läuft im
+        // Minutentakt und könnte den Fade sonst erst NACH der vollen Stunde starten.
         $fadeOut = (float) config('radioring.hard_cut_fade_out_seconds', 0.8);
 
         if ($fadeOut <= 0.0) {
             return <<<'LIQ'
-def flush_and_skip(_) =
+def hard_cut_now() =
   source.set_queue([])
   source.skip()
+end
+
+# The argument is the number of seconds from now until the cut is due; 0 (a manual skip)
+# cuts right away. See hardCutCommand for why the container schedules this itself.
+def flush_and_skip(arg) =
+  lead = float_of_string(default=0., string.trim(arg))
+  log(level=3, label="radioring", "Hard cut scheduled in #{lead}s.")
+  thread.run(delay=lead, hard_cut_now)
   "ok"
 end
 server.register(namespace="radioring", description="Flush the prefetch queue and skip to the next track", "flush_and_skip", flush_and_skip)
@@ -264,12 +276,19 @@ def rec hard_cut_step() =
   end
 end
 
-def flush_and_skip(_) =
+# The argument is the number of seconds from now until the cut is due. The ramp is placed
+# so that it ENDS at that moment: a hard start announced at 14:59 for 15:00:00 fades the
+# running track out over the last {$fadeOutLiq}s of the hour, and the news begin on the hour
+# instead of {$fadeOutLiq}s after it. 0 (a manual skip) starts the ramp right away.
+def flush_and_skip(arg) =
   if hard_cut_running() then
     "busy"
   else
+    lead = float_of_string(default=0., string.trim(arg))
+    wait = if lead > {$fadeOutLiq} then lead - {$fadeOutLiq} else 0. end
     hard_cut_running := true
-    thread.run(delay={$delayLiq}, hard_cut_step)
+    log(level=3, label="radioring", "Hard cut due in #{lead}s: fade starts in #{wait}s and runs for {$fadeOutLiq}s.")
+    thread.run(delay=wait + {$delayLiq}, hard_cut_step)
     "ok"
   end
 end

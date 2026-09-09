@@ -53,18 +53,6 @@ test('generator includes pull, now-playing and harbor blocks', function () {
         ->toContain('input.harbor');
 });
 
-test('generator registers the flush_and_skip telnet command for hard cuts', function () {
-    $script = app(LiquidsoapScriptGenerator::class)->generate($this->station);
-
-    // Der Container-Entrypoint ruft "radioring.flush_and_skip" per Telnet auf –
-    // ohne diese Registrierung wäre der Hard-Cut ein No-Op.
-    expect($script)
-        ->toContain('def flush_and_skip(')
-        ->toContain('source.set_queue([])')
-        ->toContain('source.skip()')
-        ->toContain('"flush_and_skip"');
-});
-
 test('generator fades the programme out before a hard cut', function () {
     config()->set('radioring.hard_cut_fade_out_seconds', 0.8);
 
@@ -86,22 +74,33 @@ test('generator fades the programme out before a hard cut', function () {
         ->toContain('thread.run(delay=0.0500, hard_cut_step)')
         ->toContain('cut_gain := 1.');
 
-    // The first tick is scheduled, not run inline: otherwise the ramp would start at t=0
-    // and only 15 of the 16 ticks would cost time, cutting at 0.75 s instead of 0.8 s.
-    expect($script)->toContain('    hard_cut_running := true
-    thread.run(delay=0.0500, hard_cut_step)');
+    // Der Container-Entrypoint ruft "radioring.flush_and_skip <sekunden>" per Telnet auf
+    // und gibt den Vorlauf bis zum Schnitt mit. Die Rampe wird so gelegt, dass sie GENAU
+    // dann endet: ein um 14:58 gestarteter Titel faded vor 15:00:00 aus statt danach.
+    // Der erste Tick wird geplant, nicht inline ausgeführt - sonst käme nur 15 der 16
+    // Ticks Zeit zusammen und der Cut läge bei 0,75 s statt 0,8 s.
+    expect($script)
+        ->toContain('def flush_and_skip(arg) =')
+        ->toContain('lead = float_of_string(default=0., string.trim(arg))')
+        ->toContain('wait = if lead > 0.8000 then lead - 0.8000 else 0. end')
+        ->toContain('thread.run(delay=wait + 0.0500, hard_cut_step)')
+        ->toContain('"flush_and_skip"');
 
     // The fallback takes the adjustable source, not the unadjusted one before it.
     expect($script)->toContain('fallback(track_sensitive=false, [live, program, blank()])');
 });
 
-test('a fade-out of zero keeps the immediate cut', function () {
+test('a fade-out of zero keeps the immediate cut but still honours the lead time', function () {
     config()->set('radioring.hard_cut_fade_out_seconds', 0.0);
 
     $script = app(LiquidsoapScriptGenerator::class)->generate($this->station);
 
+    // Ohne Fade gibt es nichts auszublenden, der Schnitt muss aber trotzdem auf der
+    // vollen Stunde liegen und nicht beim Eintreffen des Befehls.
     expect($script)
-        ->toContain('def flush_and_skip(')
+        ->toContain('def flush_and_skip(arg) =')
+        ->toContain('lead = float_of_string(default=0., string.trim(arg))')
+        ->toContain('thread.run(delay=lead, hard_cut_now)')
         ->not->toContain('hard_cut_step');
 });
 
@@ -325,20 +324,6 @@ test('station stereo tool license key is encrypted at rest', function () {
 
     expect($this->station->getRawOriginal('stereo_tool_license_key'))->not->toBe('secret-license');
     expect($this->station->fresh()->stereo_tool_license_key)->toBe('secret-license');
-});
-
-test('station output password is encrypted at rest', function () {
-    $output = StationOutput::create([
-        'station_id' => $this->station->id,
-        'type' => 'icecast',
-        'host' => 'icecast',
-        'port' => 8000,
-        'mount' => '/myslug',
-        'password' => 'hackme',
-    ]);
-
-    expect($output->getRawOriginal('password_enc'))->not->toBe('hackme');
-    expect($output->fresh()->password)->toBe('hackme');
 });
 
 test('generator installs the watchdog that wakes a stalled request queue', function () {

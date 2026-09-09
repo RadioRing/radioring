@@ -368,3 +368,78 @@ test('pullNextItem closes the underrun as soon as an item is available again', f
     expect($state->underrun_started_at)->toBeNull()
         ->and($state->underrun_logged_at)->toBeNull();
 });
+
+test('an announced hard start still serves the running hour until the cut', function () {
+    $running = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id,
+        'broadcast_date' => today(),
+        'broadcast_hour' => 12,
+        'status' => 'ready',
+        'start_mode' => 'soft',
+    ]);
+
+    $runningItem = GeneratedPlaylistItem::factory()->create([
+        'generated_playlist_id' => $running->id,
+        'media_file_id' => MediaFile::factory()->create(['tenant_id' => $this->station->tenant_id, 'type' => 'music', 'file_path' => "tenants/{$this->station->tenant_id}/media/r.mp3", 'title' => 'R'])->id,
+        'position' => 3,
+        'source_type' => 'template_item',
+        'title' => 'R3',
+    ]);
+
+    $hard = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id,
+        'broadcast_date' => today(),
+        'broadcast_hour' => 13,
+        'status' => 'ready',
+        'start_mode' => 'hard',
+    ]);
+
+    $news = GeneratedPlaylistItem::factory()->create([
+        'generated_playlist_id' => $hard->id,
+        'media_file_id' => null,
+        'position' => 0,
+        'source_type' => 'news_weather',
+        'title' => 'Nachrichten',
+    ]);
+
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'current_rundown_id' => $running->id,
+        'current_item_position' => 3,
+    ]);
+
+    $this->travelTo(today()->setTime(12, 59, 0));
+    $this->service->announceHardStart($this->station, $hard);
+
+    // Vor dem Schnitt liefert der Pull weiter die laufende Stunde - der Prefetch darf die
+    // Nachrichten nicht vorziehen, sonst wirft das set_queue([]) des Cuts sie weg.
+    expect($this->service->pullNextItem($this->station)->id)->toBe($runningItem->id);
+
+    // Nach dem Schnitt landet der erste Pull auf Position 0 des Hard-Rundowns, ohne dass
+    // jemand den Cursor umgesetzt hat: das erledigt der Hard-Start-Zweig beim Aufloesen.
+    $this->travelTo(today()->setTime(13, 0, 1));
+    expect($this->service->pullNextItem($this->station)->id)->toBe($news->id);
+});
+
+test('upcomingHardStart announces only within its lead window', function () {
+    $hard = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id,
+        'broadcast_date' => today(),
+        'broadcast_hour' => 13,
+        'status' => 'ready',
+        'start_mode' => 'hard',
+    ]);
+
+    // Zu frueh: der Lauf um 12:58 sieht die Stunde noch nicht.
+    $this->travelTo(today()->setTime(12, 58, 0));
+    expect($this->service->upcomingHardStart($this->station))->toBeNull();
+
+    // Im Fenster: 60 Sekunden Vorlauf.
+    $this->travelTo(today()->setTime(12, 59, 0));
+    expect($this->service->upcomingHardStart($this->station)?->id)->toBe($hard->id);
+    expect($this->service->secondsUntilStart($hard))->toBe(60.0);
+
+    // Ab der vollen Stunde uebernimmt pendingHardStart und schneidet sofort.
+    $this->travelTo(today()->setTime(13, 0, 0));
+    expect($this->service->upcomingHardStart($this->station))->toBeNull();
+});

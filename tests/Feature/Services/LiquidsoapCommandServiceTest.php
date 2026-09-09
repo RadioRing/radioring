@@ -21,7 +21,9 @@ test('skip publishes a skip command for the station container', function () {
 
         return $channel === 'radioring_station_control'
             && $data['command'] === 'skip'
-            && $data['container_name'] === 'radioring-'.$this->station->slug;
+            && $data['container_name'] === 'radioring-'.$this->station->slug
+            // Ohne Vorlauf: ein manueller Skip schneidet sofort.
+            && $data['lead'] === 0;
     })->andReturn(1);
 
     Redis::shouldReceive('connection')->once()->andReturn($connection);
@@ -65,4 +67,18 @@ test('returns false when redis throws', function () {
     Redis::shouldReceive('connection')->once()->andThrow(new RuntimeException('no redis'));
 
     expect(app(LiquidsoapCommandService::class)->skip($this->station))->toBeFalse();
+});
+
+test('skip carries the lead time until the cut', function () {
+    $connection = Mockery::mock();
+    $connection->shouldReceive('client')->andReturn(new stdClass);
+    $connection->shouldReceive('publish')->once()->withArgs(function ($channel, $payload) {
+        // Der Container plant den Schnitt damit selbst - nur so liegt der Cut auf der
+        // vollen Stunde und der Fade davor.
+        return json_decode($payload, true)['lead'] === 58.5;
+    })->andReturn(1);
+
+    Redis::shouldReceive('connection')->once()->andReturn($connection);
+
+    app(LiquidsoapCommandService::class)->skip($this->station, 58.5);
 });

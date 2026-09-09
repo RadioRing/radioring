@@ -454,8 +454,82 @@ class LiquidsoapStateService
     }
 
     /**
+     * The hard-start rundown of the NEXT hour, if its start is close enough to be
+     * announced to the container now.
+     *
+     * The cut has to land ON the full hour, so the programme has to be fading out BEFORE
+     * it: a fade started at 15:00:00 pushes the news past the hour by its own duration.
+     * The container therefore gets the cut announced with a lead time and schedules it
+     * itself - it knows the wall clock and times the ramp far more precisely than a
+     * once-a-minute command ever could.
+     *
+     * Deliberately NOT annotated onto the track: an annotation is written when the item
+     * is pulled, and with prefetch=3 the cursor runs minutes ahead of what is on air, so
+     * at that point nobody knows when the track will actually start.
+     */
+    public function upcomingHardStart(Station $station): ?GeneratedPlaylist
+    {
+        $horizon = now()->addSeconds(self::HARD_START_ANNOUNCE_SECONDS);
+
+        $candidate = GeneratedPlaylist::where('station_id', $station->id)
+            ->where('status', 'ready')
+            ->where('broadcast_date', $horizon->copy()->startOfDay())
+            ->where('broadcast_hour', $horizon->hour)
+            ->with('playlist')
+            ->first();
+
+        if (! $candidate || ! $this->isHardStart($candidate)) {
+            return null;
+        }
+
+        // Already past its hour: that is the business of pendingHardStart, which cuts
+        // right away instead of announcing a cut that lies in the past.
+        if (now()->gte($this->startOf($candidate))) {
+            return null;
+        }
+
+        $state = LiquidsoapState::where('station_id', $station->id)->first();
+
+        if ($state?->hard_start_committed_rundown_id === $candidate->id) {
+            return null;
+        }
+
+        return $candidate;
+    }
+
+    /**
+     * Seconds from now until the rundown's full hour, for the container's lead time.
+     */
+    public function secondsUntilStart(GeneratedPlaylist $rundown): float
+    {
+        return max(0.0, now()->floatDiffInSeconds($this->startOf($rundown), absolute: false));
+    }
+
+    /**
+     * Notes an announced hard start WITHOUT moving the pull cursor.
+     *
+     * The cursor must stay where it is until the cut: moved a minute early, the prefetch
+     * would pull the first items of the hard rundown, and the set_queue([]) of the cut
+     * would then throw exactly those away - the news would be skipped. It does not have to
+     * be moved either, because the pull right after the cut runs into the hard-start branch
+     * of resolveCurrentRundown, which puts the cursor on position 0 by itself.
+     */
+    public function announceHardStart(Station $station, GeneratedPlaylist $hard): void
+    {
+        DB::transaction(function () use ($station, $hard) {
+            LiquidsoapState::updateOrCreate(
+                ['station_id' => $station->id],
+                ['hard_start_committed_rundown_id' => $hard->id],
+            );
+        }, self::TRANSACTION_ATTEMPTS);
+    }
+
+    /**
      * Liefert den Hard-Start-Rundown der aktuellen Stunde, FALLS der Pull-Cursor
      * noch nicht auf ihm steht – sonst null. Für den sample-genauen Stunden-Cut.
+     *
+     * Fallback für den Fall, dass die Ankündigung ausgefallen ist (Scheduler-Aussetzer,
+     * erst nach der vollen Stunde generierter Rundown): dann wird sofort geschnitten.
      */
     public function pendingHardStart(Station $station): ?GeneratedPlaylist
     {
@@ -812,6 +886,14 @@ class LiquidsoapStateService
      * news on air at :57. From there advanceToNextRundown catches up on the wall clock.
      */
     private const HARD_START_WINDOW_SECONDS = 600;
+
+    /**
+     * How far ahead of its full hour a hard start is announced to the container.
+     *
+     * Has to cover one cadence of radioring:enforce-hard-starts (60 s) plus the drift of
+     * the run itself, and has to stay below two cadences so exactly one run announces it.
+     */
+    private const HARD_START_ANNOUNCE_SECONDS = 90;
 
     /**
      * Has the full hour of the hard rundown just been reached (and not long ago)?

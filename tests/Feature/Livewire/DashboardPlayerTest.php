@@ -125,27 +125,20 @@ test('an adbreak stuck past its assumed length is no longer shown as running', f
         ->assertDontSee('ON AIR');
 });
 
-test('a confirmed underrun is reported on the dashboard', function () {
+test('the alert threshold decides whether a gap is reported as an underrun', function () {
     config(['radioring.underrun_alert_seconds' => 30]);
 
-    LiquidsoapState::create([
-        'station_id' => $this->station->id,
-        'underrun_started_at' => now()->subMinutes(5),
-    ]);
-
-    Livewire::test(Dashboard::class)
-        ->assertSee('UNDERRUN')
-        ->assertSee('Programme underrun: the station is sending silence.');
-});
-
-test('a gap shorter than the alert threshold raises no underrun alarm', function () {
-    config(['radioring.underrun_alert_seconds' => 30]);
-
-    LiquidsoapState::create([
+    $state = LiquidsoapState::create([
         'station_id' => $this->station->id,
         'underrun_started_at' => now()->subSeconds(5),
     ]);
 
+    // Ein paar Sekunden Luecke sind an der Stundengrenze normal, kein Vorfall.
+    Livewire::test(Dashboard::class)->assertDontSee('UNDERRUN');
+
+    $state->update(['underrun_started_at' => now()->subMinutes(5)]);
+
     Livewire::test(Dashboard::class)
-        ->assertDontSee('UNDERRUN');
+        ->assertSee('UNDERRUN')
+        ->assertSee('Programme underrun: the station is sending silence.');
 });

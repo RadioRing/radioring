@@ -19,6 +19,24 @@ class EnforceHardStarts extends Command
         $stations = Station::whereHas('stream', fn ($q) => $q->where('status', 'running'))->get();
 
         foreach ($stations as $station) {
+            // Preferred path: announce the cut before the full hour so the container can
+            // fade the running track out into it instead of after it.
+            if ($upcoming = $state->upcomingHardStart($station)) {
+                $lead = $state->secondsUntilStart($upcoming);
+
+                $state->announceHardStart($station, $upcoming);
+                $commands->skip($station, $lead);
+
+                $this->info(__('Hard start announced: station #:station, rundown #:rundown at :hour, cut in :lead s', [
+                    'station' => $station->id,
+                    'rundown' => $upcoming->id,
+                    'hour' => sprintf('%02d:00', $upcoming->broadcast_hour),
+                    'lead' => round($lead),
+                ]));
+
+                continue;
+            }
+
             $hard = $state->pendingHardStart($station);
 
             if (! $hard) {
