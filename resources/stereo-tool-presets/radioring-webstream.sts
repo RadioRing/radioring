@@ -1,0 +1,240 @@
+[Preset info]
+Name=RadioRing Webstream
+Description=Slow AGC for consistency, gentle 5 band glue, clean limiter. No loudness push, full bandwidth, aimed at about -14 LUFS.
+Contains AGC settings=1
+Contains Limiting & Clipping settings=1
+Contains Bandpass settings=1
+Contains Dynamics settings=1
+Contains Multiband Compressor 1 settings=1
+Contains Multiband Compressor 2 settings=1
+Contains Wideband Compressor settings=1
+Contains Repair settings=1
+Contains Declipper settings=1
+Contains Stereo settings=1
+Contains Processing=1
+Contains Processing settings=1
+Contains other Processing settings=1
+Contains other Limiting & Clipping settings=1
+Contains FM: BS412 Limiter settings=1
+Contains AM transmitter settings=0
+Contains Auto EQ settings=0
+Contains Bass Clipper settings=0
+Contains Bass EQ settings=0
+Contains Bass Exciter settings=0
+Contains Bass effects settings=0
+Contains Brilliance settings=0
+Contains Broadcasting settings=0
+Contains CPU settings=0
+Contains Cleanup=0
+Contains Configuration=0
+Contains Configuration settings=0
+Contains DeReverb settings=0
+Contains Dehummer settings=0
+Contains Delossifier settings=0
+Contains Dequantizer settings=0
+Contains Equalizer settings=0
+Contains FM=0
+Contains FM hiss settings=0
+Contains FM transmitter settings=0
+Contains Highs effects settings=0
+Contains Highs exciter settings=0
+Contains I/O settings=0
+Contains Low Level Boost settings=0
+Contains Natural Dynamics settings=0
+Contains Noise gate settings=0
+Contains Phase effects settings=0
+Contains RDS data settings=0
+Contains Scheduler settings=0
+Contains Skinning settings=0
+Contains Sound cards settings=0
+Contains Speech detection settings=0
+Contains Streaming output settings=0
+Contains True Bass settings=0
+Contains Web interface settings=0
+Software class=Thimeo
+Software name=Thimeo Stereo Tool
+[Output Filter]
+Enabled=1
+Highpass filter=20
+Highpass filter linearity=Yes
+Highpass accurate frequency calculation=1
+Highpass in side chains=1
+Lowpass filter=20000
+Lowpass filter before processing=0
+[BS412]
+Enabled=0
+Use composite clipping=0
+[AM Transmitter]
+AM Enabled=0
+[FM Transmitter]
+Enabled=0
+Stereo encoder enabled=0
+RDS encoder enabled=0
+[Declipper]
+Enabled=1
+MP3 input=1
+Quality=25
+Maximum restored peak=1.5
+Maximum expected distortion level=0.109999999
+[Delossifier]
+Enabled=0
+[Dequantizer]
+Enabled=0
+[Noise Gate]
+Enabled=0
+[Phase Rotator]
+Enabled=0
+[Equalizer]
+Enabled=0
+Use parametric equalizer=0
+[Bass Boost]
+Enabled=0
+[Bass Clipper]
+Enabled=0
+[Bassmathijzer]
+Enabled=0
+[True Bass]
+Enabled=0
+[Absolute Highs]
+Highs On=0
+[Highs Exciter]
+Highs Exciter On=0
+[Bass Exciter]
+Bass Exciter On=0
+[Low Level Boost]
+Enabled=0
+[Natural Dynamics 2]
+Enabled=0
+[Spectrum Correction]
+Enabled=0
+[Spectrum Bass Correction]
+Enabled=0
+[Pre Compressor]
+Enabled=1
+AGC Type=AGC 1
+AGC block size=Follow latency
+Number of AGC bands=2
+Number of AGC2 bands=1
+Drive=2
+Attack (time to drop 86%% in ms)=3000
+Release (time to rise 10 dB in ms)=3000
+Bass Attack (time to drop 86%% in ms)=3000
+Bass Release (time to rise 10 dB in ms)=3000
+Max Attack Speed=6
+Max Release Speed=45
+Center frequency band 1=30
+Center frequency band 2=2000
+Channel linking=2
+Bass band channel linking=2
+Channel separation=0.300000012
+Gate level=512
+Sudden Jump Protection=1
+Sudden Jump Protection Full detection threshold=16
+Sudden Jump Protection Minimum detection threshold=10
+Level jump protection threshold=1.75
+Improved Release=1
+Use ITU-BS.1770 Head=1
+Use ITU-BS.1770 Bass=1
+Prepare for BS412=0
+Peq On=0
+Use parametric equalizer=0
+Legacy mode=0
+[Pre Compressor Bass]
+Enabled=0
+[Singleband Compressor]
+Enabled=0
+AGC RMS style Enabled=0
+[Singleband Compressor 2]
+Enabled=0
+[Post Agc Compressor]
+Enabled=0
+[Multiband Compressor]
+Enabled=0
+[Multiband Compressor 5]
+Enabled=0
+[Multiband Compressor 3]
+Enabled=1
+Compressor Type=New
+Number of bands=5
+Drive=1
+Density=1
+Output level=1
+Low CPU=1
+Center frequency band 1=51
+Center frequency band 2=158
+Center frequency band 3=492
+Center frequency band 4=1536
+Center frequency band 5=4800
+Ratio band 1=3
+Ratio band 2=3
+Ratio band 3=3
+Ratio band 4=3
+Ratio band 5=3
+Knee band 1=6
+Knee band 2=6
+Knee band 3=6
+Knee band 4=6
+Knee band 5=6
+Attack (time to drop 86% in ms) band 1=250
+Attack (time to drop 86% in ms) band 2=200
+Attack (time to drop 86% in ms) band 3=150
+Attack (time to drop 86% in ms) band 4=120
+Attack (time to drop 86% in ms) band 5=120
+Release (time to rise 10 dB in ms) band 1=800
+Release (time to rise 10 dB in ms) band 2=700
+Release (time to rise 10 dB in ms) band 3=600
+Release (time to rise 10 dB in ms) band 4=500
+Release (time to rise 10 dB in ms) band 5=500
+Detection type band 1=Symmetrical peak
+Detection type band 2=Symmetrical peak
+Detection type band 3=Symmetrical peak
+Detection type band 4=Peak
+Detection type band 5=Peak
+Band coupling=0.699999988
+Band coupling - First band freedom=0.5
+Band coupling - Last band freedom=0.5
+Spectral Balance Compensation on=0
+[Stereo]
+Enabled=1
+Stereo Boost Enabled=0
+Stereo Image Enabled=0
+Stereo AZIMUTH Enabled=0
+Mono or stereo only=0
+Image width amplifier=1
+Image phase amplifier=1
+[Stereo Delay]
+Enabled=0
+[Stereo L-R Reverb]
+Enabled=0
+Stereo Reverb Enabled=0
+[Channel Delay]
+Fake Stereo Enabled=0
+[Final Limiter]
+Enabled=0
+[Common]
+Pre amplifier=1
+Post amplifier=1
+Post amplifier - Limit at 0 dB=1
+Hard limit output=1
+Measure ITU.1770=1
+Relative loudness for non-FM=1
+Oversample limiters=0
+Extra loudness=1
+Extra loudness - Enabled=1
+Extra loudness - Run as limiter=1
+Extra loudness - Allow more distortion=0
+Extra loudness - Allow more distortion - highs=0
+Extra loudness - Controlled Distortion Enabled=0
+Extra loudness - Pre-limiter enabled=0
+Extra loudness - Prioritize loud sounds=0
+Bass protection - Enabled=1
+Stream - Streaming Stereo Enabled=1
+Stream - Mono bass=1
+Stream - Mono bass upto frequency=60
+Stream - Reduce stereo to=1
+Stream - Limit angle=1
+[Lossy compression output optimization]
+Enabled=1
+Optimize clipper for lossy compression=1
+[Watermarking]
+Kantar=0
