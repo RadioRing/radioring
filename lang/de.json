@@ -318,5 +318,7 @@
     "Underrun": "Underrun",
     "Programme underrun: the station is sending silence.": "Programm-Underrun: die Station sendet Stille.",
     "Nothing has been available to play for :duration. The rundown of this hour ran out early - check whether an element was shorter than planned.": "Seit :duration ist nichts zum Abspielen verfügbar. Der Rundown dieser Stunde ist zu früh leer gelaufen – prüfe, ob ein Element kürzer war als geplant.",
-    "Programme underrun: nothing left to play since :time, the station is sending silence.": "Programm-Underrun: seit :time nichts mehr zum Abspielen, die Station sendet Stille."
+    "Programme underrun: nothing left to play since :time, the station is sending silence.": "Programm-Underrun: seit :time nichts mehr zum Abspielen, die Station sendet Stille.",
+    "Fetching failed, the element was skipped: :error": "Abruf fehlgeschlagen, das Element wurde übersprungen: :error",
+    "reason unknown": "Grund unbekannt"
 }

@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Storage;
 
-#[Fillable(['generated_playlist_id', 'media_file_id', 'media_file_path', 'external_source_id', 'position', 'title', 'duration_seconds', 'absolute_broadcast_at', 'source_type', 'prepared_path', 'prepared_at', 'loudness_lufs', 'loudness_true_peak'])]
+#[Fillable(['generated_playlist_id', 'media_file_id', 'media_file_path', 'external_source_id', 'position', 'title', 'duration_seconds', 'absolute_broadcast_at', 'source_type', 'prepared_path', 'prepared_at', 'prepare_attempts', 'prepare_failed_at', 'loudness_lufs', 'loudness_true_peak'])]
 class GeneratedPlaylistItem extends Model
 {
     /** @use HasFactory<GeneratedPlaylistItemFactory> */
@@ -20,6 +20,7 @@ class GeneratedPlaylistItem extends Model
         return [
             'absolute_broadcast_at' => 'datetime',
             'prepared_at' => 'datetime',
+            'prepare_failed_at' => 'datetime',
             'loudness_lufs' => 'float',
             'loudness_true_peak' => 'float',
         ];

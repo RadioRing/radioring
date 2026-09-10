@@ -21,6 +21,7 @@
                 <option value="live_switch">{{ __('Live-Wechsel') }}</option>
                 <option value="rundown">{{ __('Rundown generiert') }}</option>
                 <option value="underrun">{{ __('Underrun') }}</option>
+                <option value="external_failed">{{ __('Externes Element fehlt') }}</option>
             </select>
         </div>
         <div class="col-12 col-sm">
@@ -95,10 +96,18 @@
                                             <i class="bi bi-exclamation-octagon me-1"></i>{{ __('Underrun') }}
                                         </span>
                                         @break
+                                    @case(\App\Models\StationLog::EVENT_EXTERNAL_FAILED)
+                                        <span class="badge text-bg-danger-subtle text-danger">
+                                            <i class="bi bi-cloud-slash me-1"></i>{{ __('Externes Element fehlt') }}
+                                        </span>
+                                        @break
                                 @endswitch
                             </td>
                             <td class="fw-medium">
                                 {{ $entry->title ?? $entry->message ?? '–' }}
+                                @if($entry->event === \App\Models\StationLog::EVENT_EXTERNAL_FAILED && $entry->message)
+                                    <div class="text-danger fw-normal" style="font-size:.75rem">{{ $entry->message }}</div>
+                                @endif
                                 @if($isRepeat)
                                     <span class="badge text-bg-warning-subtle text-warning ms-1"
                                           title="{{ __('Gleicher Titel direkt nacheinander – möglicher Streaming-Fehler.') }}">

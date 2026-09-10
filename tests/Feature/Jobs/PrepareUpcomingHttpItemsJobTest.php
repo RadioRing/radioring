@@ -104,7 +104,31 @@ test('records an error and leaves the item unprepared on a failed download', fun
     (new PrepareUpcomingHttpItemsJob)->handle(app(ExternalItemPreparer::class));
 
     expect($item->fresh()->prepared_path)->toBeNull()
+        ->and($item->fresh()->prepare_attempts)->toBe(1)
         ->and($source->fresh()->last_error)->toContain('503');
+});
+
+test('backs a failed item off instead of retrying it on every run', function () {
+    $source = ExternalSource::factory()->create([
+        'station_id' => $this->station->id, 'kind' => 'url', 'url' => 'https://example.com/down.mp3',
+        'prefetch_lead_seconds' => 1800,
+    ]);
+    $item = externalItem($this->station, $source, '10:25:00');
+
+    Http::fake(['example.com/*' => Http::response('', 503)]);
+
+    (new PrepareUpcomingHttpItemsJob)->handle(app(ExternalItemPreparer::class));
+    $this->travel(30)->seconds();
+    (new PrepareUpcomingHttpItemsJob)->handle(app(ExternalItemPreparer::class));
+
+    Http::assertSentCount(1);
+
+    // Past the wait of the first failed attempt: tried again.
+    $this->travel(60)->seconds();
+    (new PrepareUpcomingHttpItemsJob)->handle(app(ExternalItemPreparer::class));
+
+    Http::assertSentCount(2);
+    expect($item->fresh()->prepare_attempts)->toBe(2);
 });
 
 test('does not prepare an item that is still beyond the prefetch lead', function () {

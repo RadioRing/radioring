@@ -35,7 +35,7 @@ class ExternalItemPreparer
         $url = $source->resolveUrl();
 
         if ($url === null) {
-            $this->recordError($source, __('No address could be resolved (missing laut.fm output or credentials?).'));
+            $this->recordFailure($item, $source, __('No address could be resolved (missing laut.fm output or credentials?).'));
 
             return false;
         }
@@ -45,11 +45,11 @@ class ExternalItemPreparer
         try {
             $body = $this->fetcher->fetch($url, $source->url_username, $source->url_password, $timeoutSeconds);
         } catch (RemoteFetchException $e) {
-            $this->recordError($source, $e->getMessage());
+            $this->recordFailure($item, $source, $e->getMessage());
 
             return false;
         } catch (\Throwable $e) {
-            $this->recordError($source, __('Download failed: :error', ['error' => $e->getMessage()]));
+            $this->recordFailure($item, $source, __('Download failed: :error', ['error' => $e->getMessage()]));
 
             return false;
         }
@@ -77,6 +77,8 @@ class ExternalItemPreparer
         $item->update([
             'prepared_path' => $path,
             'prepared_at' => now(),
+            'prepare_attempts' => 0,
+            'prepare_failed_at' => null,
             'loudness_lufs' => $measurement['lufs'] ?? null,
             'loudness_true_peak' => $measurement['true_peak'] ?? null,
         ]);
@@ -97,9 +99,18 @@ class ExternalItemPreparer
         return true;
     }
 
-    private function recordError(ExternalSource $source, string $message): void
+    /**
+     * Records a failed attempt: readable on the source, counted on the item so that
+     * PrepareUpcomingHttpItemsJob can back its retries off.
+     */
+    private function recordFailure(GeneratedPlaylistItem $item, ExternalSource $source, string $message): void
     {
         Log::warning("Externe Quelle #{$source->id} ({$source->name}): {$message}");
+
+        $item->update([
+            'prepare_attempts' => $item->prepare_attempts + 1,
+            'prepare_failed_at' => now(),
+        ]);
 
         $source->update(['last_fetched_at' => now(), 'last_error' => $message]);
     }

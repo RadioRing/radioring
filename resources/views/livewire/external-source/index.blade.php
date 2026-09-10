@@ -227,7 +227,7 @@
                         <div class="col-6 col-md-3">
                             <label class="form-label small fw-medium">
                                 {{ __('Frische (s)') }}
-                                <i class="bi bi-question-circle text-muted" title="{{ __('Wie lange eine geholte Kopie wiederverwendet werden darf. 0 = immer frisch holen (z.B. Nachrichten).') }}"></i>
+                                <i class="bi bi-question-circle text-muted" title="{{ __('Wie lange eine geholte Kopie wiederverwendet werden darf. 0 = im Vorlauf einmal holen und so ausspielen.') }}"></i>
                             </label>
                             <input type="number" wire:model="freshness" min="0"
                                    class="form-control form-control-sm @error('freshness') is-invalid @enderror">
@@ -313,7 +313,7 @@
                                     <i class="bi bi-link-45deg me-1"></i>{{ __('laut.fm (aus Ausgang)') }}
                                 @endif
                                 <span class="ms-2"><i class="bi bi-stopwatch me-1"></i>{{ __('Vorlauf :n s', ['n' => $source->prefetch_lead_seconds]) }}</span>
-                                <span class="ms-2"><i class="bi bi-arrow-repeat me-1"></i>{{ $source->freshness_seconds > 0 ? __('Frische :n s', ['n' => $source->freshness_seconds]) : __('immer frisch') }}</span>
+                                <span class="ms-2"><i class="bi bi-arrow-repeat me-1"></i>{{ $source->freshness_seconds > 0 ? __('Frische :n s', ['n' => $source->freshness_seconds]) : __('einmal im Vorlauf') }}</span>
                                 @if($source->normalize)
                                     <span class="ms-2 text-success"><i class="bi bi-soundwave me-1"></i>{{ __('Normalisierung') }}</span>
                                 @endif

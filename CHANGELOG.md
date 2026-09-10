@@ -21,6 +21,23 @@ to stand on its own.
 
 ### Fixed
 
+- **An unreachable external source is no longer asked again every minute.** A syndication
+  or news download that failed was retried on every scheduler tick for the whole prefetch
+  lead, which meant up to half an hour of requests per item against a partner that was
+  already answering with an error. Failed attempts now back off (1, 2, 4, 8 ... up to 15
+  minutes), and a successful download clears the counter. The last-second attempt when the
+  item actually goes on air is unchanged, so nothing is lost from the programme.
+- **The preparation of external content can no longer run twice at the same time.** While a
+  download was still in progress, the next minute started a second run that fetched the
+  same item again. Only one run is active at a time now.
+- **A missing external element now shows up in the protocol.** If a syndication, news or
+  weather element could not be downloaded, it was dropped from the programme silently: the
+  error sat on the source in the library and nowhere else. The protocol now gets an entry
+  with the reason at the moment the element would have gone on air, and it has its own
+  filter entry.
+- **Preparing external content puts less load on the database.** The minutely check loaded
+  every upcoming external item of every station, including the next day's, only to discard
+  almost all of them.
 - **Silence after a rundown ran dry no longer lasts until someone hits skip.** When the
   hour was played out and the next one was not released yet, the player stopped asking for
   new tracks altogether: it kept sending silence even after the following rundown became

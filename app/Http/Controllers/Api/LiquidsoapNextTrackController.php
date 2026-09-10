@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\GeneratedPlaylistItem;
 use App\Models\Station;
+use App\Models\StationLog;
 use App\Services\ExternalItemPreparer;
 use App\Services\LiquidsoapStateService;
 use Illuminate\Http\Response;
@@ -47,6 +48,8 @@ class LiquidsoapNextTrackController extends Controller
             // Nach erfolgloser Vorbereitung: Item überspringen, damit keine Zugangsdaten
             // an den Liquidsoap-Container weitergegeben werden und das Programm nicht stockt.
             if (! ($item->prepared_path && Storage::disk('local')->exists($item->prepared_path))) {
+                $this->logSkippedExternalItem($item, $station);
+
                 return $this->__invoke($slug, $stateService);
             }
 
@@ -171,6 +174,30 @@ class LiquidsoapNextTrackController extends Controller
         }
 
         $this->preparer->prepare($item, $source, $station, timeoutSeconds: 30);
+    }
+
+    /**
+     * Writes the protocol line for an external element that is dropped from the programme.
+     *
+     * Written here rather than where the download fails: a failed prefetch half an hour
+     * early costs nothing, losing the element on air is what an operator needs to see.
+     */
+    private function logSkippedExternalItem(GeneratedPlaylistItem $item, Station $station): void
+    {
+        $source = $item->externalSource;
+
+        StationLog::create([
+            'station_id' => $station->id,
+            'event' => StationLog::EVENT_EXTERNAL_FAILED,
+            'generated_playlist_id' => $item->generated_playlist_id,
+            'generated_playlist_item_id' => $item->id,
+            'source_type' => 'external',
+            'title' => $item->title,
+            'message' => __('Fetching failed, the element was skipped: :error', [
+                'error' => $source?->last_error ?: __('reason unknown'),
+            ]),
+            'occurred_at' => now(),
+        ]);
     }
 
     /**

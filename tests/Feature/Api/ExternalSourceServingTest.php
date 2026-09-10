@@ -4,6 +4,7 @@ use App\Models\ExternalSource;
 use App\Models\GeneratedPlaylist;
 use App\Models\GeneratedPlaylistItem;
 use App\Models\Station;
+use App\Models\StationLog;
 use App\Models\User;
 use App\Services\AudioMetadataService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -129,6 +130,12 @@ test('next skips an external item when the inline download fails', function () {
 
     $response->assertStatus(200);
     expect($response->getContent())->toBe('');
+
+    // Skip needs to be in the event log
+    $log = StationLog::where('event', StationLog::EVENT_EXTERNAL_FAILED)->sole();
+    expect($log->station_id)->toBe($this->station->id)
+        ->and($log->title)->toBe('Externe Quelle')
+        ->and($log->message)->toContain('503');
 });
 
 test('next skips an external news item when the station has no laut.fm output', function () {

@@ -40,6 +40,9 @@ class StationLog extends Model
     /** The rundown ran dry: /next had nothing to hand out, so the station sent silence. */
     public const EVENT_UNDERRUN = 'underrun';
 
+    /** An external element could not be prepared in time and was skipped on air. */
+    public const EVENT_EXTERNAL_FAILED = 'external_failed';
+
     protected function casts(): array
     {
         return [

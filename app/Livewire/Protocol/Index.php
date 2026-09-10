@@ -71,6 +71,7 @@ class Index extends Component
             'live_switch' => $query->whereIn('event', [StationLog::EVENT_LIVE_STARTED, StationLog::EVENT_LIVE_STOPPED]),
             'rundown' => $query->where('event', StationLog::EVENT_RUNDOWN_GENERATED),
             'underrun' => $query->where('event', StationLog::EVENT_UNDERRUN),
+            'external_failed' => $query->where('event', StationLog::EVENT_EXTERNAL_FAILED),
             default => null,
         };
     }
