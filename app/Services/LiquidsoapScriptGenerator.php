@@ -49,7 +49,12 @@ class LiquidsoapScriptGenerator
         // prefetch=3: lädt bis zu 3 Tracks im Voraus herunter, während der
         // aktuelle läuft → nahtlose Übergänge, Puffer gegen Latenz/kurze Tracks.
         // timeout=60: erlaubt auch größere Dateien (url-Sendungen) zu laden.
-        $lines[] = 'source = request.dynamic(id="radioring", prefetch=3, retry_delay=1., timeout=60., next_track)';
+        // id="program_queue", NOT "radioring": a source registers its own telnet commands
+        // under its id as the namespace (skip, queue, set_queue, ...). With id="radioring"
+        // those sit in the very namespace our flush_and_skip is registered in, and the
+        // server then answers "radioring.flush_and_skip" from the built-in set - the cut
+        // happened instantly, without the fade and without our log line.
+        $lines[] = 'source = request.dynamic(id="program_queue", prefetch=3, retry_delay=1., timeout=60., next_track)';
 
         // Quelle, die in den fallback geht. amplify() liefert eine generische Source
         // ohne die request.dynamic-Methoden (set_queue/skip), die flush_and_skip

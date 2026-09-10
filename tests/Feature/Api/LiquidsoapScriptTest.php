@@ -90,6 +90,19 @@ test('generator fades the programme out before a hard cut', function () {
     expect($script)->toContain('fallback(track_sensitive=false, [live, program, blank()])');
 });
 
+test('the request.dynamic source does not sit in the telnet namespace of flush_and_skip', function () {
+    // A source registers its own telnet commands under its id (skip, queue, set_queue, ...).
+    // With id="radioring" they share the namespace our flush_and_skip is registered in, and
+    // the server answered "radioring.flush_and_skip" from the built-in set: an instant cut,
+    // no fade, no log line.
+    $script = app(LiquidsoapScriptGenerator::class)->generate($this->station);
+
+    expect($script)
+        ->toContain('request.dynamic(id="program_queue"')
+        ->not->toContain('id="radioring"')
+        ->toContain('server.register(namespace="radioring"');
+});
+
 test('a fade-out of zero keeps the immediate cut but still honours the lead time', function () {
     config()->set('radioring.hard_cut_fade_out_seconds', 0.0);
 
