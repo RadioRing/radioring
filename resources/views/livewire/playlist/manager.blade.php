@@ -169,26 +169,58 @@
                                     @error('newFillMaxDuration') <div class="invalid-feedback">{{ $message }}</div> @enderror
                                 </div>
 
-                            {{-- Externe Quelle wählen --}}
+                            {{-- Externe Quellen wählen --}}
                             @elseif($newType === 'external')
                                 <div class="mb-2">
-                                    <label class="form-label form-label-sm">{{ __('Externe Quelle') }}</label>
-                                    @if($externalSources->isEmpty())
+                                    <label class="form-label form-label-sm">{{ __('Externe Quellen') }}</label>
+                                    @if(! $hasExternalSources)
                                         <p class="text-muted small mb-0">
                                             {{ __('Noch keine externen Quellen angelegt.') }}
                                             <a href="{{ route('external-source.index') }}" wire:navigate>{{ __('Jetzt anlegen') }}</a>
                                         </p>
                                     @else
-                                        <select wire:model="newExternalSourceId"
-                                                class="form-select form-select-sm @error('newExternalSourceId') is-invalid @enderror">
-                                            <option value="">{{ __('– wählen –') }}</option>
-                                            @foreach($externalSources as $source)
-                                                <option value="{{ $source->id }}">{{ $source->name }}</option>
-                                            @endforeach
-                                        </select>
-                                        @error('newExternalSourceId') <div class="invalid-feedback">{{ __('Bitte eine Quelle auswählen.') }}</div> @enderror
-                                        <div class="form-text">
-                                            {{ __('Dynamischer Inhalt – wird kurz vor Ausspielung geholt und (falls möglich) normalisiert.') }}
+                                        <div class="input-group input-group-sm mb-2">
+                                            <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                            <input type="text" wire:model.live.debounce.250ms="externalSearch"
+                                                   class="form-control" placeholder="{{ __('Suche in externen Quellen...') }}">
+                                        </div>
+
+                                        @error('selectedExternalSourceIds')
+                                            <div class="alert alert-danger py-1 px-2 small mb-2">{{ __('Bitte mindestens eine Quelle auswählen.') }}</div>
+                                        @enderror
+
+                                        @if($externalSources->isEmpty())
+                                            <p class="text-muted small mb-0">{{ __('Keine Quelle passt zur Suche.') }}</p>
+                                        @else
+                                            <div class="list-group" style="max-height:220px;overflow-y:auto">
+                                                @foreach($externalSources as $source)
+                                                    @php $position = array_search($source->id, $selectedExternalSourceIds); @endphp
+                                                    <button type="button"
+                                                            wire:key="ext-{{ $source->id }}"
+                                                            wire:click="toggleExternalSource({{ $source->id }})"
+                                                            class="list-group-item list-group-item-action d-flex align-items-center gap-2 py-1 px-2 small
+                                                                   {{ $position !== false ? 'active' : '' }}">
+                                                        <i class="bi {{ $position !== false ? 'bi-check-square' : 'bi-square' }}"></i>
+                                                        <span class="text-truncate flex-grow-1">{{ $source->name }}</span>
+                                                        @if($source->expectedDurationFormatted())
+                                                            <span class="text-nowrap opacity-75">{{ $source->expectedDurationFormatted() }}</span>
+                                                        @endif
+                                                        @if($position !== false)
+                                                            <span class="badge text-bg-light">{{ $position + 1 }}</span>
+                                                        @endif
+                                                    </button>
+                                                @endforeach
+                                            </div>
+                                        @endif
+
+                                        <div class="form-text d-flex align-items-center gap-2">
+                                            <span>{{ __('Dynamischer Inhalt – wird kurz vor Ausspielung geholt und (falls möglich) normalisiert.') }}</span>
+                                            @if($selectedExternalSourceIds)
+                                                <button type="button" class="btn btn-link btn-sm p-0"
+                                                        wire:click="$set('selectedExternalSourceIds', [])">
+                                                    {{ trans_choice('{1}1 ausgewählt, Auswahl leeren|[2,*]:count ausgewählt, Auswahl leeren', count($selectedExternalSourceIds), ['count' => count($selectedExternalSourceIds)]) }}
+                                                </button>
+                                            @endif
                                         </div>
                                     @endif
                                 </div>
@@ -284,7 +316,12 @@
                                     <input type="text" wire:model="newRelativeOffset"
                                            class="form-control form-control-sm"
                                            placeholder="z.B. 15:00">
-                                    <div class="form-text">{{ __('Zeitpunkt ab Playlist-Start') }}</div>
+                                    <div class="form-text">
+                                        {{ __('Zeitpunkt ab Playlist-Start') }}
+                                        @if($newType === 'external' && count($selectedExternalSourceIds) > 1)
+                                            <span class="d-block">{{ __('Gilt für das erste Element, die weiteren folgen direkt.') }}</span>
+                                        @endif
+                                    </div>
                                 </div>
                             @endif
 

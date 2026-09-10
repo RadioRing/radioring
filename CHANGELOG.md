@@ -15,6 +15,10 @@ to stand on its own.
 ## [Unreleased]
 
 ### Added
+- **External sources can be searched and added in batches to a playlist.** The editor only
+  offered a single dropdown, which meant one trip through the form per element. There is now
+  a search field and a list to tick off: the picked elements are added in one go, in the
+  order they were picked, and an optional timestamp applies to the first of them.
 - **Stereo Tool Integration from Thimeo.** Stations can now use stereo tool as a sound
   processor. The configuration is done in the station settings. Each station will require
   its own license key and a preset. Without preset the sound processing runs in default mode.

@@ -42,7 +42,10 @@ class Manager extends Component
 
     public string $newUrl = '';
 
-    public ?int $newExternalSourceId = null;
+    /** @var array<int> External sources picked for the next add, in the order they were clicked. */
+    public array $selectedExternalSourceIds = [];
+
+    public string $externalSearch = '';
 
     public string $newDuration = '';
 
@@ -99,9 +102,21 @@ class Manager extends Component
         $this->dispatch('notify', message: __('Einstellungen gespeichert.'), type: 'success');
     }
 
+    /**
+     * Picks an external source for the next add, or drops it again. The click order is
+     * kept, so the operator decides in which order a block of elements lands.
+     */
+    public function toggleExternalSource(int $sourceId): void
+    {
+        $this->selectedExternalSourceIds = in_array($sourceId, $this->selectedExternalSourceIds, true)
+            ? array_values(array_diff($this->selectedExternalSourceIds, [$sourceId]))
+            : [...$this->selectedExternalSourceIds, $sourceId];
+    }
+
     public function addItem(): void
     {
         $nextPosition = $this->playlist->items()->max('position') + 1;
+        $added = 1;
 
         if ($this->newType === 'adbreak') {
             $this->playlist->items()->create([
@@ -151,21 +166,31 @@ class Manager extends Component
             ]);
         } elseif ($this->newType === 'external') {
             $this->validate([
-                'newExternalSourceId' => 'required|integer',
+                'selectedExternalSourceIds' => 'required|array|min:1',
             ]);
 
-            $source = $this->playlist->station->externalSources()->findOrFail($this->newExternalSourceId);
+            $sources = $this->playlist->station->externalSources()
+                ->whereIn('id', $this->selectedExternalSourceIds)
+                ->get()
+                ->sortBy(fn ($source) => array_search($source->id, $this->selectedExternalSourceIds));
 
-            $this->playlist->items()->create([
-                'position' => $nextPosition,
-                'type' => 'external',
-                'title' => $source->name,
-                'external_source_id' => $source->id,
-                // Kein Dauer-Snapshot: dynamische Quelle, die Länge wird bei der
-                // Rundown-Generierung aus der aktuellen erwarteten Dauer gezogen.
-                'duration_seconds' => null,
-                'relative_offset_seconds' => $this->parseOffset($this->newRelativeOffset),
-            ]);
+            $offset = $this->parseOffset($this->newRelativeOffset);
+
+            foreach ($sources->values() as $index => $source) {
+                $this->playlist->items()->create([
+                    'position' => $nextPosition + $index,
+                    'type' => 'external',
+                    'title' => $source->name,
+                    'external_source_id' => $source->id,
+                    // Kein Dauer-Snapshot: dynamische Quelle, die Länge wird bei der
+                    // Rundown-Generierung aus der aktuellen erwarteten Dauer gezogen.
+                    'duration_seconds' => null,
+                    // The timestamp pins the start of the block; the rest follows on directly.
+                    'relative_offset_seconds' => $index === 0 ? $offset : null,
+                ]);
+            }
+
+            $added = $sources->count();
         } elseif ($this->addMode === 'library') {
             $this->validate([
                 'selectedMediaFileId' => 'required|integer',
@@ -210,10 +235,14 @@ class Manager extends Component
             ]);
         }
 
-        $this->reset('newTitle', 'newUrl', 'newExternalSourceId', 'newDuration', 'newFile', 'showAddForm',
-            'selectedMediaFileId', 'librarySearch', 'newFillTagIds', 'newFillMaxDuration',
-            'newRelativeOffset');
-        $this->dispatch('notify', message: __('Element hinzugefügt.'), type: 'success');
+        $this->reset('newTitle', 'newUrl', 'selectedExternalSourceIds', 'externalSearch', 'newDuration',
+            'newFile', 'showAddForm', 'selectedMediaFileId', 'librarySearch', 'newFillTagIds',
+            'newFillMaxDuration', 'newRelativeOffset');
+        $this->dispatch('notify', type: 'success', message: trans_choice(
+            '{1}Element hinzugefügt.|[2,*]:count Elemente hinzugefügt.',
+            $added,
+            ['count' => $added],
+        ));
     }
 
     public function startEditingItem(int $itemId): void
@@ -349,7 +378,14 @@ class Manager extends Component
             'items' => $this->playlist->items()->with(['mediaFile', 'externalSource'])->orderBy('position')->get(),
             'libraryFiles' => $libraryFiles,
             'stationTags' => $this->playlist->station->tags()->orderBy('name')->get(),
-            'externalSources' => $this->playlist->station->externalSources()->orderBy('name')->get(),
+            'externalSources' => $this->playlist->station->externalSources()
+                ->when($this->externalSearch !== '', fn ($query) => $query
+                    ->where(fn ($sub) => $sub
+                        ->where('name', 'like', '%'.$this->externalSearch.'%')
+                        ->orWhere('broadcast_title', 'like', '%'.$this->externalSearch.'%')))
+                ->orderBy('name')
+                ->get(),
+            'hasExternalSources' => $this->playlist->station->externalSources()->exists(),
         ])->layout('layouts.app');
     }
 }

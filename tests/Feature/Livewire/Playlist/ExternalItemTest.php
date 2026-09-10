@@ -27,7 +27,7 @@ test('user can add an external source to a playlist', function () {
 
     Livewire::test(Manager::class, ['playlist' => $this->playlist])
         ->set('newType', 'external')
-        ->set('newExternalSourceId', $source->id)
+        ->call('toggleExternalSource', $source->id)
         ->call('addItem')
         ->assertHasNoErrors();
 
@@ -63,9 +63,50 @@ test('regenerating uses the current source duration, not a stale item snapshot',
 test('adding an external item requires a source', function () {
     Livewire::test(Manager::class, ['playlist' => $this->playlist])
         ->set('newType', 'external')
-        ->set('newExternalSourceId', null)
         ->call('addItem')
-        ->assertHasErrors(['newExternalSourceId']);
+        ->assertHasErrors(['selectedExternalSourceIds']);
+});
+
+test('several external sources can be added at once, in the order they were picked', function () {
+    $first = ExternalSource::factory()->create(['station_id' => $this->station->id, 'name' => 'Wetter']);
+    $second = ExternalSource::factory()->create(['station_id' => $this->station->id, 'name' => 'Nachrichten']);
+
+    Livewire::test(Manager::class, ['playlist' => $this->playlist])
+        ->set('newType', 'external')
+        ->call('toggleExternalSource', $second->id)
+        ->call('toggleExternalSource', $first->id)
+        ->set('newRelativeOffset', '15:00')
+        ->call('addItem')
+        ->assertHasNoErrors();
+
+    $items = $this->playlist->items()->orderBy('position')->get();
+    expect($items->pluck('external_source_id')->all())->toBe([$second->id, $first->id])
+        // The timestamp pins the first element only.
+        ->and($items->pluck('relative_offset_seconds')->all())->toBe([900, null]);
+});
+
+test('a picked external source can be dropped again before adding', function () {
+    $source = ExternalSource::factory()->create(['station_id' => $this->station->id]);
+
+    Livewire::test(Manager::class, ['playlist' => $this->playlist])
+        ->set('newType', 'external')
+        ->call('toggleExternalSource', $source->id)
+        ->call('toggleExternalSource', $source->id)
+        ->assertSet('selectedExternalSourceIds', [])
+        ->call('addItem')
+        ->assertHasErrors(['selectedExternalSourceIds']);
+});
+
+test('the source list can be searched by name', function () {
+    ExternalSource::factory()->create(['station_id' => $this->station->id, 'name' => 'Morgenshow']);
+    ExternalSource::factory()->create(['station_id' => $this->station->id, 'name' => 'Wetter']);
+
+    Livewire::test(Manager::class, ['playlist' => $this->playlist])
+        ->set('showAddForm', true)
+        ->set('newType', 'external')
+        ->set('externalSearch', 'wett')
+        ->assertSee('Wetter')
+        ->assertDontSee('Morgenshow');
 });
 
 test('the rundown generator carries the external source reference through', function () {
