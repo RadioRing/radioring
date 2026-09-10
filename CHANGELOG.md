@@ -177,7 +177,8 @@ First public release. Media library, playlists, weekly grid and rundowns, extern
 live input, outputs to Icecast and laut.fm, per-station Liquidsoap containers, multi-tenant
 and standalone operation, installer and update script.
 
-[Unreleased]: https://github.com/RadioRing/radioring/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/RadioRing/radioring/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/RadioRing/radioring/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/RadioRing/radioring/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/RadioRing/radioring/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/RadioRing/radioring/releases/tag/v0.1.0
