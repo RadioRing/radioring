@@ -14,6 +14,12 @@ to stand on its own.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-10
+
+**New in this release:** Stereo Tool integration. Stereo Tool allows some low latency
+sound processing on the server side, and is a great expansion to the sound quality of
+your station.
+
 ### Added
 - **External sources can be searched and added in batches to a playlist.** The editor only
   offered a single dropdown, which meant one trip through the form per element. There is now
@@ -70,6 +76,28 @@ to stand on its own.
 - **The dashboard playlist no longer sticks to a dead now-playing report.** When the
   container stops reporting, the list falls back to the current hour instead of anchoring
   on the frozen track and projecting all air times into the past.
+
+### Upgrade
+
+```sh
+cd /opt/radioring && ./update.sh
+```
+
+The container should run some migrations upon start automatically. No manual intervention
+is required. If you want to run the migrations manually, you can do so with the following command:
+
+```sh
+php artisan migrate
+```
+
+***It is highly recommended*** to restart the streaming containers after the update. Use the stop and then play button
+button in your dashboard to do so.
+
+### Known limitations
+
+- There is only one preset for Stereo Tool, additional ones can be uploaded manually or if you
+  have any great .sts preset feel free to share them with us.
+- The Stereo Tool integration has no UI yet.
 
 ## [0.3.0] - 2026-09-08
 
