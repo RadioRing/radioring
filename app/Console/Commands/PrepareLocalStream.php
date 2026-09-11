@@ -170,6 +170,7 @@ class PrepareLocalStream extends Command
 
         if ($arg !== null) {
             return $station->playlists()
+                ->schedulable()
                 ->where(function ($query) use ($arg) {
                     $query->where('name', $arg)
                         ->orWhere('id', is_numeric($arg) ? (int) $arg : 0);
@@ -178,6 +179,7 @@ class PrepareLocalStream extends Command
         }
 
         return $station->playlists()
+            ->schedulable()
             ->has('items')
             ->withCount('items')
             ->orderByDesc('items_count')

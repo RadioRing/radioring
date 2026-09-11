@@ -2,7 +2,12 @@
     {{-- Header --}}
     <div class="d-flex align-items-center justify-content-between mb-4">
         <div>
-            <h4 class="fw-semibold mb-0">{{ $playlist->name }}</h4>
+            <h4 class="fw-semibold mb-0">
+                {{ $playlist->name }}
+                @if($playlist->isContainer())
+                    <span class="badge bg-secondary align-middle ms-1">{{ __('Container') }}</span>
+                @endif
+            </h4>
             <a href="{{ route('playlist.index') }}" class="text-muted-sm text-decoration-none" wire:navigate>
                 <i class="bi bi-arrow-left me-1"></i>{{ __('Alle Playlisten') }}
             </a>
@@ -22,21 +27,28 @@
                                    class="form-control @error('name') is-invalid @enderror">
                             @error('name') <div class="invalid-feedback">{{ $message }}</div> @enderror
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">{{ __('Wiedergabemodus') }}</label>
-                            <select wire:model="playbackMode" class="form-select">
-                                <option value="sequential">{{ __('Sequentiell') }}</option>
-                                <option value="random">{{ __('Zufällig') }}</option>
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">{{ __('Start zur vollen Stunde') }}</label>
-                            <select wire:model="startMode" class="form-select">
-                                <option value="soft">{{ __('Weich – Überhang der Vorstunde darf auslaufen') }}</option>
-                                <option value="hard">{{ __('Hart – schneidet zur vollen Stunde') }}</option>
-                            </select>
-                            <div class="form-text">{{ __('Gilt für jeden Raster-Slot mit dieser Playlist.') }}</div>
-                        </div>
+                        @if($playlist->isContainer())
+                            <div class="alert alert-info py-2 px-3 small">
+                                <i class="bi bi-box-seam me-1"></i>
+                                {{ __('This block is played wherever a playlist embeds it. Playback and start mode come from that playlist.') }}
+                            </div>
+                        @else
+                            <div class="mb-3">
+                                <label class="form-label">{{ __('Wiedergabemodus') }}</label>
+                                <select wire:model="playbackMode" class="form-select">
+                                    <option value="sequential">{{ __('Sequentiell') }}</option>
+                                    <option value="random">{{ __('Zufällig') }}</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">{{ __('Start zur vollen Stunde') }}</label>
+                                <select wire:model="startMode" class="form-select">
+                                    <option value="soft">{{ __('Weich – Überhang der Vorstunde darf auslaufen') }}</option>
+                                    <option value="hard">{{ __('Hart – schneidet zur vollen Stunde') }}</option>
+                                </select>
+                                <div class="form-text">{{ __('Gilt für jeden Raster-Slot mit dieser Playlist.') }}</div>
+                            </div>
+                        @endif
                         <button type="submit" class="btn btn-primary btn-sm">
                             <i class="bi bi-check-lg me-1"></i>{{ __('Speichern') }}
                         </button>
@@ -48,11 +60,37 @@
         {{-- Rechte Spalte: Tracks --}}
         <div class="col-lg-8">
             <div class="card">
-                <div class="card-header d-flex align-items-center justify-content-between">
+                <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                     <span class="fw-medium">{{ __('Elemente') }} ({{ $items->count() }})</span>
-                    <button class="btn btn-sm btn-primary" wire:click="$set('showAddForm', true)">
-                        <i class="bi bi-plus-lg me-1"></i>{{ __('Hinzufügen') }}
-                    </button>
+
+                    @if(count($selectedItemIds) > 0)
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="text-muted-sm">
+                                {{ trans_choice('{1}1 selected|[2,*]:count selected', count($selectedItemIds), ['count' => count($selectedItemIds)]) }}
+                            </span>
+                            <button class="btn btn-sm btn-outline-secondary" wire:click="duplicateSelected">
+                                <i class="bi bi-files me-1"></i>{{ __('Duplizieren') }}
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger"
+                                    @click="$dispatch('confirm-dialog', { message: @js(trans_choice('{1}Remove the selected element?|[2,*]Remove :count selected elements?', count($selectedItemIds), ['count' => count($selectedItemIds)])), confirmText: @js(__('Entfernen')), onConfirm: () => $wire.removeSelected() })">
+                                <i class="bi bi-trash me-1"></i>{{ __('Entfernen') }}
+                            </button>
+                            <button class="btn btn-sm btn-link text-muted" wire:click="clearSelection">
+                                {{ __('Clear selection') }}
+                            </button>
+                        </div>
+                    @else
+                        <div class="d-flex align-items-center gap-2">
+                            @if($items->isNotEmpty())
+                                <button class="btn btn-sm btn-link text-muted" wire:click="selectAllItems">
+                                    {{ __('Select all') }}
+                                </button>
+                            @endif
+                            <button class="btn btn-sm btn-primary" wire:click="$set('showAddForm', true)">
+                                <i class="bi bi-plus-lg me-1"></i>{{ __('Hinzufügen') }}
+                            </button>
+                        </div>
+                    @endif
                 </div>
 
                 {{-- Element hinzufügen --}}
@@ -65,17 +103,13 @@
                                 <div class="col-sm-4">
                                     <label class="form-label form-label-sm">{{ __('Typ') }}</label>
                                     <select wire:model.live="newType" class="form-select form-select-sm">
-                                        <option value="music">{{ __('Musik') }}</option>
-                                        <option value="jingle">{{ __('Jingle') }}</option>
-                                        <option value="external">{{ __('Externe Quelle') }}</option>
-                                        <option value="url">{{ __('URL (Legacy)') }}</option>
-                                        <option value="fill">{{ __('Auffüllen mit Musik') }}</option>
-                                        <option value="random">{{ __('Zufälliges Element') }}</option>
-                                        <option value="adbreak">{{ __('Werbeunterbrechung (laut.fm)') }}</option>
+                                        @foreach($selectableTypes as $typeKey => $typeLabel)
+                                            <option value="{{ $typeKey }}">{{ $typeLabel }}</option>
+                                        @endforeach
                                     </select>
                                 </div>
 
-                                @if(! in_array($newType, ['url', 'external', 'fill', 'adbreak', 'random']))
+                                @if($needsMediaFile)
                                     <div class="col-sm-8 d-flex align-items-end">
                                         <div class="btn-group btn-group-sm w-100" role="group">
                                             <button type="button"
@@ -93,8 +127,37 @@
                                 @endif
                             </div>
 
+                            {{-- Container waehlen --}}
+                            @if($newType === 'container')
+                                <div class="mb-2">
+                                    <label class="form-label form-label-sm">{{ __('Container') }}</label>
+                                    @if($containers->isEmpty())
+                                        <p class="text-muted small mb-0">{{ __('No containers yet. Create one on the playlist overview.') }}</p>
+                                    @else
+                                        @error('selectedContainerId')
+                                            <div class="alert alert-danger py-1 px-2 small mb-2">{{ __('Please pick a container.') }}</div>
+                                        @enderror
+                                        <div class="list-group" style="max-height:220px;overflow-y:auto">
+                                            @foreach($containers as $container)
+                                                <button type="button"
+                                                        wire:key="container-{{ $container->id }}"
+                                                        wire:click="$set('selectedContainerId', {{ $container->id }})"
+                                                        class="list-group-item list-group-item-action d-flex align-items-center gap-2 py-1 px-2 small
+                                                               {{ $selectedContainerId === $container->id ? 'active' : '' }}">
+                                                    <i class="bi bi-box-seam"></i>
+                                                    <span class="text-truncate flex-grow-1">{{ $container->name }}</span>
+                                                    <span class="text-nowrap opacity-75">{{ $container->items_count }} {{ __('Tracks') }}</span>
+                                                </button>
+                                            @endforeach
+                                        </div>
+                                        <div class="form-text">
+                                            {{ __('The elements of the container are inserted at this position when the rundown is generated.') }}
+                                        </div>
+                                    @endif
+                                </div>
+
                             {{-- Adbreak-Info --}}
-                            @if($newType === 'adbreak')
+                            @elseif($newType === 'adbreak')
                                 <div class="alert alert-info py-2 px-3 small mb-2">
                                     <i class="bi bi-megaphone me-1"></i>
                                     {{ __('Fügt einen laut.fm-Werbeblock-Marker (START_AD_BREAK) in die Sendung ein. Liquidsoap signalisiert laut.fm an dieser Position den Start des Werbeblocks.') }}
@@ -307,7 +370,7 @@
                             @endif
 
                             {{-- Relativer Zeitstempel (nicht bei fill/random/adbreak) --}}
-                            @if(! in_array($newType, ['fill', 'random', 'adbreak']))
+                            @if($supportsTimestamp)
                                 <div class="mb-2" style="max-width:180px">
                                     <label class="form-label form-label-sm">
                                         <i class="bi bi-stopwatch me-1"></i>{{ __('Zeitstempel') }}
@@ -359,6 +422,11 @@
                         <div wire:key="item-{{ $item->id }}" data-item-id="{{ $item->id }}">
                             <div class="list-group-item d-flex align-items-center gap-3 py-2">
 
+                                {{-- Auswahl für die Sammelaktionen --}}
+                                <input class="form-check-input mt-0 flex-shrink-0" type="checkbox"
+                                       value="{{ $item->id }}" wire:model.live="selectedItemIds"
+                                       aria-label="{{ __('Select element') }}">
+
                                 {{-- Drag-Handle --}}
                                 <i class="bi bi-grip-vertical text-muted drag-handle" style="cursor:grab"></i>
 
@@ -371,6 +439,7 @@
                                         'external'     => 'bg-info text-dark',
                                         'fill'         => 'bg-success',
                                         'random'       => 'bg-dark',
+                                        'container'    => 'bg-secondary',
                                         'adbreak'      => 'bg-danger',
                                         'news', 'weather', 'news_weather' => 'bg-info text-dark',
                                         default        => 'bg-secondary',
@@ -382,6 +451,7 @@
                                         'external'     => __('Extern'),
                                         'fill'         => __('Fill'),
                                         'random'       => __('Zufall'),
+                                        'container'    => __('Container'),
                                         'adbreak'      => __('Ad Break'),
                                         'news'         => __('News'),
                                         'weather'      => __('Wetter'),
@@ -419,6 +489,11 @@
                                             @if($item->fill_max_duration_seconds)
                                                 <span><i class="bi bi-hourglass-split me-1"></i>max. {{ $this->formatOffset($item->fill_max_duration_seconds) }}</span>
                                             @endif
+                                        @elseif($item->type === 'container')
+                                            <span class="fst-italic"><i class="bi bi-box-seam me-1"></i>{{ $item->containerPlaylist?->name ?? __('missing container') }}</span>
+                                            @if($item->containerPlaylist)
+                                                <a href="{{ route('playlist.manager', $item->containerPlaylist) }}" wire:navigate>{{ __('Bearbeiten') }}</a>
+                                            @endif
                                         @elseif($item->type === 'random')
                                             <span class="fst-italic"><i class="bi bi-shuffle me-1"></i>{{ __('zufällig je Rundown') }}</span>
                                             @if($item->fill_tags && count($item->fill_tags) > 0)
@@ -448,13 +523,21 @@
                                 </div>
 
                                 {{-- Bearbeiten (nicht bei adbreak/news/weather – nichts zu konfigurieren) --}}
-                                @if(! in_array($item->type, ['adbreak', 'news', 'weather', 'news_weather']))
+                                @if(! in_array($item->type, ['adbreak', 'news', 'weather', 'news_weather', 'container']))
                                     <button class="btn btn-sm btn-outline-secondary"
                                             wire:click="startEditingItem({{ $item->id }})"
                                             title="{{ __('Bearbeiten') }}">
                                         <i class="bi bi-pencil"></i>
                                     </button>
                                 @endif
+
+                                {{-- Duplizieren --}}
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        wire:click="duplicateItem({{ $item->id }})"
+                                        wire:loading.attr="disabled" wire:target="duplicateItem"
+                                        title="{{ __('Duplizieren') }}">
+                                    <i class="bi bi-files"></i>
+                                </button>
 
                                 {{-- Löschen --}}
                                 <button class="btn btn-sm btn-outline-danger"

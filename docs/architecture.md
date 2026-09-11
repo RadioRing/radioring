@@ -79,6 +79,11 @@ rotation-aware tracks up to a duration, *random* items pick one track. If those 
 resolved at playout time, the protocol could not say what was actually played, and two
 requests for the same position could disagree.
 
+A *container* is a playlist with `kind = container`: a reusable block (jingle + news + ad
+break) that other playlists embed as an item. It exists only in the template world, gets
+flattened into concrete items during generation, and never reaches the hour grid, so
+nothing downstream of the rundown knows containers exist. Containers do not nest.
+
 Rotation is planned in `MusicRotationPlanner` with a decaying penalty for tracks played
 recently, rather than a hard block. If the library is too small, it fills anyway with the
 least-penalised choice instead of failing.

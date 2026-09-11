@@ -147,7 +147,7 @@ class Dashboard extends Component
         $listeners = null;
 
         if ($station) {
-            $playlistCount = $station->playlists()->count();
+            $playlistCount = $station->playlists()->schedulable()->count();
             $mediaCount = $station->mediaFiles()->count();
             $stream = $station->stream;
 

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['playlist_id', 'media_file_id', 'external_source_id', 'position', 'type', 'title', 'file_path', 'url', 'duration_seconds', 'relative_offset_seconds', 'fill_tags', 'fill_max_duration_seconds'])]
+#[Fillable(['playlist_id', 'media_file_id', 'external_source_id', 'container_playlist_id', 'position', 'type', 'title', 'file_path', 'url', 'duration_seconds', 'relative_offset_seconds', 'fill_tags', 'fill_max_duration_seconds'])]
 class PlaylistItem extends Model
 {
     /** @use HasFactory<PlaylistItemFactory> */
@@ -34,6 +34,12 @@ class PlaylistItem extends Model
     public function externalSource(): BelongsTo
     {
         return $this->belongsTo(ExternalSource::class);
+    }
+
+    /** The container this item embeds (only set for type "container"). */
+    public function containerPlaylist(): BelongsTo
+    {
+        return $this->belongsTo(Playlist::class, 'container_playlist_id');
     }
 
     /** Dateiname, bevorzugt aus verknüpfter MediaFile, sonst direkter file_path. */

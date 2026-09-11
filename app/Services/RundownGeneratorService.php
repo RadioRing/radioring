@@ -125,13 +125,37 @@ class RundownGeneratorService
     private function resolveItems(Station $station, HourGridSlot $slot, GeneratedPlaylist $rundown, Carbon $broadcastStart): void
     {
         $template = $slot->playlist->load('items.mediaFile', 'items.externalSource');
-        $position = 0;
 
         $cursor = $broadcastStart->copy();
         /** @var list<array{id: ?int, artist: ?string, album: ?string, at: Carbon}> $timeline */
         $timeline = $this->historyTimeline($station, $rundown, $broadcastStart);
 
-        foreach ($template->items as $item) {
+        $this->resolveTemplateItems($station, $template->items, $rundown, $broadcastStart, 0, $cursor, $timeline);
+    }
+
+    /**
+     * Resolves a list of template items into rundown items, in order.
+     *
+     * Runs for the playlist itself and, recursively, for every container embedded in it.
+     * Containers are flattened here: the generated rundown only ever holds concrete items.
+     *
+     * @param  iterable<int, PlaylistItem>  $items
+     * @param  list<array{id: ?int, artist: ?string, album: ?string, at: Carbon}>  $timeline
+     * @return int next free position
+     */
+    private function resolveTemplateItems(Station $station, iterable $items, GeneratedPlaylist $rundown, Carbon $broadcastStart, int $position, Carbon &$cursor, array &$timeline, bool $insideContainer = false): int
+    {
+        foreach ($items as $item) {
+            // A fixed timestamp pins an item to a point in the hour, which contradicts a
+            // block that is meant to be reusable anywhere: ignore it inside containers.
+            $relativeOffset = $insideContainer ? null : $item->relative_offset_seconds;
+
+            if ($item->type === 'container') {
+                $position = $this->resolveContainerItem($station, $item, $rundown, $broadcastStart, $position, $cursor, $timeline, $insideContainer);
+
+                continue;
+            }
+
             if ($item->type === 'fill') {
                 $position = $this->resolveFillItem($station, $item, $rundown, $position, $cursor, $timeline);
             } elseif ($item->type === 'random') {
@@ -165,8 +189,8 @@ class RundownGeneratorService
                     ?? $item->duration_seconds
                     ?? (int) config('radioring.news_duration_seconds', 300);
 
-                $absoluteAt = $item->relative_offset_seconds !== null
-                    ? $broadcastStart->copy()->addSeconds($item->relative_offset_seconds)
+                $absoluteAt = $relativeOffset !== null
+                    ? $broadcastStart->copy()->addSeconds($relativeOffset)
                     : null;
 
                 $rundown->items()->create([
@@ -185,8 +209,8 @@ class RundownGeneratorService
                 $duration = $item->duration_seconds ?? $item->mediaFile?->duration_seconds;
 
                 // Relativen Offset direkt in absolute Zeit umrechnen wenn gesetzt
-                $absoluteAt = $item->relative_offset_seconds !== null
-                    ? $broadcastStart->copy()->addSeconds($item->relative_offset_seconds)
+                $absoluteAt = $relativeOffset !== null
+                    ? $broadcastStart->copy()->addSeconds($relativeOffset)
                     : null;
 
                 $rundown->items()->create([
@@ -213,6 +237,35 @@ class RundownGeneratorService
                 $cursor = $at->copy()->addSeconds($duration ?? 0);
             }
         }
+
+        return $position;
+    }
+
+    /**
+     * Expands a container item: its own items are resolved in place, as if they had been
+     * typed into the playlist directly. Containers do not nest, and a container from
+     * another station is skipped.
+     *
+     * @param  list<array{id: ?int, artist: ?string, album: ?string, at: Carbon}>  $timeline
+     * @return int next free position
+     */
+    private function resolveContainerItem(Station $station, PlaylistItem $item, GeneratedPlaylist $rundown, Carbon $broadcastStart, int $position, Carbon &$cursor, array &$timeline, bool $insideContainer): int
+    {
+        if ($insideContainer) {
+            return $position;
+        }
+
+        $container = $item->containerPlaylist;
+
+        if (! $container || $container->station_id !== $station->id || ! $container->isContainer()) {
+            Log::warning("Container-Element ohne gueltigen Container uebersprungen: Playlist-Item #{$item->id}");
+
+            return $position;
+        }
+
+        $container->load('items.mediaFile', 'items.externalSource');
+
+        return $this->resolveTemplateItems($station, $container->items, $rundown, $broadcastStart, $position, $cursor, $timeline, insideContainer: true);
     }
 
     /**

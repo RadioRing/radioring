@@ -2,9 +2,11 @@
 
 namespace App\Livewire\Playlist;
 
-use App\Models\MediaFile;
 use App\Models\Playlist;
 use App\Models\PlaylistItem;
+use App\Support\PlaylistElements\ElementDraft;
+use App\Support\PlaylistElements\ElementTypes;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
@@ -56,6 +58,8 @@ class Manager extends Component
 
     public ?int $selectedMediaFileId = null;
 
+    public ?int $selectedContainerId = null;
+
     public string $librarySearch = '';
 
     // Fill-Optionen (neues Item)
@@ -63,6 +67,9 @@ class Manager extends Component
     public array $newFillTagIds = [];
 
     public string $newFillMaxDuration = '';
+
+    /** @var array<int|string> Items ticked in the list, for the bulk actions. */
+    public array $selectedItemIds = [];
 
     // Item bearbeiten
     public ?int $editingItemId = null;
@@ -87,6 +94,16 @@ class Manager extends Component
 
     public function saveSettings(): void
     {
+        // Containers are never scheduled on their own: playback and start mode belong to
+        // the playlist that embeds them, so only the name is editable here.
+        if ($this->playlist->isContainer()) {
+            $this->validate(['name' => 'required|string|min:2|max:80']);
+            $this->playlist->update(['name' => $this->name]);
+            $this->dispatch('notify', message: __('Einstellungen gespeichert.'), type: 'success');
+
+            return;
+        }
+
         $this->validate([
             'name' => 'required|string|min:2|max:80',
             'playbackMode' => 'required|in:sequential,random',
@@ -115,134 +132,46 @@ class Manager extends Component
 
     public function addItem(): void
     {
-        $nextPosition = $this->playlist->items()->max('position') + 1;
-        $added = 1;
+        $element = ElementTypes::for($this->newType, $this->addMode);
+        $rules = $element->rules();
 
-        if ($this->newType === 'adbreak') {
-            $this->playlist->items()->create([
-                'position' => $nextPosition,
-                'type' => 'adbreak',
-                'title' => 'Werbeunterbrechung (START_AD_BREAK)',
-            ]);
-        } elseif ($this->newType === 'random') {
-            $validTagIds = $this->playlist->station->tags()->pluck('id')->all();
-            $fillTagIds = array_values(array_intersect(array_map('intval', $this->newFillTagIds), $validTagIds));
-
-            $this->playlist->items()->create([
-                'position' => $nextPosition,
-                'type' => 'random',
-                'title' => 'Zufälliges Element',
-                'fill_tags' => $fillTagIds ?: null,
-            ]);
-        } elseif ($this->newType === 'fill') {
-            $this->validate([
-                'newFillMaxDuration' => 'nullable|integer|min:60|max:7200',
-            ]);
-
-            $validTagIds = $this->playlist->station->tags()->pluck('id')->all();
-            $fillTagIds = array_values(array_intersect(array_map('intval', $this->newFillTagIds), $validTagIds));
-
-            $this->playlist->items()->create([
-                'position' => $nextPosition,
-                'type' => 'fill',
-                'title' => 'Auffüllen mit Musik',
-                'fill_tags' => $fillTagIds ?: null,
-                'fill_max_duration_seconds' => $this->newFillMaxDuration ? (int) $this->newFillMaxDuration : null,
-            ]);
-        } elseif ($this->newType === 'url') {
-            $this->validate([
-                'newTitle' => 'required|string|min:1|max:200',
-                'newUrl' => 'required|url|max:2048',
-                'newDuration' => 'nullable|integer|min:1|max:86400',
-            ]);
-
-            $this->playlist->items()->create([
-                'position' => $nextPosition,
-                'type' => 'url',
-                'title' => $this->newTitle,
-                'url' => $this->newUrl,
-                'duration_seconds' => $this->newDuration ? (int) $this->newDuration : null,
-                'relative_offset_seconds' => $this->parseOffset($this->newRelativeOffset),
-            ]);
-        } elseif ($this->newType === 'external') {
-            $this->validate([
-                'selectedExternalSourceIds' => 'required|array|min:1',
-            ]);
-
-            $sources = $this->playlist->station->externalSources()
-                ->whereIn('id', $this->selectedExternalSourceIds)
-                ->get()
-                ->sortBy(fn ($source) => array_search($source->id, $this->selectedExternalSourceIds));
-
-            $offset = $this->parseOffset($this->newRelativeOffset);
-
-            foreach ($sources->values() as $index => $source) {
-                $this->playlist->items()->create([
-                    'position' => $nextPosition + $index,
-                    'type' => 'external',
-                    'title' => $source->name,
-                    'external_source_id' => $source->id,
-                    // Kein Dauer-Snapshot: dynamische Quelle, die Länge wird bei der
-                    // Rundown-Generierung aus der aktuellen erwarteten Dauer gezogen.
-                    'duration_seconds' => null,
-                    // The timestamp pins the start of the block; the rest follows on directly.
-                    'relative_offset_seconds' => $index === 0 ? $offset : null,
-                ]);
-            }
-
-            $added = $sources->count();
-        } elseif ($this->addMode === 'library') {
-            $this->validate([
-                'selectedMediaFileId' => 'required|integer',
-            ]);
-
-            $mediaFile = $this->playlist->station->mediaFiles()
-                ->findOrFail($this->selectedMediaFileId);
-
-            $this->playlist->items()->create([
-                'position' => $nextPosition,
-                'type' => $mediaFile->type,
-                'title' => $mediaFile->title,
-                'media_file_id' => $mediaFile->id,
-                'relative_offset_seconds' => $this->parseOffset($this->newRelativeOffset),
-            ]);
-        } else {
-            $this->validate([
-                'newTitle' => 'required|string|min:1|max:200',
-                'newFile' => 'required|file|mimes:mp3,m4a,ogg,wav,flac|max:307200',
-            ]);
-
-            $slug = $this->playlist->station->slug;
-            $filePath = $this->newFile->storeAs(
-                "stations/{$slug}/media",
-                $this->newFile->getClientOriginalName(),
-                'local'
-            );
-
-            // Datei auch in Bibliothek speichern
-            $mediaFile = $this->playlist->station->mediaFiles()->create([
-                'title' => $this->newTitle,
-                'type' => $this->newType,
-                'file_path' => $filePath,
-            ]);
-
-            $this->playlist->items()->create([
-                'position' => $nextPosition,
-                'type' => $this->newType,
-                'title' => $this->newTitle,
-                'media_file_id' => $mediaFile->id,
-                'relative_offset_seconds' => $this->parseOffset($this->newRelativeOffset),
-            ]);
+        // Types like the ad break are configured by their position alone and validate nothing.
+        if ($rules !== []) {
+            $this->validate($rules);
         }
 
+        $added = $element->create(
+            $this->playlist,
+            $this->draft(),
+            $this->playlist->items()->max('position') + 1,
+        );
+
         $this->reset('newTitle', 'newUrl', 'selectedExternalSourceIds', 'externalSearch', 'newDuration',
-            'newFile', 'showAddForm', 'selectedMediaFileId', 'librarySearch', 'newFillTagIds',
-            'newFillMaxDuration', 'newRelativeOffset');
+            'newFile', 'showAddForm', 'selectedMediaFileId', 'selectedContainerId', 'librarySearch',
+            'newFillTagIds', 'newFillMaxDuration', 'newRelativeOffset');
         $this->dispatch('notify', type: 'success', message: trans_choice(
             '{1}Element hinzugefügt.|[2,*]:count Elemente hinzugefügt.',
             $added,
             ['count' => $added],
         ));
+    }
+
+    /** Collects the add form into one object for the element type to read. */
+    private function draft(): ElementDraft
+    {
+        return new ElementDraft(
+            type: $this->newType,
+            title: $this->newTitle,
+            url: $this->newUrl,
+            durationSeconds: $this->newDuration !== '' ? (int) $this->newDuration : null,
+            mediaFileId: $this->selectedMediaFileId,
+            externalSourceIds: array_map('intval', $this->selectedExternalSourceIds),
+            containerId: $this->selectedContainerId,
+            tagIds: $this->newFillTagIds,
+            fillMaxDurationSeconds: $this->newFillMaxDuration !== '' ? (int) $this->newFillMaxDuration : null,
+            relativeOffsetSeconds: $this->parseOffset($this->newRelativeOffset),
+            upload: $this->newFile,
+        );
     }
 
     public function startEditingItem(int $itemId): void
@@ -300,15 +229,118 @@ class Manager extends Component
 
     public function removeItem(int $itemId): void
     {
-        $item = $this->playlist->items()->findOrFail($itemId);
+        $this->deleteItems($this->playlist->items()->where('id', $itemId)->get());
+    }
 
-        // Direkten file_path löschen (Legacy, ohne MediaFile-Referenz)
-        if ($item->file_path && ! $item->media_file_id) {
-            Storage::disk('local')->delete($item->file_path);
+    /**
+     * Copies one element and puts the copy right behind the original, so a block that is
+     * needed several times does not have to be searched for again.
+     */
+    public function duplicateItem(int $itemId): void
+    {
+        $copies = $this->copyItems($this->playlist->items()->where('id', $itemId)->get());
+
+        $this->dispatch('notify', type: 'success', message: trans_choice(
+            '{1}Element duplicated.|[2,*]:count elements duplicated.',
+            $copies,
+            ['count' => $copies],
+        ));
+    }
+
+    public function duplicateSelected(): void
+    {
+        $copies = $this->copyItems($this->selectedItems());
+
+        $this->reset('selectedItemIds');
+        $this->dispatch('notify', type: 'success', message: trans_choice(
+            '{1}Element duplicated.|[2,*]:count elements duplicated.',
+            $copies,
+            ['count' => $copies],
+        ));
+    }
+
+    public function removeSelected(): void
+    {
+        $removed = $this->deleteItems($this->selectedItems());
+
+        $this->reset('selectedItemIds');
+        $this->dispatch('notify', type: 'success', message: trans_choice(
+            '{1}Element removed.|[2,*]:count elements removed.',
+            $removed,
+            ['count' => $removed],
+        ));
+    }
+
+    public function selectAllItems(): void
+    {
+        $this->selectedItemIds = $this->playlist->items()->pluck('id')->map(strval(...))->all();
+    }
+
+    public function clearSelection(): void
+    {
+        $this->reset('selectedItemIds');
+    }
+
+    /** @return Collection<int, PlaylistItem> the ticked items, in playlist order */
+    private function selectedItems(): Collection
+    {
+        return $this->playlist->items()
+            ->whereIn('id', array_map('intval', $this->selectedItemIds))
+            ->orderBy('position')
+            ->get();
+    }
+
+    /**
+     * @param  Collection<int, PlaylistItem>  $items
+     * @return int how many copies were made
+     */
+    private function copyItems(Collection $items): int
+    {
+        if ($items->isEmpty()) {
+            return 0;
         }
 
-        $item->delete();
+        $copyAfter = $items->pluck('id')->all();
+        $position = 0;
+        $copies = 0;
+
+        foreach ($this->playlist->items()->orderBy('position')->get() as $item) {
+            $item->update(['position' => $position++]);
+
+            if (in_array($item->id, $copyAfter, true)) {
+                $copy = $item->replicate();
+                $copy->position = $position++;
+                $copy->save();
+                $copies++;
+            }
+        }
+
+        return $copies;
+    }
+
+    /**
+     * @param  Collection<int, PlaylistItem>  $items
+     * @return int how many items were removed
+     */
+    private function deleteItems(Collection $items): int
+    {
+        foreach ($items as $item) {
+            // Direkten file_path löschen (Legacy, ohne MediaFile-Referenz). Eine Kopie des
+            // Elements zeigt auf dieselbe Datei - die darf dann nicht verschwinden.
+            $stillInUse = $item->file_path && PlaylistItem::where('file_path', $item->file_path)
+                ->whereNot('id', $item->id)
+                ->exists();
+
+            if ($item->file_path && ! $item->media_file_id && ! $stillInUse) {
+                Storage::disk('local')->delete($item->file_path);
+            }
+
+            $item->delete();
+        }
+
         $this->resequence();
+
+        return $items->count();
     }
 
     /**
@@ -363,20 +395,31 @@ class Manager extends Component
     {
         $libraryFiles = collect();
 
-        if ($this->showAddForm && $this->addMode === 'library' && ! in_array($this->newType, ['url', 'external', 'fill', 'adbreak', 'random'])) {
+        if ($this->showAddForm && $this->addMode === 'library' && ElementTypes::needsMediaFile($this->newType)) {
             $query = $this->playlist->station->mediaFiles()
                 ->where('type', $this->newType);
 
-            if ($this->librarySearch) {
-                $query->where('title', 'like', '%'.$this->librarySearch.'%')->orWhere('id', 'like', '%'.$this->librarySearch.'%');
+            // Die Suchbedingungen gehoeren geklammert, sonst hebt das orWhere den
+            // Typfilter auf und die Jingle-Liste zeigt ploetzlich Musiktitel.
+            if ($this->librarySearch !== '') {
+                $query->where(fn ($sub) => $sub
+                    ->where('title', 'like', '%'.$this->librarySearch.'%')
+                    ->orWhere('artist', 'like', '%'.$this->librarySearch.'%')
+                    ->orWhere('id', 'like', '%'.$this->librarySearch.'%'));
             }
 
             $libraryFiles = $query->orderBy('title')->get();
         }
 
         return view('livewire.playlist.manager', [
-            'items' => $this->playlist->items()->with(['mediaFile', 'externalSource'])->orderBy('position')->get(),
+            'items' => $this->playlist->items()->with(['mediaFile', 'externalSource', 'containerPlaylist'])->orderBy('position')->get(),
+            'containers' => $this->playlist->isContainer()
+                ? collect()
+                : $this->playlist->station->playlists()->containers()->withCount('items')->orderBy('name')->get(),
             'libraryFiles' => $libraryFiles,
+            'selectableTypes' => ElementTypes::selectableLabels(! $this->playlist->isContainer()),
+            'needsMediaFile' => ElementTypes::needsMediaFile($this->newType),
+            'supportsTimestamp' => ElementTypes::supportsTimestamp($this->newType),
             'stationTags' => $this->playlist->station->tags()->orderBy('name')->get(),
             'externalSources' => $this->playlist->station->externalSources()
                 ->when($this->externalSearch !== '', fn ($query) => $query

@@ -61,7 +61,7 @@ class Index extends Component
 
         if ($this->editingPlaylistId) {
             // Sicherstellen dass die Playlist zur Station gehört
-            abort_unless($this->station->playlists()->where('id', $this->editingPlaylistId)->exists(), 403);
+            abort_unless($this->station->playlists()->schedulable()->where('id', $this->editingPlaylistId)->exists(), 403);
 
             HourGridSlot::updateOrCreate(
                 [
@@ -98,7 +98,7 @@ class Index extends Component
      */
     public function assignMultiple(array $cells, int $playlistId): void
     {
-        abort_unless($this->station->playlists()->where('id', $playlistId)->exists(), 403);
+        abort_unless($this->station->playlists()->schedulable()->where('id', $playlistId)->exists(), 403);
 
         foreach ($cells as $cell) {
             HourGridSlot::updateOrCreate(
@@ -253,7 +253,7 @@ class Index extends Component
 
         return view('livewire.hour-grid.index', [
             'grid' => $grid,
-            'playlists' => $this->station->playlists()->orderBy('name')->get(),
+            'playlists' => $this->station->playlists()->schedulable()->orderBy('name')->get(),
             'rundowns' => $rundowns,
             'weekdays' => ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'],
             'weekDates' => $weekDates,

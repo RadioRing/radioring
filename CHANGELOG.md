@@ -14,6 +14,32 @@ to stand on its own.
 
 ## [Unreleased]
 
+### Added
+- **Containers: reusable blocks of elements for playlists.** A jingle, the news and an ad
+  break that always run together had to be assembled again in every playlist, and a change
+  to the block meant editing each of them. Such a block can now be saved once as a
+  container and added to any number of playlists. It is edited in the familiar playlist
+  editor and can hold every element type, fill and random elements included. When a rundown
+  is generated the container is resolved into its elements in place, so the programme, the
+  protocol and the player see exactly what they saw before. Containers are listed apart from
+  playlists, cannot be put on the weekly grid, and do not nest. Deleting one removes it from
+  every playlist that uses it; already generated rundowns keep the version they froze.
+- **Elements can be duplicated and handled in batches in the playlist editor.** Placing the
+  same ad break four times meant four trips through the add form. Every element now has a
+  duplicate button that puts the copy directly behind the original, and elements can be
+  ticked in the list to duplicate or remove several of them at once.
+
+### Fixed
+- **A file uploaded in the playlist editor is now treated like any other upload.** It went
+  into an old per-station folder, its ID3 tags were never read, and its loudness was never
+  measured, so the track went on air unnormalised and showed up in the library without
+  artist, album or duration. The editor now takes exactly the same route as an upload
+  through the media library. Files uploaded this way in the past keep playing; re-upload
+  them through the library if they sound too loud or too quiet.
+- **Searching the library from the playlist editor no longer ignores the element type.**
+  Looking for a jingle could list music tracks, which were then added as a jingle. The
+  search also matches the artist now.
+
 ## [0.4.0] - 2026-09-10
 
 **New in this release:** Stereo Tool integration. Stereo Tool allows some low latency

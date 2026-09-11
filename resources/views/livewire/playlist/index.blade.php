@@ -3,16 +3,29 @@
         <h4 class="fw-semibold mb-0">
             <i class="bi bi-music-note-list me-2 text-primary"></i>{{ __('Playlisten') }}
         </h4>
-        <button class="btn btn-primary btn-sm" wire:click="$set('showCreateForm', true)">
-            <i class="bi bi-plus-lg me-1"></i>{{ __('Neue Playlist') }}
-        </button>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-primary btn-sm" wire:click="startCreating('container')">
+                <i class="bi bi-plus-lg me-1"></i>{{ __('New container') }}
+            </button>
+            <button class="btn btn-primary btn-sm" wire:click="startCreating('playlist')">
+                <i class="bi bi-plus-lg me-1"></i>{{ __('Neue Playlist') }}
+            </button>
+        </div>
     </div>
 
     {{-- Erstellen-Formular --}}
     @if($showCreateForm)
         <div class="card mb-4" style="max-width: 520px;">
             <div class="card-body">
-                <h6 class="fw-semibold mb-3">{{ __('Neue Playlist') }}</h6>
+                <h6 class="fw-semibold mb-3">
+                    {{ $newKind === 'container' ? __('New container') : __('Neue Playlist') }}
+                </h6>
+                @if($newKind === 'container')
+                    <div class="alert alert-info py-2 px-3 small">
+                        <i class="bi bi-box-seam me-1"></i>
+                        {{ __('A container is a reusable block of elements, for example jingle + news + ad break. Add it to any playlist; it is resolved into its elements when the rundown is generated.') }}
+                    </div>
+                @endif
                 <form wire:submit="create">
                     <div class="mb-3">
                         <label class="form-label">{{ __('Name') }}</label>
@@ -21,20 +34,22 @@
                                placeholder="{{ __('z.B. Morning Show') }}" autofocus>
                         @error('newName') <div class="invalid-feedback">{{ $message }}</div> @enderror
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">{{ __('Wiedergabemodus') }}</label>
-                        <select wire:model="newPlaybackMode" class="form-select">
-                            <option value="sequential">{{ __('Sequentiell') }}</option>
-                            <option value="random">{{ __('Zufällig') }}</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">{{ __('Start zur vollen Stunde') }}</label>
-                        <select wire:model="newStartMode" class="form-select">
-                            <option value="soft">{{ __('Weich – Überhang darf auslaufen') }}</option>
-                            <option value="hard">{{ __('Hart – schneidet zur vollen Stunde') }}</option>
-                        </select>
-                    </div>
+                    @if($newKind !== 'container')
+                        <div class="mb-3">
+                            <label class="form-label">{{ __('Wiedergabemodus') }}</label>
+                            <select wire:model="newPlaybackMode" class="form-select">
+                                <option value="sequential">{{ __('Sequentiell') }}</option>
+                                <option value="random">{{ __('Zufällig') }}</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">{{ __('Start zur vollen Stunde') }}</label>
+                            <select wire:model="newStartMode" class="form-select">
+                                <option value="soft">{{ __('Weich – Überhang darf auslaufen') }}</option>
+                                <option value="hard">{{ __('Hart – schneidet zur vollen Stunde') }}</option>
+                            </select>
+                        </div>
+                    @endif
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn btn-primary btn-sm">{{ __('Erstellen') }}</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm"
@@ -86,6 +101,49 @@
                         </button>
                         <button class="btn btn-sm btn-outline-danger"
                                 @click="$dispatch('confirm-dialog', { message: @js(__('Playlist „:name" wirklich löschen?', ['name' => $playlist->name])), confirmText: @js(__('Löschen')), onConfirm: () => $wire.delete({{ $playlist->id }}) })">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            @endforeach
+        </div>
+    @endif
+
+    {{-- Containers: reusable blocks, never scheduled on their own --}}
+    @if($containers->isNotEmpty())
+        <h5 class="fw-semibold mt-5 mb-3">
+            <i class="bi bi-box-seam me-2 text-secondary"></i>{{ __('Containers') }}
+        </h5>
+        <p class="text-muted-sm mb-3">
+            {{ __('Reusable blocks of elements. Add them to a playlist instead of scheduling them on the hour grid.') }}
+        </p>
+        <div class="list-group">
+            @foreach($containers as $container)
+                <div class="list-group-item list-group-item-action d-flex align-items-center justify-content-between py-3">
+                    <div class="d-flex align-items-center gap-3">
+                        <i class="bi bi-box-seam fs-5 text-secondary"></i>
+                        <div>
+                            <div class="fw-medium">{{ $container->name }}</div>
+                            <div class="text-muted-sm d-flex align-items-center gap-2 mt-1">
+                                <span>{{ $container->items_count }} {{ __('Tracks') }}</span>
+                                <span>·</span>
+                                <span>{{ trans_choice('{0}not used yet|{1}used once|[2,*]used :count times', $container->embedding_items_count, ['count' => $container->embedding_items_count]) }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <a href="{{ route('playlist.manager', $container) }}"
+                           class="btn btn-sm btn-outline-primary" wire:navigate>
+                            <i class="bi bi-pencil me-1"></i>{{ __('Bearbeiten') }}
+                        </a>
+                        <button class="btn btn-sm btn-outline-secondary"
+                                wire:click="duplicate({{ $container->id }})"
+                                wire:loading.attr="disabled" wire:target="duplicate"
+                                title="{{ __('Duplizieren') }}">
+                            <i class="bi bi-files"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger"
+                                @click="$dispatch('confirm-dialog', { message: @js(__('Delete container „:name"? It is removed from every playlist that uses it.', ['name' => $container->name])), confirmText: @js(__('Löschen')), onConfirm: () => $wire.delete({{ $container->id }}) })">
                             <i class="bi bi-trash"></i>
                         </button>
                     </div>
