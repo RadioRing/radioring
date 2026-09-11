@@ -57,6 +57,34 @@
     max-width: 420px;
 }
 
+/* ── Weekly grid: crosshair on hover ───────────────────────────*/
+.hour-grid tbody tr:hover > *,
+.hour-grid:has(tbody td:nth-child(2):hover) tr > :nth-child(2),
+.hour-grid:has(tbody td:nth-child(3):hover) tr > :nth-child(3),
+.hour-grid:has(tbody td:nth-child(4):hover) tr > :nth-child(4),
+.hour-grid:has(tbody td:nth-child(5):hover) tr > :nth-child(5),
+.hour-grid:has(tbody td:nth-child(6):hover) tr > :nth-child(6),
+.hour-grid:has(tbody td:nth-child(7):hover) tr > :nth-child(7),
+.hour-grid:has(tbody td:nth-child(8):hover) tr > :nth-child(8) {
+    box-shadow: inset 0 0 0 9999px rgba(13, 110, 253, .07);
+}
+
+.hour-grid tbody td:hover {
+    box-shadow: inset 0 0 0 9999px rgba(13, 110, 253, .16);
+}
+
+.hour-grid-hard {
+    box-shadow: inset 3px 0 0 0 #6f42c1;
+}
+
+.hour-grid-hard-sample {
+    display: inline-block;
+    width: 3px;
+    height: .8rem;
+    background-color: #6f42c1;
+    vertical-align: middle;
+}
+
 /* ── Misc ──────────────────────────────────────────────────── */
 .text-muted-sm {
     font-size: .875rem;

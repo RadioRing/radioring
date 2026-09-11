@@ -374,5 +374,7 @@
     "{1}1 source|[2,*]:count sources": "{1}1 Quelle|[2,*]:count Quellen",
     "No source matches the search or the filters.": "Keine Quelle passt zur Suche oder den Filtern.",
     "plus up to :time of fill music": "plus bis zu :time Fill-Musik",
-    "Adds music until its budget is used up, rotation-aware": "Füllt mit Musik, bis das Budget aufgebraucht ist, rotationsgerecht"
+    "Adds music until its budget is used up, rotation-aware": "Füllt mit Musik, bis das Budget aufgebraucht ist, rotationsgerecht",
+    "Hard start on the hour": "Harter Start zur vollen Stunde",
+    "Soft start: the running track finishes first": "Weicher Start: der laufende Titel spielt zu Ende"
 }

@@ -210,7 +210,7 @@
 
     {{-- Raster-Tabelle --}}
     <div class="table-responsive">
-        <table class="table table-bordered table-sm align-middle mb-0" style="font-size:.82rem">
+        <table class="table table-bordered table-sm align-middle mb-0 hour-grid" style="font-size:.82rem">
             <thead class="table-dark">
                 <tr>
                     <th style="width:54px">{{ __('Zeit') }}</th>
@@ -238,15 +238,13 @@
                                 }"
                                 style="cursor:pointer; min-width:90px">
 
-                                <div class="px-2 py-1 h-100 w-100"
+                                <div class="px-2 py-1 h-100 w-100 {{ $slot && $slot->playlist->start_mode === 'hard' ? 'hour-grid-hard' : '' }}"
+                                     @if($slot) title="{{ $slot->playlist->start_mode === 'hard' ? __('Hard start on the hour') : __('Soft start: the running track finishes first') }}" @endif
                                      @click="bulkMode ? toggleCell({{ $day }}, {{ $hour }}) : $wire.editSlot({{ $day }}, {{ $hour }})"
                                      :class="{ 'bg-warning bg-opacity-25': isSelected({{ $day }}, {{ $hour }}) }">
 
                                     @if($slot)
                                         <div class="text-truncate text-dark fw-medium" style="max-width:110px">
-                                            @if($slot->playlist->start_mode === 'hard')
-                                                <i class="bi bi-clock-fill text-danger me-1" title="{{ __('Harter Start zur vollen Stunde') }}"></i>
-                                            @endif
                                             {{ $slot->playlist->name }}
                                         </div>
                                         @if($rundownStatus)
@@ -268,9 +266,12 @@
     </div>
 
     {{-- Legende --}}
-    <div class="mt-3 d-flex gap-3 flex-wrap" style="font-size:.75rem">
+    <div class="mt-3 d-flex gap-3 flex-wrap align-items-center" style="font-size:.75rem">
         <span class="text-muted"><i class="bi bi-circle-fill text-success me-1"></i>{{ __('Rundown bereit') }}</span>
         <span class="text-muted"><i class="bi bi-circle-fill text-secondary me-1"></i>{{ __('Gespielt') }}</span>
         <span class="text-muted"><i class="bi bi-circle-fill text-warning me-1"></i>{{ __('Entwurf') }}</span>
+        <span class="text-muted d-inline-flex align-items-center">
+            <span class="hour-grid-hard-sample me-1"></span>{{ __('Hard start on the hour') }}
+        </span>
     </div>
 </div>
