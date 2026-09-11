@@ -12,7 +12,7 @@ class ContainerElement implements PlaylistElementType
 {
     public function rules(): array
     {
-        return ['selectedContainerId' => 'required|integer'];
+        return [];
     }
 
     public function create(Playlist $playlist, ElementDraft $draft, int $position): int

@@ -11,7 +11,7 @@ class ExternalElement implements PlaylistElementType
 {
     public function rules(): array
     {
-        return ['selectedExternalSourceIds' => 'required|array|min:1'];
+        return [];
     }
 
     public function create(Playlist $playlist, ElementDraft $draft, int $position): int

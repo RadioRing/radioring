@@ -14,7 +14,7 @@ class FillElement implements PlaylistElementType
 
     public function rules(): array
     {
-        return ['newFillMaxDuration' => 'nullable|integer|min:60|max:7200'];
+        return [];
     }
 
     public function create(Playlist $playlist, ElementDraft $draft, int $position): int

@@ -22,8 +22,8 @@ class UploadElement implements PlaylistElementType
     public function rules(): array
     {
         return [
-            'newTitle' => 'required|string|min:1|max:200',
-            'newFile' => 'required|file|mimes:mp3,m4a,ogg,wav,flac|max:307200',
+            'uploadTitle' => 'required|string|min:1|max:200',
+            'uploadFile' => 'required|file|mimes:mp3,m4a,ogg,wav,flac|max:307200',
         ];
     }
 

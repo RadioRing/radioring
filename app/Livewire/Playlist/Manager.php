@@ -6,6 +6,8 @@ use App\Models\Playlist;
 use App\Models\PlaylistItem;
 use App\Support\PlaylistElements\ElementDraft;
 use App\Support\PlaylistElements\ElementTypes;
+use App\Support\PlaylistElements\PlaylistPalette;
+use App\Support\PlaylistElements\PlaylistRuntime;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Locked;
@@ -20,6 +22,9 @@ class Manager extends Component
 {
     use WithFileUploads;
 
+    /** How many palette entries are shown before "load more" appears. */
+    private const PALETTE_PAGE = 40;
+
     #[Locked]
     public Playlist $playlist;
 
@@ -33,40 +38,37 @@ class Manager extends Component
     #[Validate('required|in:soft,hard')]
     public string $startMode = 'soft';
 
-    // Neues Item
-    public bool $showAddForm = false;
+    public bool $showSettings = false;
 
-    public string $addMode = 'library'; // 'library' oder 'upload'
+    // Palette
+    public string $paletteTab = PlaylistPalette::TAB_MEDIA;
 
-    public string $newType = 'music';
+    public string $paletteSearch = '';
 
-    public string $newTitle = '';
+    public string $paletteMediaType = '';
 
-    public string $newUrl = '';
+    public int $paletteLimit = self::PALETTE_PAGE;
 
-    /** @var array<int> External sources picked for the next add, in the order they were clicked. */
-    public array $selectedExternalSourceIds = [];
+    /** @var array<int, string> Picked palette entries ("media:12"), in the order they were clicked. */
+    public array $picks = [];
 
-    public string $externalSearch = '';
+    /** Which extra form the palette shows: '', 'url' or 'upload'. */
+    public string $paletteForm = '';
 
-    public string $newDuration = '';
+    // URL-Formular (Legacy)
+    public string $urlTitle = '';
 
-    public string $newRelativeOffset = ''; // Format MM:SS oder leer
+    public string $urlAddress = '';
+
+    public string $urlDuration = '';
+
+    // Upload-Formular
+    public string $uploadTitle = '';
+
+    public string $uploadType = 'jingle';
 
     /** @var TemporaryUploadedFile|null */
-    public $newFile = null;
-
-    public ?int $selectedMediaFileId = null;
-
-    public ?int $selectedContainerId = null;
-
-    public string $librarySearch = '';
-
-    // Fill-Optionen (neues Item)
-    /** @var array<int|string> */
-    public array $newFillTagIds = [];
-
-    public string $newFillMaxDuration = '';
+    public $uploadFile = null;
 
     /** @var array<int|string> Items ticked in the list, for the bulk actions. */
     public array $selectedItemIds = [];
@@ -119,36 +121,143 @@ class Manager extends Component
         $this->dispatch('notify', message: __('Einstellungen gespeichert.'), type: 'success');
     }
 
-    /**
-     * Picks an external source for the next add, or drops it again. The click order is
-     * kept, so the operator decides in which order a block of elements lands.
-     */
-    public function toggleExternalSource(int $sourceId): void
+    /* ------------------------------------------------------------------ Palette */
+
+    public function switchTab(string $tab): void
     {
-        $this->selectedExternalSourceIds = in_array($sourceId, $this->selectedExternalSourceIds, true)
-            ? array_values(array_diff($this->selectedExternalSourceIds, [$sourceId]))
-            : [...$this->selectedExternalSourceIds, $sourceId];
+        $this->paletteTab = $tab;
+        $this->paletteLimit = self::PALETTE_PAGE;
+        $this->paletteForm = '';
     }
 
-    public function addItem(): void
+    public function updatedPaletteSearch(): void
     {
-        $element = ElementTypes::for($this->newType, $this->addMode);
-        $rules = $element->rules();
+        $this->paletteLimit = self::PALETTE_PAGE;
+    }
 
-        // Types like the ad break are configured by their position alone and validate nothing.
-        if ($rules !== []) {
-            $this->validate($rules);
+    public function updatedPaletteMediaType(): void
+    {
+        $this->paletteLimit = self::PALETTE_PAGE;
+    }
+
+    public function loadMore(): void
+    {
+        $this->paletteLimit += self::PALETTE_PAGE;
+    }
+
+    /**
+     * Picks a palette entry for the next insert, or drops it again. The click order is
+     * kept, so the operator decides in which order a block of elements lands.
+     */
+    public function togglePick(string $key): void
+    {
+        $this->picks = in_array($key, $this->picks, true)
+            ? array_values(array_diff($this->picks, [$key]))
+            : [...$this->picks, $key];
+    }
+
+    public function clearPicks(): void
+    {
+        $this->reset('picks');
+    }
+
+    /** Appends everything that is picked, in pick order. */
+    public function insertPicks(): void
+    {
+        $added = $this->insertEntries($this->picks, $this->nextPosition());
+
+        $this->reset('picks');
+        $this->announceAdded($added);
+    }
+
+    /** Appends a single entry, for the one-click rows of the palette. */
+    public function insertEntry(string $key): void
+    {
+        $this->announceAdded($this->insertEntries([$key], $this->nextPosition()));
+    }
+
+    /** Drops an entry into the list at a given position, for drag and drop out of the palette. */
+    public function insertEntryAt(string $key, int $position): void
+    {
+        $position = max(0, $position);
+
+        $this->resequence();
+        $this->playlist->items()->where('position', '>=', $position)->increment('position');
+
+        $added = $this->insertEntries([$key], $position);
+        $this->resequence();
+
+        $this->announceAdded($added);
+    }
+
+    public function submitUrl(): void
+    {
+        $element = ElementTypes::for('url');
+        $this->validate($element->rules());
+
+        $element->create($this->playlist, new ElementDraft(
+            type: 'url',
+            title: $this->urlTitle,
+            url: $this->urlAddress,
+            durationSeconds: $this->urlDuration !== '' ? (int) $this->urlDuration : null,
+        ), $this->nextPosition());
+
+        $this->reset('urlTitle', 'urlAddress', 'urlDuration', 'paletteForm');
+        $this->announceAdded(1);
+    }
+
+    public function submitUpload(): void
+    {
+        $this->validate(['uploadType' => 'required|in:music,jingle']);
+
+        $element = ElementTypes::for($this->uploadType, 'upload');
+        $this->validate($element->rules());
+
+        $element->create($this->playlist, new ElementDraft(
+            type: $this->uploadType,
+            title: $this->uploadTitle,
+            upload: $this->uploadFile,
+        ), $this->nextPosition());
+
+        $this->reset('uploadTitle', 'uploadFile', 'paletteForm');
+        $this->announceAdded(1);
+    }
+
+    /**
+     * @param  array<int, string>  $keys  palette keys like "media:12"
+     * @return int how many items were created
+     */
+    private function insertEntries(array $keys, int $position): int
+    {
+        $added = 0;
+
+        foreach ($keys as $key) {
+            [$kind, $id] = array_pad(explode(':', $key, 2), 2, '');
+
+            $element = ElementTypes::forPaletteEntry($kind, $id);
+            $added += $element->create($this->playlist, $this->draftFor($kind, $id), $position + $added);
         }
 
-        $added = $element->create(
-            $this->playlist,
-            $this->draft(),
-            $this->playlist->items()->max('position') + 1,
-        );
+        return $added;
+    }
 
-        $this->reset('newTitle', 'newUrl', 'selectedExternalSourceIds', 'externalSearch', 'newDuration',
-            'newFile', 'showAddForm', 'selectedMediaFileId', 'selectedContainerId', 'librarySearch',
-            'newFillTagIds', 'newFillMaxDuration', 'newRelativeOffset');
+    private function draftFor(string $kind, string $id): ElementDraft
+    {
+        return match ($kind) {
+            PlaylistPalette::TAB_MEDIA => new ElementDraft(type: 'media', mediaFileId: (int) $id),
+            PlaylistPalette::TAB_CONTAINER => new ElementDraft(type: 'container', containerId: (int) $id),
+            PlaylistPalette::TAB_EXTERNAL => new ElementDraft(type: 'external', externalSourceIds: [(int) $id]),
+            default => new ElementDraft(type: $id),
+        };
+    }
+
+    private function nextPosition(): int
+    {
+        return ($this->playlist->items()->max('position') ?? -1) + 1;
+    }
+
+    private function announceAdded(int $added): void
+    {
         $this->dispatch('notify', type: 'success', message: trans_choice(
             '{1}Element hinzugefügt.|[2,*]:count Elemente hinzugefügt.',
             $added,
@@ -156,23 +265,7 @@ class Manager extends Component
         ));
     }
 
-    /** Collects the add form into one object for the element type to read. */
-    private function draft(): ElementDraft
-    {
-        return new ElementDraft(
-            type: $this->newType,
-            title: $this->newTitle,
-            url: $this->newUrl,
-            durationSeconds: $this->newDuration !== '' ? (int) $this->newDuration : null,
-            mediaFileId: $this->selectedMediaFileId,
-            externalSourceIds: array_map('intval', $this->selectedExternalSourceIds),
-            containerId: $this->selectedContainerId,
-            tagIds: $this->newFillTagIds,
-            fillMaxDurationSeconds: $this->newFillMaxDuration !== '' ? (int) $this->newFillMaxDuration : null,
-            relativeOffsetSeconds: $this->parseOffset($this->newRelativeOffset),
-            upload: $this->newFile,
-        );
-    }
+    /* -------------------------------------------------------------- Item-Aktionen */
 
     public function startEditingItem(int $itemId): void
     {
@@ -238,13 +331,7 @@ class Manager extends Component
      */
     public function duplicateItem(int $itemId): void
     {
-        $copies = $this->copyItems($this->playlist->items()->where('id', $itemId)->get());
-
-        $this->dispatch('notify', type: 'success', message: trans_choice(
-            '{1}Element duplicated.|[2,*]:count elements duplicated.',
-            $copies,
-            ['count' => $copies],
-        ));
+        $this->announceDuplicated($this->copyItems($this->playlist->items()->where('id', $itemId)->get()));
     }
 
     public function duplicateSelected(): void
@@ -252,11 +339,7 @@ class Manager extends Component
         $copies = $this->copyItems($this->selectedItems());
 
         $this->reset('selectedItemIds');
-        $this->dispatch('notify', type: 'success', message: trans_choice(
-            '{1}Element duplicated.|[2,*]:count elements duplicated.',
-            $copies,
-            ['count' => $copies],
-        ));
+        $this->announceDuplicated($copies);
     }
 
     public function removeSelected(): void
@@ -279,6 +362,15 @@ class Manager extends Component
     public function clearSelection(): void
     {
         $this->reset('selectedItemIds');
+    }
+
+    private function announceDuplicated(int $copies): void
+    {
+        $this->dispatch('notify', type: 'success', message: trans_choice(
+            '{1}Element duplicated.|[2,*]:count elements duplicated.',
+            $copies,
+            ['count' => $copies],
+        ));
     }
 
     /** @return Collection<int, PlaylistItem> the ticked items, in playlist order */
@@ -380,7 +472,7 @@ class Manager extends Component
      */
     public function formatOffset(int $seconds): string
     {
-        return sprintf('%02d:%02d', intdiv($seconds, 60), $seconds % 60);
+        return PlaylistRuntime::format($seconds);
     }
 
     private function resequence(): void
@@ -391,44 +483,33 @@ class Manager extends Component
             });
     }
 
-    public function render()
+    public function render(PlaylistPalette $palette)
     {
-        $libraryFiles = collect();
+        $items = $this->playlist->items()
+            ->with([
+                'mediaFile',
+                'externalSource',
+                'containerPlaylist.items.mediaFile',
+                'containerPlaylist.items.externalSource',
+            ])
+            ->orderBy('position')
+            ->get();
 
-        if ($this->showAddForm && $this->addMode === 'library' && ElementTypes::needsMediaFile($this->newType)) {
-            $query = $this->playlist->station->mediaFiles()
-                ->where('type', $this->newType);
-
-            // Die Suchbedingungen gehoeren geklammert, sonst hebt das orWhere den
-            // Typfilter auf und die Jingle-Liste zeigt ploetzlich Musiktitel.
-            if ($this->librarySearch !== '') {
-                $query->where(fn ($sub) => $sub
-                    ->where('title', 'like', '%'.$this->librarySearch.'%')
-                    ->orWhere('artist', 'like', '%'.$this->librarySearch.'%')
-                    ->orWhere('id', 'like', '%'.$this->librarySearch.'%'));
-            }
-
-            $libraryFiles = $query->orderBy('title')->get();
-        }
+        // One more than the page, so the view knows whether to offer "load more".
+        $entries = $palette->entries(
+            $this->playlist->station,
+            $this->paletteTab,
+            $this->paletteSearch,
+            $this->paletteLimit + 1,
+            $this->paletteMediaType,
+        );
 
         return view('livewire.playlist.manager', [
-            'items' => $this->playlist->items()->with(['mediaFile', 'externalSource', 'containerPlaylist'])->orderBy('position')->get(),
-            'containers' => $this->playlist->isContainer()
-                ? collect()
-                : $this->playlist->station->playlists()->containers()->withCount('items')->orderBy('name')->get(),
-            'libraryFiles' => $libraryFiles,
-            'selectableTypes' => ElementTypes::selectableLabels(! $this->playlist->isContainer()),
-            'needsMediaFile' => ElementTypes::needsMediaFile($this->newType),
-            'supportsTimestamp' => ElementTypes::supportsTimestamp($this->newType),
+            'items' => $items,
+            'runtime' => PlaylistRuntime::for($items),
+            'paletteEntries' => $entries->take($this->paletteLimit),
+            'hasMoreEntries' => $entries->count() > $this->paletteLimit,
             'stationTags' => $this->playlist->station->tags()->orderBy('name')->get(),
-            'externalSources' => $this->playlist->station->externalSources()
-                ->when($this->externalSearch !== '', fn ($query) => $query
-                    ->where(fn ($sub) => $sub
-                        ->where('name', 'like', '%'.$this->externalSearch.'%')
-                        ->orWhere('broadcast_title', 'like', '%'.$this->externalSearch.'%')))
-                ->orderBy('name')
-                ->get(),
-            'hasExternalSources' => $this->playlist->station->externalSources()->exists(),
         ])->layout('layouts.app');
     }
 }

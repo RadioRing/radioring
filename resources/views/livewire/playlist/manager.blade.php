@@ -1,6 +1,16 @@
-<div>
-    {{-- Header --}}
-    <div class="d-flex align-items-center justify-content-between mb-4">
+<div x-data="{
+        focusSearch(event) {
+            const tag = (event.target.tagName || '').toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+            event.preventDefault();
+            this.$refs.paletteSearch?.focus();
+        }
+     }"
+     @keydown.window.slash="focusSearch($event)"
+     @keydown.window.escape="$wire.clearPicks(); $wire.clearSelection()">
+
+    {{-- Kopfzeile: Titel, Laufzeit, Einstellungen --}}
+    <div class="d-flex align-items-start justify-content-between flex-wrap gap-3 mb-3">
         <div>
             <h4 class="fw-semibold mb-0">
                 {{ $playlist->name }}
@@ -12,53 +22,308 @@
                 <i class="bi bi-arrow-left me-1"></i>{{ __('Alle Playlisten') }}
             </a>
         </div>
+
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            {{-- Laufzeit: die wichtigste Frage beim Bauen einer Stundenplaylist --}}
+            <div style="min-width:190px">
+                <div class="d-flex align-items-center justify-content-between gap-2 text-muted-sm">
+                    <span>{{ __('Runtime') }}</span>
+                    <span class="fw-medium {{ $playlist->isContainer() || $runtime->fitsInHour() ? '' : 'text-danger' }}">
+                        {{ $runtime::format($runtime->total()) }}@if(! $playlist->isContainer()) / 60:00 @endif
+                    </span>
+                </div>
+                @unless($playlist->isContainer())
+                    <div class="progress mt-1" style="height:4px">
+                        <div class="progress-bar {{ $runtime->fitsInHour() ? 'bg-primary' : 'bg-danger' }}"
+                             style="width: {{ $runtime->hourPercentage() }}%"></div>
+                    </div>
+                @endunless
+                <div class="text-muted" style="font-size:.7rem">
+                    @if($runtime->hasOpenEnd())
+                        <i class="bi bi-hourglass-split me-1"></i>{{ __('plus fill up to the end of the hour') }}
+                    @elseif($runtime->unknownCount() > 0)
+                        <i class="bi bi-question-circle me-1"></i>{{ trans_choice('{1}1 element of unknown length|[2,*]:count elements of unknown length', $runtime->unknownCount(), ['count' => $runtime->unknownCount()]) }}
+                    @elseif(! $playlist->isContainer() && $runtime->fitsInHour())
+                        {{ __(':time left in the hour', ['time' => $runtime::format($runtime->remainingInHour())]) }}
+                    @elseif(! $playlist->isContainer())
+                        <span class="text-danger">{{ __('The hour is overbooked.') }}</span>
+                    @endif
+                </div>
+            </div>
+
+            <button class="btn btn-sm {{ $showSettings ? 'btn-secondary' : 'btn-outline-secondary' }}"
+                    wire:click="$toggle('showSettings')">
+                <i class="bi bi-gear me-1"></i>{{ __('Einstellungen') }}
+            </button>
+        </div>
     </div>
 
-    <div class="row g-4">
-        {{-- Linke Spalte: Einstellungen --}}
-        <div class="col-lg-4">
-            <div class="card">
-                <div class="card-header fw-medium">{{ __('Einstellungen') }}</div>
-                <div class="card-body">
-                    <form wire:submit="saveSettings">
-                        <div class="mb-3">
-                            <label class="form-label">{{ __('Name') }}</label>
+    {{-- Einstellungen, eingeklappt bis man sie braucht --}}
+    @if($showSettings)
+        <div class="card mb-3">
+            <div class="card-body">
+                <form wire:submit="saveSettings">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-12 col-md-4">
+                            <label class="form-label form-label-sm">{{ __('Name') }}</label>
                             <input type="text" wire:model="name"
-                                   class="form-control @error('name') is-invalid @enderror">
+                                   class="form-control form-control-sm @error('name') is-invalid @enderror">
                             @error('name') <div class="invalid-feedback">{{ $message }}</div> @enderror
                         </div>
+
                         @if($playlist->isContainer())
-                            <div class="alert alert-info py-2 px-3 small">
-                                <i class="bi bi-box-seam me-1"></i>
-                                {{ __('This block is played wherever a playlist embeds it. Playback and start mode come from that playlist.') }}
+                            <div class="col-12 col-md-8">
+                                <div class="alert alert-info py-2 px-3 small mb-0">
+                                    <i class="bi bi-box-seam me-1"></i>
+                                    {{ __('This block is played wherever a playlist embeds it. Playback and start mode come from that playlist.') }}
+                                </div>
                             </div>
                         @else
-                            <div class="mb-3">
-                                <label class="form-label">{{ __('Wiedergabemodus') }}</label>
-                                <select wire:model="playbackMode" class="form-select">
+                            <div class="col-12 col-md-3">
+                                <label class="form-label form-label-sm">{{ __('Wiedergabemodus') }}</label>
+                                <select wire:model="playbackMode" class="form-select form-select-sm">
                                     <option value="sequential">{{ __('Sequentiell') }}</option>
                                     <option value="random">{{ __('Zufällig') }}</option>
                                 </select>
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label">{{ __('Start zur vollen Stunde') }}</label>
-                                <select wire:model="startMode" class="form-select">
+                            <div class="col-12 col-md-4">
+                                <label class="form-label form-label-sm">{{ __('Start zur vollen Stunde') }}</label>
+                                <select wire:model="startMode" class="form-select form-select-sm">
                                     <option value="soft">{{ __('Weich – Überhang der Vorstunde darf auslaufen') }}</option>
                                     <option value="hard">{{ __('Hart – schneidet zur vollen Stunde') }}</option>
                                 </select>
-                                <div class="form-text">{{ __('Gilt für jeden Raster-Slot mit dieser Playlist.') }}</div>
                             </div>
                         @endif
-                        <button type="submit" class="btn btn-primary btn-sm">
-                            <i class="bi bi-check-lg me-1"></i>{{ __('Speichern') }}
+
+                        <div class="col-12 col-md-1">
+                            <button type="submit" class="btn btn-primary btn-sm w-100">
+                                <i class="bi bi-check-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+                    @unless($playlist->isContainer())
+                        <div class="form-text">{{ __('Gilt für jeden Raster-Slot mit dieser Playlist.') }}</div>
+                    @endunless
+                </form>
+            </div>
+        </div>
+    @endif
+
+    <div class="row g-3 align-items-start">
+
+        {{-- Linke Spalte: Palette --}}
+        <div class="col-12 col-lg-5 col-xl-4">
+            <div class="card">
+                <div class="card-header py-2">
+                    @php
+                        $tabs = ['media' => __('Medien'), 'container' => __('Container'), 'external' => __('Extern'), 'special' => __('Special')];
+                        if ($playlist->isContainer()) { unset($tabs['container']); }
+                    @endphp
+                    <ul class="nav nav-pills nav-fill small gap-1">
+                        @foreach($tabs as $tabKey => $tabLabel)
+                            <li class="nav-item">
+                                <button class="nav-link py-1 px-2 {{ $paletteTab === $tabKey ? 'active' : '' }}"
+                                        wire:click="switchTab('{{ $tabKey }}')">
+                                    {{ $tabLabel }}
+                                </button>
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+
+                <div class="card-body py-2">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input type="text" x-ref="paletteSearch"
+                               wire:model.live.debounce.250ms="paletteSearch"
+                               class="form-control" placeholder="{{ __('Search everything...') }}">
+                        @if($paletteSearch !== '')
+                            <button class="btn btn-outline-secondary" wire:click="$set('paletteSearch', '')">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        @endif
+                    </div>
+
+                    @if($paletteTab === 'media')
+                        <div class="d-flex align-items-center gap-2 mt-2">
+                            <select wire:model.live="paletteMediaType" class="form-select form-select-sm" style="max-width:130px">
+                                <option value="">{{ __('All types') }}</option>
+                                <option value="music">{{ __('Musik') }}</option>
+                                <option value="jingle">{{ __('Jingle') }}</option>
+                            </select>
+                            <button class="btn btn-sm btn-outline-primary ms-auto"
+                                    wire:click="$set('paletteForm', '{{ $paletteForm === 'upload' ? '' : 'upload' }}')">
+                                <i class="bi bi-cloud-upload me-1"></i>{{ __('Neu hochladen') }}
+                            </button>
+                        </div>
+                    @endif
+                </div>
+
+                {{-- Upload-Formular --}}
+                @if($paletteForm === 'upload')
+                    <div class="card-body border-top bg-light py-3">
+                        <form wire:submit="submitUpload">
+                            <div class="mb-2">
+                                <label class="form-label form-label-sm">{{ __('Titel') }}</label>
+                                <input type="text" wire:model="uploadTitle"
+                                       class="form-control form-control-sm @error('uploadTitle') is-invalid @enderror">
+                                @error('uploadTitle') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            </div>
+                            <div class="row g-2 mb-2">
+                                <div class="col-5">
+                                    <label class="form-label form-label-sm">{{ __('Typ') }}</label>
+                                    <select wire:model="uploadType" class="form-select form-select-sm">
+                                        <option value="jingle">{{ __('Jingle') }}</option>
+                                        <option value="music">{{ __('Musik') }}</option>
+                                    </select>
+                                </div>
+                                <div class="col-7">
+                                    <label class="form-label form-label-sm">{{ __('MP3-Datei') }}</label>
+                                    <input type="file" wire:model="uploadFile" accept=".mp3,.m4a,.ogg,.wav,.flac"
+                                           class="form-control form-control-sm @error('uploadFile') is-invalid @enderror">
+                                    @error('uploadFile') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                                </div>
+                            </div>
+                            <div wire:loading wire:target="uploadFile" class="form-text text-muted">
+                                <i class="bi bi-arrow-repeat me-1"></i>{{ __('Wird hochgeladen...') }}
+                            </div>
+                            <div class="form-text">{{ __('The file is added to the library, analysed and normalised like any other upload.') }}</div>
+                            <div class="d-flex gap-2 mt-2">
+                                <button type="submit" class="btn btn-sm btn-success"
+                                        wire:loading.attr="disabled" wire:target="submitUpload,uploadFile">
+                                    <span wire:loading wire:target="submitUpload" class="spinner-border spinner-border-sm me-1"></span>
+                                    {{ __('Hinzufügen') }}
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        wire:click="$set('paletteForm', '')">{{ __('Abbrechen') }}</button>
+                            </div>
+                        </form>
+                    </div>
+                @endif
+
+                {{-- URL-Formular (Legacy) --}}
+                @if($paletteForm === 'url')
+                    <div class="card-body border-top bg-light py-3">
+                        <form wire:submit="submitUrl">
+                            <div class="mb-2">
+                                <label class="form-label form-label-sm">{{ __('Titel') }}</label>
+                                <input type="text" wire:model="urlTitle"
+                                       class="form-control form-control-sm @error('urlTitle') is-invalid @enderror">
+                                @error('urlTitle') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label form-label-sm">URL</label>
+                                <input type="url" wire:model="urlAddress" placeholder="https://..."
+                                       class="form-control form-control-sm @error('urlAddress') is-invalid @enderror">
+                                @error('urlAddress') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            </div>
+                            <div class="mb-2" style="max-width:140px">
+                                <label class="form-label form-label-sm">{{ __('Dauer (Sek.)') }}</label>
+                                <input type="number" wire:model="urlDuration" min="1"
+                                       class="form-control form-control-sm @error('urlDuration') is-invalid @enderror">
+                                @error('urlDuration') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-sm btn-success">{{ __('Hinzufügen') }}</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        wire:click="$set('paletteForm', '')">{{ __('Abbrechen') }}</button>
+                            </div>
+                        </form>
+                    </div>
+                @endif
+
+                {{-- Trefferliste --}}
+                <div class="list-group list-group-flush" style="max-height:52vh;overflow-y:auto"
+                     x-data
+                     x-init="
+                         Sortable.create($el, {
+                             group: { name: 'playlist-elements', pull: 'clone', put: false },
+                             sort: false,
+                             animation: 150,
+                         })
+                     ">
+                    @forelse($paletteEntries as $entry)
+                        @php $picked = in_array($entry->key(), $picks, true); @endphp
+                        <div class="list-group-item d-flex align-items-center gap-2 py-2 {{ $picked ? 'bg-primary-subtle' : '' }}"
+                             wire:key="entry-{{ $entry->key() }}"
+                             data-palette-key="{{ $entry->key() }}"
+                             style="cursor:grab">
+                            <button type="button" class="btn btn-sm p-0 border-0 bg-transparent"
+                                    wire:click="togglePick('{{ $entry->key() }}')"
+                                    title="{{ __('Tick for inserting') }}">
+                                <i class="bi {{ $picked ? 'bi-check-square-fill text-primary' : 'bi-square' }}"></i>
+                            </button>
+
+                            <span class="badge {{ $entry->badgeClass }} text-nowrap" style="min-width:52px;font-size:.65rem">
+                                {{ $entry->badge }}
+                            </span>
+
+                            <div class="flex-grow-1 overflow-hidden" style="cursor:pointer"
+                                 wire:click="togglePick('{{ $entry->key() }}')">
+                                <div class="text-truncate small">{{ $entry->title }}</div>
+                                @if($entry->subtitle)
+                                    <div class="text-muted text-truncate" style="font-size:.7rem">{{ $entry->subtitle }}</div>
+                                @endif
+                            </div>
+
+                            @if($entry->durationFormatted())
+                                <span class="text-muted text-nowrap" style="font-size:.7rem">{{ $entry->durationFormatted() }}</span>
+                            @endif
+
+                            <button type="button" class="btn btn-sm btn-outline-primary py-0 px-1"
+                                    wire:click="insertEntry('{{ $entry->key() }}')"
+                                    title="{{ __('Append to the end') }}">
+                                <i class="bi bi-plus-lg"></i>
+                            </button>
+                        </div>
+                    @empty
+                        <div class="list-group-item text-center text-muted small py-4">
+                            @if($paletteTab === 'external')
+                                {{ __('Noch keine externen Quellen angelegt.') }}
+                                <a href="{{ route('external-source.index') }}" wire:navigate>{{ __('Jetzt anlegen') }}</a>
+                            @elseif($paletteTab === 'container')
+                                {{ __('No containers yet. Create one on the playlist overview.') }}
+                            @else
+                                {{ __('Nothing matches the search.') }}
+                            @endif
+                        </div>
+                    @endforelse
+                </div>
+
+                <div class="card-footer py-2 d-flex align-items-center gap-2 flex-wrap">
+                    @if($hasMoreEntries)
+                        <button class="btn btn-sm btn-link p-0" wire:click="loadMore">
+                            <i class="bi bi-arrow-down-circle me-1"></i>{{ __('Show more') }}
                         </button>
-                    </form>
+                    @endif
+
+                    @if($paletteTab === 'special')
+                        <button class="btn btn-sm btn-link p-0"
+                                wire:click="$set('paletteForm', '{{ $paletteForm === 'url' ? '' : 'url' }}')">
+                            <i class="bi bi-link-45deg me-1"></i>{{ __('URL (Legacy)') }}
+                        </button>
+                    @endif
+
+                    <div class="ms-auto d-flex align-items-center gap-2">
+                        @if(count($picks) > 0)
+                            <button class="btn btn-sm btn-link text-muted p-0" wire:click="clearPicks">
+                                {{ __('Clear selection') }}
+                            </button>
+                            <button class="btn btn-sm btn-success" wire:click="insertPicks">
+                                <i class="bi bi-plus-lg me-1"></i>{{ trans_choice('{1}Insert 1 element|[2,*]Insert :count elements', count($picks), ['count' => count($picks)]) }}
+                            </button>
+                        @else
+                            <span class="text-muted" style="font-size:.7rem">
+                                {{ __('Tick entries or drag them into the playlist.') }}
+                            </span>
+                        @endif
+                    </div>
                 </div>
             </div>
         </div>
 
-        {{-- Rechte Spalte: Tracks --}}
-        <div class="col-lg-8">
+        {{-- Rechte Spalte: die Playlist --}}
+        <div class="col-12 col-lg-7 col-xl-8">
             <div class="card">
                 <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                     <span class="fw-medium">{{ __('Elemente') }} ({{ $items->count() }})</span>
@@ -79,327 +344,12 @@
                                 {{ __('Clear selection') }}
                             </button>
                         </div>
-                    @else
-                        <div class="d-flex align-items-center gap-2">
-                            @if($items->isNotEmpty())
-                                <button class="btn btn-sm btn-link text-muted" wire:click="selectAllItems">
-                                    {{ __('Select all') }}
-                                </button>
-                            @endif
-                            <button class="btn btn-sm btn-primary" wire:click="$set('showAddForm', true)">
-                                <i class="bi bi-plus-lg me-1"></i>{{ __('Hinzufügen') }}
-                            </button>
-                        </div>
+                    @elseif($items->isNotEmpty())
+                        <button class="btn btn-sm btn-link text-muted" wire:click="selectAllItems">
+                            {{ __('Select all') }}
+                        </button>
                     @endif
                 </div>
-
-                {{-- Element hinzufügen --}}
-                @if($showAddForm)
-                    <div class="card-body border-bottom bg-light">
-                        <form wire:submit="addItem">
-
-                            {{-- Typ-Auswahl --}}
-                            <div class="row g-2 mb-3">
-                                <div class="col-sm-4">
-                                    <label class="form-label form-label-sm">{{ __('Typ') }}</label>
-                                    <select wire:model.live="newType" class="form-select form-select-sm">
-                                        @foreach($selectableTypes as $typeKey => $typeLabel)
-                                            <option value="{{ $typeKey }}">{{ $typeLabel }}</option>
-                                        @endforeach
-                                    </select>
-                                </div>
-
-                                @if($needsMediaFile)
-                                    <div class="col-sm-8 d-flex align-items-end">
-                                        <div class="btn-group btn-group-sm w-100" role="group">
-                                            <button type="button"
-                                                    wire:click="$set('addMode', 'library')"
-                                                    class="btn {{ $addMode === 'library' ? 'btn-primary' : 'btn-outline-primary' }}">
-                                                <i class="bi bi-collection me-1"></i>{{ __('Aus Bibliothek') }}
-                                            </button>
-                                            <button type="button"
-                                                    wire:click="$set('addMode', 'upload')"
-                                                    class="btn {{ $addMode === 'upload' ? 'btn-primary' : 'btn-outline-primary' }}">
-                                                <i class="bi bi-cloud-upload me-1"></i>{{ __('Neu hochladen') }}
-                                            </button>
-                                        </div>
-                                    </div>
-                                @endif
-                            </div>
-
-                            {{-- Container waehlen --}}
-                            @if($newType === 'container')
-                                <div class="mb-2">
-                                    <label class="form-label form-label-sm">{{ __('Container') }}</label>
-                                    @if($containers->isEmpty())
-                                        <p class="text-muted small mb-0">{{ __('No containers yet. Create one on the playlist overview.') }}</p>
-                                    @else
-                                        @error('selectedContainerId')
-                                            <div class="alert alert-danger py-1 px-2 small mb-2">{{ __('Please pick a container.') }}</div>
-                                        @enderror
-                                        <div class="list-group" style="max-height:220px;overflow-y:auto">
-                                            @foreach($containers as $container)
-                                                <button type="button"
-                                                        wire:key="container-{{ $container->id }}"
-                                                        wire:click="$set('selectedContainerId', {{ $container->id }})"
-                                                        class="list-group-item list-group-item-action d-flex align-items-center gap-2 py-1 px-2 small
-                                                               {{ $selectedContainerId === $container->id ? 'active' : '' }}">
-                                                    <i class="bi bi-box-seam"></i>
-                                                    <span class="text-truncate flex-grow-1">{{ $container->name }}</span>
-                                                    <span class="text-nowrap opacity-75">{{ $container->items_count }} {{ __('Tracks') }}</span>
-                                                </button>
-                                            @endforeach
-                                        </div>
-                                        <div class="form-text">
-                                            {{ __('The elements of the container are inserted at this position when the rundown is generated.') }}
-                                        </div>
-                                    @endif
-                                </div>
-
-                            {{-- Adbreak-Info --}}
-                            @elseif($newType === 'adbreak')
-                                <div class="alert alert-info py-2 px-3 small mb-2">
-                                    <i class="bi bi-megaphone me-1"></i>
-                                    {{ __('Fügt einen laut.fm-Werbeblock-Marker (START_AD_BREAK) in die Sendung ein. Liquidsoap signalisiert laut.fm an dieser Position den Start des Werbeblocks.') }}
-                                </div>
-
-                            {{-- Zufälliges Element: Tag-Auswahl --}}
-                            @elseif($newType === 'random')
-                                <div class="alert alert-info py-2 px-3 small mb-2">
-                                    <i class="bi bi-shuffle me-1"></i>
-                                    {{ __('Wählt bei jeder Rundown-Generierung genau ein zufälliges Medium aus den gewählten Tags – z.B. um zufällige Jingles zu platzieren.') }}
-                                </div>
-                                <div class="mb-2">
-                                    <label class="form-label form-label-sm">
-                                        {{ __('Tags filtern') }}
-                                        <span class="text-muted fw-normal">{{ __('(leer = beliebiges Medium der Station)') }}</span>
-                                    </label>
-                                    @if($stationTags->isEmpty())
-                                        <p class="text-muted small">
-                                            {{ __('Noch keine Tags angelegt.') }}
-                                            <a href="{{ route('media.index') }}" wire:navigate>{{ __('Tags verwalten') }}</a>
-                                        </p>
-                                    @else
-                                        <div class="d-flex flex-wrap gap-2">
-                                            @foreach($stationTags as $tag)
-                                                <div class="form-check form-check-inline mb-0">
-                                                    <input class="form-check-input" type="checkbox"
-                                                           id="random-tag-{{ $tag->id }}"
-                                                           value="{{ $tag->id }}"
-                                                           wire:model="newFillTagIds">
-                                                    <label class="form-check-label small" for="random-tag-{{ $tag->id }}">
-                                                        {{ $tag->name }}
-                                                    </label>
-                                                </div>
-                                            @endforeach
-                                        </div>
-                                    @endif
-                                </div>
-
-                            {{-- Fill-Felder --}}
-                            @elseif($newType === 'fill')
-                                <div class="mb-2">
-                                    <label class="form-label form-label-sm">
-                                        {{ __('Tags filtern') }}
-                                        <span class="text-muted fw-normal">{{ __('(leer = alle Musik der Station)') }}</span>
-                                    </label>
-                                    @if($stationTags->isEmpty())
-                                        <p class="text-muted small">
-                                            {{ __('Noch keine Tags angelegt.') }}
-                                            <a href="{{ route('media.index') }}" wire:navigate>{{ __('Tags verwalten') }}</a>
-                                        </p>
-                                    @else
-                                        <div class="d-flex flex-wrap gap-2">
-                                            @foreach($stationTags as $tag)
-                                                <div class="form-check form-check-inline mb-0">
-                                                    <input class="form-check-input" type="checkbox"
-                                                           id="fill-tag-{{ $tag->id }}"
-                                                           value="{{ $tag->id }}"
-                                                           wire:model="newFillTagIds">
-                                                    <label class="form-check-label small" for="fill-tag-{{ $tag->id }}">
-                                                        {{ $tag->name }}
-                                                    </label>
-                                                </div>
-                                            @endforeach
-                                        </div>
-                                    @endif
-                                </div>
-                                <div class="mb-2" style="max-width:200px">
-                                    <label class="form-label form-label-sm">{{ __('Max. Füll-Dauer (Sek.)') }}</label>
-                                    <input type="number" wire:model="newFillMaxDuration"
-                                           class="form-control form-control-sm @error('newFillMaxDuration') is-invalid @enderror"
-                                           placeholder="{{ __('leer = bis Stunden-Ende') }}" min="60" max="7200">
-                                    @error('newFillMaxDuration') <div class="invalid-feedback">{{ $message }}</div> @enderror
-                                </div>
-
-                            {{-- Externe Quellen wählen --}}
-                            @elseif($newType === 'external')
-                                <div class="mb-2">
-                                    <label class="form-label form-label-sm">{{ __('Externe Quellen') }}</label>
-                                    @if(! $hasExternalSources)
-                                        <p class="text-muted small mb-0">
-                                            {{ __('Noch keine externen Quellen angelegt.') }}
-                                            <a href="{{ route('external-source.index') }}" wire:navigate>{{ __('Jetzt anlegen') }}</a>
-                                        </p>
-                                    @else
-                                        <div class="input-group input-group-sm mb-2">
-                                            <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                            <input type="text" wire:model.live.debounce.250ms="externalSearch"
-                                                   class="form-control" placeholder="{{ __('Suche in externen Quellen...') }}">
-                                        </div>
-
-                                        @error('selectedExternalSourceIds')
-                                            <div class="alert alert-danger py-1 px-2 small mb-2">{{ __('Bitte mindestens eine Quelle auswählen.') }}</div>
-                                        @enderror
-
-                                        @if($externalSources->isEmpty())
-                                            <p class="text-muted small mb-0">{{ __('Keine Quelle passt zur Suche.') }}</p>
-                                        @else
-                                            <div class="list-group" style="max-height:220px;overflow-y:auto">
-                                                @foreach($externalSources as $source)
-                                                    @php $position = array_search($source->id, $selectedExternalSourceIds); @endphp
-                                                    <button type="button"
-                                                            wire:key="ext-{{ $source->id }}"
-                                                            wire:click="toggleExternalSource({{ $source->id }})"
-                                                            class="list-group-item list-group-item-action d-flex align-items-center gap-2 py-1 px-2 small
-                                                                   {{ $position !== false ? 'active' : '' }}">
-                                                        <i class="bi {{ $position !== false ? 'bi-check-square' : 'bi-square' }}"></i>
-                                                        <span class="text-truncate flex-grow-1">{{ $source->name }}</span>
-                                                        @if($source->expectedDurationFormatted())
-                                                            <span class="text-nowrap opacity-75">{{ $source->expectedDurationFormatted() }}</span>
-                                                        @endif
-                                                        @if($position !== false)
-                                                            <span class="badge text-bg-light">{{ $position + 1 }}</span>
-                                                        @endif
-                                                    </button>
-                                                @endforeach
-                                            </div>
-                                        @endif
-
-                                        <div class="form-text d-flex align-items-center gap-2">
-                                            <span>{{ __('Dynamischer Inhalt – wird kurz vor Ausspielung geholt und (falls möglich) normalisiert.') }}</span>
-                                            @if($selectedExternalSourceIds)
-                                                <button type="button" class="btn btn-link btn-sm p-0"
-                                                        wire:click="$set('selectedExternalSourceIds', [])">
-                                                    {{ trans_choice('{1}1 ausgewählt, Auswahl leeren|[2,*]:count ausgewählt, Auswahl leeren', count($selectedExternalSourceIds), ['count' => count($selectedExternalSourceIds)]) }}
-                                                </button>
-                                            @endif
-                                        </div>
-                                    @endif
-                                </div>
-
-                            {{-- URL-Felder (Legacy) --}}
-                            @elseif($newType === 'url')
-                                <div class="mb-2">
-                                    <label class="form-label form-label-sm">{{ __('Titel') }}</label>
-                                    <input type="text" wire:model="newTitle"
-                                           class="form-control form-control-sm @error('newTitle') is-invalid @enderror"
-                                           placeholder="{{ __('Titel des Streams') }}">
-                                    @error('newTitle') <div class="invalid-feedback">{{ $message }}</div> @enderror
-                                </div>
-                                <div class="row g-2 mb-2">
-                                    <div class="col-sm-9">
-                                        <label class="form-label form-label-sm">URL</label>
-                                        <input type="url" wire:model="newUrl"
-                                               class="form-control form-control-sm @error('newUrl') is-invalid @enderror"
-                                               placeholder="https://...">
-                                        @error('newUrl') <div class="invalid-feedback">{{ $message }}</div> @enderror
-                                    </div>
-                                    <div class="col-sm-3">
-                                        <label class="form-label form-label-sm">{{ __('Dauer (Sek.)') }}</label>
-                                        <input type="number" wire:model="newDuration"
-                                               class="form-control form-control-sm"
-                                               placeholder="0" min="1">
-                                    </div>
-                                </div>
-
-                            {{-- Aus Bibliothek wählen --}}
-                            @elseif($addMode === 'library')
-                                <div class="mb-2">
-                                    <div class="input-group input-group-sm mb-2">
-                                        <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                        <input type="text" wire:model.live.debounce.250ms="librarySearch"
-                                               class="form-control" placeholder="{{ __('Suche in Bibliothek...') }}">
-                                    </div>
-
-                                    @error('selectedMediaFileId')
-                                        <div class="alert alert-danger py-1 px-2 small mb-2">{{ __('Bitte eine Datei auswählen.') }}</div>
-                                    @enderror
-
-                                    @if($libraryFiles->isEmpty())
-                                        <p class="text-muted small mb-0">
-                                            {{ __('Keine :type-Dateien in der Bibliothek.', ['type' => $newType === 'music' ? __('Musik') : __('Jingle')]) }}
-                                            <a href="{{ route('media.index') }}" wire:navigate>{{ __('Jetzt hochladen') }}</a>
-                                        </p>
-                                    @else
-                                        <div class="list-group" style="max-height:220px;overflow-y:auto">
-                                            @foreach($libraryFiles as $file)
-                                                <button type="button"
-                                                        wire:click="$set('selectedMediaFileId', {{ $file->id }})"
-                                                        class="list-group-item list-group-item-action d-flex align-items-center gap-2 py-1 px-2 small
-                                                               {{ $selectedMediaFileId === $file->id ? 'active' : '' }}">
-                                                    <i class="bi bi-file-earmark-music"></i>
-                                                    <span class="text-truncate flex-grow-1">#{{$file->id}}: {{ $file->title }}</span>
-                                                    @if($file->durationFormatted())
-                                                        <span class="text-nowrap opacity-75">{{ $file->durationFormatted() }}</span>
-                                                    @endif
-                                                </button>
-                                            @endforeach
-                                        </div>
-                                    @endif
-                                </div>
-
-                            {{-- Neu hochladen --}}
-                            @else
-                                <div class="mb-2">
-                                    <label class="form-label form-label-sm">{{ __('Titel') }}</label>
-                                    <input type="text" wire:model="newTitle"
-                                           class="form-control form-control-sm @error('newTitle') is-invalid @enderror"
-                                           placeholder="{{ __('Titel des Tracks') }}">
-                                    @error('newTitle') <div class="invalid-feedback">{{ $message }}</div> @enderror
-                                </div>
-                                <div class="mb-2">
-                                    <label class="form-label form-label-sm">{{ __('MP3-Datei') }}</label>
-                                    <input type="file" wire:model="newFile" accept=".mp3,.m4a,.ogg,.wav,.flac"
-                                           class="form-control form-control-sm @error('newFile') is-invalid @enderror">
-                                    @error('newFile') <div class="invalid-feedback">{{ $message }}</div> @enderror
-                                    <div wire:loading wire:target="newFile" class="form-text text-muted">
-                                        <i class="bi bi-arrow-repeat me-1"></i>{{ __('Wird hochgeladen...') }}
-                                    </div>
-                                </div>
-                            @endif
-
-                            {{-- Relativer Zeitstempel (nicht bei fill/random/adbreak) --}}
-                            @if($supportsTimestamp)
-                                <div class="mb-2" style="max-width:180px">
-                                    <label class="form-label form-label-sm">
-                                        <i class="bi bi-stopwatch me-1"></i>{{ __('Zeitstempel') }}
-                                        <span class="text-muted fw-normal">{{ __('(optional, MM:SS)') }}</span>
-                                    </label>
-                                    <input type="text" wire:model="newRelativeOffset"
-                                           class="form-control form-control-sm"
-                                           placeholder="z.B. 15:00">
-                                    <div class="form-text">
-                                        {{ __('Zeitpunkt ab Playlist-Start') }}
-                                        @if($newType === 'external' && count($selectedExternalSourceIds) > 1)
-                                            <span class="d-block">{{ __('Gilt für das erste Element, die weiteren folgen direkt.') }}</span>
-                                        @endif
-                                    </div>
-                                </div>
-                            @endif
-
-                            <div class="d-flex gap-2 mt-2">
-                                <button type="submit" class="btn btn-sm btn-success"
-                                        wire:loading.attr="disabled" wire:target="addItem,newFile">
-                                    <span wire:loading wire:target="addItem" class="spinner-border spinner-border-sm me-1"></span>
-                                    {{ __('Hinzufügen') }}
-                                </button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary"
-                                        wire:click="$set('showAddForm', false)">{{ __('Abbrechen') }}</button>
-                            </div>
-                        </form>
-                    </div>
-                @endif
 
                 {{-- Element-Liste mit Drag & Drop --}}
                 <div class="list-group list-group-flush"
@@ -407,20 +357,29 @@
                      x-data
                      x-init="
                          Sortable.create($el, {
+                             group: { name: 'playlist-elements', pull: false, put: true },
                              handle: '.drag-handle',
                              animation: 150,
                              ghostClass: 'opacity-50',
-                             onEnd(evt) {
+                             onUpdate() {
                                  const ids = [...$el.children]
                                      .map(el => parseInt(el.dataset.itemId))
                                      .filter(id => !isNaN(id));
                                  $wire.reorder(ids);
-                             }
+                             },
+                             onAdd(evt) {
+                                 const key = evt.item.dataset.paletteKey;
+                                 const index = evt.newIndex;
+                                 // Den geklonten Knoten entfernen: die Liste rendert gleich
+                                 // vom Server neu, sonst stuende er doppelt da.
+                                 evt.item.remove();
+                                 if (key) { $wire.insertEntryAt(key, index); }
+                             },
                          })
                      ">
                     @forelse($items as $item)
                         <div wire:key="item-{{ $item->id }}" data-item-id="{{ $item->id }}">
-                            <div class="list-group-item d-flex align-items-center gap-3 py-2">
+                            <div class="list-group-item d-flex align-items-center gap-2 gap-md-3 py-2">
 
                                 {{-- Auswahl für die Sammelaktionen --}}
                                 <input class="form-check-input mt-0 flex-shrink-0" type="checkbox"
@@ -429,6 +388,15 @@
 
                                 {{-- Drag-Handle --}}
                                 <i class="bi bi-grip-vertical text-muted drag-handle" style="cursor:grab"></i>
+
+                                {{-- Startzeit ab Playlist-Beginn --}}
+                                <span class="text-muted font-monospace d-none d-sm-inline text-nowrap" style="font-size:.72rem;min-width:44px">
+                                    @if($runtime->offset($item) !== null)
+                                        {{ $runtime::format($runtime->offset($item)) }}
+                                    @else
+                                        <span class="opacity-50">--:--</span>
+                                    @endif
+                                </span>
 
                                 {{-- Typ-Badge --}}
                                 @php
@@ -471,11 +439,13 @@
                                             <span class="fst-italic"><i class="bi bi-megaphone me-1"></i>{{ __('laut.fm START_AD_BREAK') }}</span>
                                         @elseif(in_array($item->type, ['news', 'weather', 'news_weather']))
                                             <span class="fst-italic"><i class="bi bi-newspaper me-1"></i>{{ __('laut.fm RadioAdmin') }}</span>
+                                        @elseif($item->type === 'container')
+                                            <span class="fst-italic"><i class="bi bi-box-seam me-1"></i>{{ $item->containerPlaylist?->name ?? __('missing container') }}</span>
+                                            @if($item->containerPlaylist)
+                                                <a href="{{ route('playlist.manager', $item->containerPlaylist) }}" wire:navigate>{{ __('Bearbeiten') }}</a>
+                                            @endif
                                         @elseif($item->type === 'external')
                                             <span class="fst-italic"><i class="bi bi-rss me-1"></i>{{ $item->externalSource?->name ?? __('externe Quelle') }}</span>
-                                            @if($item->durationFormatted())
-                                                <span><i class="bi bi-clock me-1"></i>{{ $item->durationFormatted() }}</span>
-                                            @endif
                                             @if($item->relative_offset_seconds !== null)
                                                 <span class="text-warning-emphasis"><i class="bi bi-stopwatch me-1"></i>{{ $this->formatOffset($item->relative_offset_seconds) }}</span>
                                             @endif
@@ -488,11 +458,6 @@
                                             @endif
                                             @if($item->fill_max_duration_seconds)
                                                 <span><i class="bi bi-hourglass-split me-1"></i>max. {{ $this->formatOffset($item->fill_max_duration_seconds) }}</span>
-                                            @endif
-                                        @elseif($item->type === 'container')
-                                            <span class="fst-italic"><i class="bi bi-box-seam me-1"></i>{{ $item->containerPlaylist?->name ?? __('missing container') }}</span>
-                                            @if($item->containerPlaylist)
-                                                <a href="{{ route('playlist.manager', $item->containerPlaylist) }}" wire:navigate>{{ __('Bearbeiten') }}</a>
                                             @endif
                                         @elseif($item->type === 'random')
                                             <span class="fst-italic"><i class="bi bi-shuffle me-1"></i>{{ __('zufällig je Rundown') }}</span>
@@ -510,9 +475,6 @@
                                                     <i class="bi bi-link-45deg me-1"></i>{{ $item->url }}
                                                 </span>
                                             @endif
-                                            @if($item->durationFormatted())
-                                                <span><i class="bi bi-clock me-1"></i>{{ $item->durationFormatted() }}</span>
-                                            @endif
                                             @if($item->relative_offset_seconds !== null)
                                                 <span class="text-warning-emphasis">
                                                     <i class="bi bi-stopwatch me-1"></i>{{ $this->formatOffset($item->relative_offset_seconds) }}
@@ -522,7 +484,14 @@
                                     </div>
                                 </div>
 
-                                {{-- Bearbeiten (nicht bei adbreak/news/weather – nichts zu konfigurieren) --}}
+                                {{-- Länge --}}
+                                <span class="text-muted d-none d-md-inline text-nowrap" style="font-size:.75rem">
+                                    @if($runtime->duration($item))
+                                        <i class="bi bi-clock me-1"></i>{{ $runtime::format($runtime->duration($item)) }}
+                                    @endif
+                                </span>
+
+                                {{-- Bearbeiten (nicht bei adbreak/news/weather/container – nichts zu konfigurieren) --}}
                                 @if(! in_array($item->type, ['adbreak', 'news', 'weather', 'news_weather', 'container']))
                                     <button class="btn btn-sm btn-outline-secondary"
                                             wire:click="startEditingItem({{ $item->id }})"
@@ -630,8 +599,8 @@
                             @endif
                         </div>
                     @empty
-                        <div class="list-group-item text-center text-muted py-4">
-                            <i class="bi bi-music-note-beamed me-1"></i>{{ __('Noch keine Elemente. Füge das erste hinzu!') }}
+                        <div class="list-group-item text-center text-muted py-5">
+                            <i class="bi bi-arrow-left me-1"></i>{{ __('Pick elements on the left, or drag them in here.') }}
                         </div>
                     @endforelse
                 </div>

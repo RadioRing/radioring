@@ -11,7 +11,7 @@ class LibraryElement implements PlaylistElementType
 {
     public function rules(): array
     {
-        return ['selectedMediaFileId' => 'required|integer'];
+        return [];
     }
 
     public function create(Playlist $playlist, ElementDraft $draft, int $position): int

@@ -4,223 +4,233 @@
         <p class="text-muted-sm mt-1">{{ $station->name }}</p>
     </div>
 
-    <div class="card mb-4" style="max-width: 480px;">
-        <div class="card-body">
-            <form wire:submit="save">
-                <div class="mb-3">
-                    <label for="name" class="form-label fw-medium">{{ __('Stationsname') }}</label>
-                    <input id="name" type="text" wire:model="name"
-                           class="form-control @error('name') is-invalid @enderror">
-                    @error('name')
-                        <div class="invalid-feedback">{{ $message }}</div>
-                    @enderror
+    <div class="row g-4 align-items-start">
+        <div class="col-12 col-xl-6 col-xxl-4">
+            <div class="card">
+                <div class="card-body">
+                    <form wire:submit="save">
+                        <div class="mb-3">
+                            <label for="name" class="form-label fw-medium">{{ __('Stationsname') }}</label>
+                            <input id="name" type="text" wire:model="name"
+                                   class="form-control @error('name') is-invalid @enderror">
+                            @error('name')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="status" class="form-label fw-medium">{{ __('Status') }}</label>
+                            <select id="status" wire:model="status"
+                                    class="form-select @error('status') is-invalid @enderror">
+                                <option value="active">{{ __('Aktiv') }}</option>
+                                <option value="paused">{{ __('Pausiert') }}</option>
+                            </select>
+                            @error('status')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="text-muted-sm mb-1">{{ __('Slug') }}</div>
+                            <code>{{ $station->slug }}</code>
+                        </div>
+
+                        <hr>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" role="switch"
+                                   id="regenerateRundownsNightly" wire:model="regenerateRundownsNightly">
+                            <label class="form-check-label fw-medium" for="regenerateRundownsNightly">
+                                {{ __('Rundowns nachts neu generieren') }}
+                            </label>
+                            <div class="text-muted-sm">
+                                {{ __('Generiert die Rundowns des Folgetags jede Nacht neu – auch wenn sie bereits erstellt wurden. So fließen neue Musik-Uploads automatisch ein. Bereits gespielte Stunden bleiben unangetastet.') }}
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg me-1"></i>{{ __('Speichern') }}
+                        </button>
+                        <a href="{{ route('dashboard') }}" class="btn btn-outline-secondary ms-1" wire:navigate>
+                            {{ __('Abbrechen') }}
+                        </a>
+                    </form>
                 </div>
-
-                <div class="mb-3">
-                    <label for="status" class="form-label fw-medium">{{ __('Status') }}</label>
-                    <select id="status" wire:model="status"
-                            class="form-select @error('status') is-invalid @enderror">
-                        <option value="active">{{ __('Aktiv') }}</option>
-                        <option value="paused">{{ __('Pausiert') }}</option>
-                    </select>
-                    @error('status')
-                        <div class="invalid-feedback">{{ $message }}</div>
-                    @enderror
-                </div>
-
-                <div class="mb-3">
-                    <div class="text-muted-sm mb-1">{{ __('Slug') }}</div>
-                    <code>{{ $station->slug }}</code>
-                </div>
-
-                <hr>
-
-                <div class="form-check form-switch mb-3">
-                    <input class="form-check-input" type="checkbox" role="switch"
-                           id="regenerateRundownsNightly" wire:model="regenerateRundownsNightly">
-                    <label class="form-check-label fw-medium" for="regenerateRundownsNightly">
-                        {{ __('Rundowns nachts neu generieren') }}
-                    </label>
-                    <div class="text-muted-sm">
-                        {{ __('Generiert die Rundowns des Folgetags jede Nacht neu – auch wenn sie bereits erstellt wurden. So fließen neue Musik-Uploads automatisch ein. Bereits gespielte Stunden bleiben unangetastet.') }}
-                    </div>
-                </div>
-
-                <hr>
-
-                <button type="submit" class="btn btn-primary">
-                    <i class="bi bi-check-lg me-1"></i>{{ __('Speichern') }}
-                </button>
-                <a href="{{ route('dashboard') }}" class="btn btn-outline-secondary ms-1" wire:navigate>
-                    {{ __('Abbrechen') }}
-                </a>
-            </form>
+            </div>
         </div>
-    </div>
 
-    @if($station->stereo_tool_enabled)
-        <div class="card mb-4" style="max-width: 480px;">
-            <div class="card-body">
-                <h6 class="fw-semibold">
-                    <i class="bi bi-sliders me-1 text-primary"></i>{{ __('Stereo Tool (audio processing)') }}
-                </h6>
-                <p class="text-muted-sm">{{ __('Enabled for this station by an administrator. Store your Thimeo licence key to switch the processing on. A preset is optional: without one Stereo Tool uses its factory settings.') }}</p>
+        @if($station->stereo_tool_enabled)
+        <div class="col-12 col-xl-6 col-xxl-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="fw-semibold">
+                        <i class="bi bi-sliders me-1 text-primary"></i>{{ __('Stereo Tool (audio processing)') }}
+                    </h6>
+                    <p class="text-muted-sm">{{ __('Enabled for this station by an administrator. Store your Thimeo licence key to switch the processing on. A preset is optional: without one Stereo Tool uses its factory settings.') }}</p>
 
-                <div class="alert alert-warning py-2 text-muted-sm">
-                    <p class="mb-1">
-                        <i class="bi bi-info-circle me-1"></i>{{ __('Stereo Tool, its presets and its shared library are proprietary software by Thimeo and are not covered by the RadioRing licence.') }}
-                        <a href="{{ $stereoToolLicenceUrl }}" target="_blank" rel="noopener noreferrer">{{ __('Read the licence') }}</a>
-                    </p>
-                    <p class="mb-0">
-                        {{ __('The licence is per stream, so this station needs its own key. Without a valid key Stereo Tool runs in demo mode and mixes noise into the audio at intervals.') }}
-                    </p>
-                </div>
-
-                <form wire:submit="save">
-                    <div class="mb-3">
-                        <label for="stereoToolLicenseKey" class="form-label fw-medium">{{ __('Licence key') }}</label>
-                        <input id="stereoToolLicenseKey" type="text" wire:model="stereoToolLicenseKey"
-                               class="form-control @error('stereoToolLicenseKey') is-invalid @enderror"
-                               autocomplete="off" placeholder="{{ __('Thimeo licence key') }}">
-                        @error('stereoToolLicenseKey')
-                            <div class="invalid-feedback">{{ $message }}</div>
-                        @enderror
+                    <div class="alert alert-warning py-2 text-muted-sm">
+                        <p class="mb-1">
+                            <i class="bi bi-info-circle me-1"></i>{{ __('Stereo Tool, its presets and its shared library are proprietary software by Thimeo and are not covered by the RadioRing licence.') }}
+                            <a href="{{ $stereoToolLicenceUrl }}" target="_blank" rel="noopener noreferrer">{{ __('Read the licence') }}</a>
+                        </p>
+                        <p class="mb-0">
+                            {{ __('The licence is per stream, so this station needs its own key. Without a valid key Stereo Tool runs in demo mode and mixes noise into the audio at intervals.') }}
+                        </p>
                     </div>
 
-                    <div class="mb-3">
-                        <label for="stereoToolPreset" class="form-label fw-medium">{{ __('Preset') }}</label>
-                        <select id="stereoToolPreset" wire:model="stereoToolPreset"
-                                class="form-select @error('stereoToolPreset') is-invalid @enderror">
-                            <option value="">{{ __('Factory settings (no preset)') }}</option>
-                            @foreach($stereoToolPresetGroups as $group => $presets)
-                                <optgroup label="{{ $group }}">
-                                    @foreach($presets as $identifier => $label)
-                                        <option value="{{ $identifier }}">{{ $label }}</option>
-                                    @endforeach
-                                </optgroup>
-                            @endforeach
-                        </select>
-                        @error('stereoToolPreset')
-                            <div class="invalid-feedback">{{ $message }}</div>
-                        @enderror
-                        <div class="form-text">{{ __('Saving a change here restarts the player, which interrupts the stream briefly.') }}</div>
-                    </div>
+                    <form wire:submit="save">
+                        <div class="mb-3">
+                            <label for="stereoToolLicenseKey" class="form-label fw-medium">{{ __('Licence key') }}</label>
+                            <input id="stereoToolLicenseKey" type="text" wire:model="stereoToolLicenseKey"
+                                   class="form-control @error('stereoToolLicenseKey') is-invalid @enderror"
+                                   autocomplete="off" placeholder="{{ __('Thimeo licence key') }}">
+                            @error('stereoToolLicenseKey')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
 
-                    <button type="submit" class="btn btn-primary btn-sm">
-                        <i class="bi bi-check-lg me-1"></i>{{ __('Save') }}
-                    </button>
-                </form>
+                        <div class="mb-3">
+                            <label for="stereoToolPreset" class="form-label fw-medium">{{ __('Preset') }}</label>
+                            <select id="stereoToolPreset" wire:model="stereoToolPreset"
+                                    class="form-select @error('stereoToolPreset') is-invalid @enderror">
+                                <option value="">{{ __('Factory settings (no preset)') }}</option>
+                                @foreach($stereoToolPresetGroups as $group => $presets)
+                                    <optgroup label="{{ $group }}">
+                                        @foreach($presets as $identifier => $label)
+                                            <option value="{{ $identifier }}">{{ $label }}</option>
+                                        @endforeach
+                                    </optgroup>
+                                @endforeach
+                            </select>
+                            @error('stereoToolPreset')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                            <div class="form-text">{{ __('Saving a change here restarts the player, which interrupts the stream briefly.') }}</div>
+                        </div>
 
-                <hr class="my-4">
+                        <button type="submit" class="btn btn-primary btn-sm">
+                            <i class="bi bi-check-lg me-1"></i>{{ __('Save') }}
+                        </button>
+                    </form>
 
-                <h6 class="fw-semibold">{{ __('Your presets') }}</h6>
-                <p class="text-muted-sm">
-                    {{ __('Upload .sts files you exported from the Stereo Tool GUI. They stay private to this station.') }}
-                </p>
+                    <hr class="my-4">
 
-                @if($stereoToolUploads->isNotEmpty())
-                    <ul class="list-group list-group-flush mb-3">
-                        @foreach($stereoToolUploads as $preset)
-                            <li class="list-group-item d-flex align-items-center justify-content-between px-0" wire:key="preset-{{ $preset->id }}">
-                                <div>
-                                    <div class="fw-medium">{{ $preset->name }}</div>
-                                    <div class="text-muted-sm">
-                                        {{ number_format($preset->size / 1024, 1) }} kB
-                                        @if($station->stereo_tool_preset === $preset->identifier())
-                                            <span class="badge text-bg-success ms-1">{{ __('Active') }}</span>
-                                        @endif
+                    <h6 class="fw-semibold">{{ __('Your presets') }}</h6>
+                    <p class="text-muted-sm">
+                        {{ __('Upload .sts files you exported from the Stereo Tool GUI. They stay private to this station.') }}
+                    </p>
+
+                    @if($stereoToolUploads->isNotEmpty())
+                        <ul class="list-group list-group-flush mb-3">
+                            @foreach($stereoToolUploads as $preset)
+                                <li class="list-group-item d-flex align-items-center justify-content-between px-0" wire:key="preset-{{ $preset->id }}">
+                                    <div>
+                                        <div class="fw-medium">{{ $preset->name }}</div>
+                                        <div class="text-muted-sm">
+                                            {{ number_format($preset->size / 1024, 1) }} kB
+                                            @if($station->stereo_tool_preset === $preset->identifier())
+                                                <span class="badge text-bg-success ms-1">{{ __('Active') }}</span>
+                                            @endif
+                                        </div>
                                     </div>
+                                    <button type="button" class="btn btn-outline-danger btn-sm"
+                                            @click="$dispatch('confirm-dialog', { message: @js(__('Delete the preset :name?', ['name' => $preset->name])), confirmText: @js(__('Delete')), confirmClass: 'btn-danger', onConfirm: () => $wire.deletePreset({{ $preset->id }}) })">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </li>
+                            @endforeach
+                        </ul>
+                    @endif
+
+                    <form wire:submit="uploadPreset">
+                        <div class="mb-2">
+                            <label for="presetUpload" class="form-label fw-medium">{{ __('Preset file (.sts)') }}</label>
+                            <input id="presetUpload" type="file" wire:model="presetUpload"
+                                   class="form-control form-control-sm @error('presetUpload') is-invalid @enderror" accept=".sts">
+                            @error('presetUpload')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div class="mb-2">
+                            <label for="presetName" class="form-label fw-medium">{{ __('Name (optional)') }}</label>
+                            <input id="presetName" type="text" wire:model="presetName"
+                                   class="form-control form-control-sm @error('presetName') is-invalid @enderror"
+                                   placeholder="{{ __('Taken from the file if left empty') }}">
+                            @error('presetName')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <button type="submit" class="btn btn-outline-primary btn-sm" wire:loading.attr="disabled">
+                            <i class="bi bi-upload me-1"></i>{{ __('Upload preset') }}
+                            <span wire:loading wire:target="presetUpload,uploadPreset" class="spinner-border spinner-border-sm ms-1"></span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        @endif
+
+        <div class="col-12 col-xl-6 col-xxl-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="fw-semibold">{{ __('Team / Zugriff') }}</h6>
+                    <p class="text-muted-sm">{{ __('Erteile anderen registrierten Nutzern Zugriff, um die Station gemeinsam zu verwalten.') }}</p>
+
+                    <ul class="list-group list-group-flush mb-3">
+                        @foreach ($members as $member)
+                            <li class="list-group-item d-flex align-items-center justify-content-between px-0">
+                                <div>
+                                    <div class="fw-medium">{{ $member->name }}</div>
+                                    <div class="text-muted-sm">{{ $member->email }}</div>
                                 </div>
-                                <button type="button" class="btn btn-outline-danger btn-sm"
-                                        @click="$dispatch('confirm-dialog', { message: @js(__('Delete the preset :name?', ['name' => $preset->name])), confirmText: @js(__('Delete')), confirmClass: 'btn-danger', onConfirm: () => $wire.deletePreset({{ $preset->id }}) })">
-                                    <i class="bi bi-trash"></i>
-                                </button>
+                                <div class="d-flex align-items-center gap-2">
+                                    @if ($member->pivot->role === 'owner')
+                                        <span class="badge text-bg-primary">{{ __('Besitzer') }}</span>
+                                    @else
+                                        <span class="badge text-bg-secondary">{{ __('Editor') }}</span>
+                                        <button type="button" class="btn btn-outline-danger btn-sm"
+                                                @click="$dispatch('confirm-dialog', { message: @js(__('Zugriff für :name entziehen?', ['name' => $member->name])), confirmText: @js(__('Entziehen')), onConfirm: () => $wire.removeMember({{ $member->id }}) })">
+                                            <i class="bi bi-x-lg"></i>
+                                        </button>
+                                    @endif
+                                </div>
                             </li>
                         @endforeach
                     </ul>
-                @endif
 
-                <form wire:submit="uploadPreset">
-                    <div class="mb-2">
-                        <label for="presetUpload" class="form-label fw-medium">{{ __('Preset file (.sts)') }}</label>
-                        <input id="presetUpload" type="file" wire:model="presetUpload"
-                               class="form-control form-control-sm @error('presetUpload') is-invalid @enderror" accept=".sts">
-                        @error('presetUpload')
-                            <div class="invalid-feedback">{{ $message }}</div>
-                        @enderror
-                    </div>
-
-                    <div class="mb-2">
-                        <label for="presetName" class="form-label fw-medium">{{ __('Name (optional)') }}</label>
-                        <input id="presetName" type="text" wire:model="presetName"
-                               class="form-control form-control-sm @error('presetName') is-invalid @enderror"
-                               placeholder="{{ __('Taken from the file if left empty') }}">
-                        @error('presetName')
-                            <div class="invalid-feedback">{{ $message }}</div>
-                        @enderror
-                    </div>
-
-                    <button type="submit" class="btn btn-outline-primary btn-sm" wire:loading.attr="disabled">
-                        <i class="bi bi-upload me-1"></i>{{ __('Upload preset') }}
-                        <span wire:loading wire:target="presetUpload,uploadPreset" class="spinner-border spinner-border-sm ms-1"></span>
-                    </button>
-                </form>
+                    <form wire:submit="addMember">
+                        <label for="memberEmail" class="form-label fw-medium">{{ __('Nutzer per E-Mail hinzufügen') }}</label>
+                        <div class="input-group">
+                            <input id="memberEmail" type="email" wire:model="memberEmail"
+                                   class="form-control @error('memberEmail') is-invalid @enderror"
+                                   placeholder="email@example.com">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-person-plus me-1"></i>{{ __('Hinzufügen') }}
+                            </button>
+                            @error('memberEmail')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
-    @endif
 
-    <div class="card mb-4" style="max-width: 480px;">
-        <div class="card-body">
-            <h6 class="fw-semibold">{{ __('Team / Zugriff') }}</h6>
-            <p class="text-muted-sm">{{ __('Erteile anderen registrierten Nutzern Zugriff, um die Station gemeinsam zu verwalten.') }}</p>
-
-            <ul class="list-group list-group-flush mb-3">
-                @foreach ($members as $member)
-                    <li class="list-group-item d-flex align-items-center justify-content-between px-0">
-                        <div>
-                            <div class="fw-medium">{{ $member->name }}</div>
-                            <div class="text-muted-sm">{{ $member->email }}</div>
-                        </div>
-                        <div class="d-flex align-items-center gap-2">
-                            @if ($member->pivot->role === 'owner')
-                                <span class="badge text-bg-primary">{{ __('Besitzer') }}</span>
-                            @else
-                                <span class="badge text-bg-secondary">{{ __('Editor') }}</span>
-                                <button type="button" class="btn btn-outline-danger btn-sm"
-                                        @click="$dispatch('confirm-dialog', { message: @js(__('Zugriff für :name entziehen?', ['name' => $member->name])), confirmText: @js(__('Entziehen')), onConfirm: () => $wire.removeMember({{ $member->id }}) })">
-                                    <i class="bi bi-x-lg"></i>
-                                </button>
-                            @endif
-                        </div>
-                    </li>
-                @endforeach
-            </ul>
-
-            <form wire:submit="addMember">
-                <label for="memberEmail" class="form-label fw-medium">{{ __('Nutzer per E-Mail hinzufügen') }}</label>
-                <div class="input-group">
-                    <input id="memberEmail" type="email" wire:model="memberEmail"
-                           class="form-control @error('memberEmail') is-invalid @enderror"
-                           placeholder="email@example.com">
-                    <button type="submit" class="btn btn-primary">
-                        <i class="bi bi-person-plus me-1"></i>{{ __('Hinzufügen') }}
+        <div class="col-12 col-xl-6 col-xxl-4">
+            <div class="card border-danger">
+                <div class="card-body">
+                    <h6 class="text-danger fw-semibold">{{ __('Station löschen') }}</h6>
+                    <p class="text-muted-sm">{{ __('Löscht die Station und alle zugehörigen Daten unwiderruflich.') }}</p>
+                    <button type="button" class="btn btn-outline-danger btn-sm"
+                            data-bs-toggle="modal" data-bs-target="#deleteStationModal">
+                        <i class="bi bi-trash me-1"></i>{{ __('Station löschen') }}
                     </button>
-                    @error('memberEmail')
-                        <div class="invalid-feedback">{{ $message }}</div>
-                    @enderror
                 </div>
-            </form>
-        </div>
-    </div>
-
-    <div class="card border-danger" style="max-width: 480px;">
-        <div class="card-body">
-            <h6 class="text-danger fw-semibold">{{ __('Station löschen') }}</h6>
-            <p class="text-muted-sm">{{ __('Löscht die Station und alle zugehörigen Daten unwiderruflich.') }}</p>
-            <button type="button" class="btn btn-outline-danger btn-sm"
-                    data-bs-toggle="modal" data-bs-target="#deleteStationModal">
-                <i class="bi bi-trash me-1"></i>{{ __('Station löschen') }}
-            </button>
+            </div>
         </div>
     </div>
 

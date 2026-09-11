@@ -29,47 +29,19 @@ class ElementTypes
     }
 
     /**
-     * Types the operator can pick in the add form, in the order they are offered,
-     * keyed by type with the label for the dropdown.
+     * Resolves a palette entry to its element type.
      *
-     * The legacy news/weather types are deliberately missing: they still play from old
-     * playlists but are replaced by external sources for anything new.
-     *
-     * @param  bool  $allowContainer  false inside a container, which must not nest
-     * @return array<string, string>
+     * The special tab carries the type itself as its id (fill, random, adbreak), the
+     * other tabs carry a database id.
      */
-    public static function selectableLabels(bool $allowContainer = true): array
+    public static function forPaletteEntry(string $kind, string $id): PlaylistElementType
     {
-        $labels = [
-            'music' => __('Musik'),
-            'jingle' => __('Jingle'),
-            'external' => __('Externe Quelle'),
-            'url' => __('URL (Legacy)'),
-            'fill' => __('Auffüllen mit Musik'),
-            'random' => __('Zufälliges Element'),
-            'adbreak' => __('Werbeunterbrechung (laut.fm)'),
-            'container' => __('Container'),
-        ];
-
-        if (! $allowContainer) {
-            unset($labels['container']);
-        }
-
-        return $labels;
-    }
-
-    /** Does this type need a media file picked from the library or uploaded? */
-    public static function needsMediaFile(string $type): bool
-    {
-        return in_array($type, ['music', 'jingle'], true);
-    }
-
-    /**
-     * May this type carry a timestamp? Elements that are resolved at generation time
-     * (fill, random) or that mark a position (ad break, container) may not.
-     */
-    public static function supportsTimestamp(string $type): bool
-    {
-        return ! in_array($type, ['fill', 'random', 'adbreak', 'container'], true);
+        return match ($kind) {
+            PlaylistPalette::TAB_MEDIA => new LibraryElement,
+            PlaylistPalette::TAB_CONTAINER => new ContainerElement,
+            PlaylistPalette::TAB_EXTERNAL => new ExternalElement,
+            PlaylistPalette::TAB_SPECIAL => self::for($id),
+            default => throw new InvalidArgumentException("Unbekannte Palette-Art: {$kind}"),
+        };
     }
 }

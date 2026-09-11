@@ -88,9 +88,7 @@ test('user can add a container to a playlist', function () {
     $container = makeContainer($this->station);
 
     Livewire::test(Manager::class, ['playlist' => $this->playlist])
-        ->set('newType', 'container')
-        ->set('selectedContainerId', $container->id)
-        ->call('addItem');
+        ->call('insertEntry', 'container:'.$container->id);
 
     $item = $this->playlist->items()->first();
 
@@ -104,9 +102,7 @@ test('a container from another station is rejected', function () {
     $foreign = makeContainer($otherStation, 'Foreign block');
 
     expect(fn () => Livewire::test(Manager::class, ['playlist' => $this->playlist])
-        ->set('newType', 'container')
-        ->set('selectedContainerId', $foreign->id)
-        ->call('addItem'))->toThrow(ModelNotFoundException::class);
+        ->call('insertEntry', 'container:'.$foreign->id))->toThrow(ModelNotFoundException::class);
 
     expect($this->playlist->items()->count())->toBe(0);
 });
@@ -116,9 +112,7 @@ test('a container cannot be nested into another container', function () {
     $other = makeContainer($this->station, 'Other block');
 
     Livewire::test(Manager::class, ['playlist' => $other])
-        ->set('newType', 'container')
-        ->set('selectedContainerId', $container->id)
-        ->call('addItem')
+        ->call('insertEntry', 'container:'.$container->id)
         ->assertForbidden();
 });
 

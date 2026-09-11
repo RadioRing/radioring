@@ -26,9 +26,7 @@ test('user can add an external source to a playlist', function () {
     ]);
 
     Livewire::test(Manager::class, ['playlist' => $this->playlist])
-        ->set('newType', 'external')
-        ->call('toggleExternalSource', $source->id)
-        ->call('addItem')
+        ->call('insertEntry', 'external:'.$source->id)
         ->assertHasNoErrors();
 
     $item = $this->playlist->items()->first();
@@ -60,11 +58,21 @@ test('regenerating uses the current source duration, not a stale item snapshot',
     expect($rundown->items()->first()->duration_seconds)->toBe(1200);
 });
 
-test('adding an external item requires a source', function () {
+test('inserting without a pick adds nothing', function () {
     Livewire::test(Manager::class, ['playlist' => $this->playlist])
-        ->set('newType', 'external')
-        ->call('addItem')
-        ->assertHasErrors(['selectedExternalSourceIds']);
+        ->call('insertPicks')
+        ->assertHasNoErrors();
+
+    expect($this->playlist->items()->count())->toBe(0);
+});
+
+test('a source of another station cannot be inserted', function () {
+    $foreign = ExternalSource::factory()->create(['station_id' => Station::factory()->create()->id]);
+
+    Livewire::test(Manager::class, ['playlist' => $this->playlist])
+        ->call('insertEntry', 'external:'.$foreign->id);
+
+    expect($this->playlist->items()->count())->toBe(0);
 });
 
 test('several external sources can be added at once, in the order they were picked', function () {
@@ -72,29 +80,26 @@ test('several external sources can be added at once, in the order they were pick
     $second = ExternalSource::factory()->create(['station_id' => $this->station->id, 'name' => 'Nachrichten']);
 
     Livewire::test(Manager::class, ['playlist' => $this->playlist])
-        ->set('newType', 'external')
-        ->call('toggleExternalSource', $second->id)
-        ->call('toggleExternalSource', $first->id)
-        ->set('newRelativeOffset', '15:00')
-        ->call('addItem')
-        ->assertHasNoErrors();
+        ->call('togglePick', 'external:'.$second->id)
+        ->call('togglePick', 'external:'.$first->id)
+        ->call('insertPicks')
+        ->assertHasNoErrors()
+        ->assertSet('picks', []);
 
     $items = $this->playlist->items()->orderBy('position')->get();
-    expect($items->pluck('external_source_id')->all())->toBe([$second->id, $first->id])
-        // The timestamp pins the first element only.
-        ->and($items->pluck('relative_offset_seconds')->all())->toBe([900, null]);
+    expect($items->pluck('external_source_id')->all())->toBe([$second->id, $first->id]);
 });
 
 test('a picked external source can be dropped again before adding', function () {
     $source = ExternalSource::factory()->create(['station_id' => $this->station->id]);
 
     Livewire::test(Manager::class, ['playlist' => $this->playlist])
-        ->set('newType', 'external')
-        ->call('toggleExternalSource', $source->id)
-        ->call('toggleExternalSource', $source->id)
-        ->assertSet('selectedExternalSourceIds', [])
-        ->call('addItem')
-        ->assertHasErrors(['selectedExternalSourceIds']);
+        ->call('togglePick', 'external:'.$source->id)
+        ->call('togglePick', 'external:'.$source->id)
+        ->assertSet('picks', [])
+        ->call('insertPicks');
+
+    expect($this->playlist->items()->count())->toBe(0);
 });
 
 test('the source list can be searched by name', function () {
@@ -102,9 +107,8 @@ test('the source list can be searched by name', function () {
     ExternalSource::factory()->create(['station_id' => $this->station->id, 'name' => 'Wetter']);
 
     Livewire::test(Manager::class, ['playlist' => $this->playlist])
-        ->set('showAddForm', true)
-        ->set('newType', 'external')
-        ->set('externalSearch', 'wett')
+        ->call('switchTab', 'external')
+        ->set('paletteSearch', 'wett')
         ->assertSee('Wetter')
         ->assertDontSee('Morgenshow');
 });

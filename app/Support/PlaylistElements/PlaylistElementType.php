@@ -13,10 +13,11 @@ use App\Models\Playlist;
 interface PlaylistElementType
 {
     /**
-     * Validation rules for the add form.
+     * Validation rules for the form fields this type needs.
      *
      * Keyed by the property of the editor component the operator filled in, so the
-     * messages land on the right field in the form.
+     * messages land on the right field. Types that are picked from the palette validate
+     * nothing here: they are looked up in the station's own data instead.
      *
      * @return array<string, string>
      */

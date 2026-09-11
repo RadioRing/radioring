@@ -28,6 +28,30 @@ to stand on its own.
   same ad break four times meant four trips through the add form. Every element now has a
   duplicate button that puts the copy directly behind the original, and elements can be
   ticked in the list to duplicate or remove several of them at once.
+- **The playlist editor works from one palette instead of a form.** Every kind of element
+  sat behind its own branch of the add form: pick a type, wait for the right fields, find
+  the entry, submit, start over for the next one. The editor now shows the playlist next to
+  a palette that searches the media library, the containers, the external sources and the
+  special elements, each in its own tab, with one search field for all of them. Entries can
+  be ticked and inserted as a block in the order they were picked, dragged straight into the
+  playlist at the position they belong, or appended with a single click. The media library
+  is paged now, so a big library no longer arrives in one go.
+- **The playlist editor shows how long the hour is.** The one question that matters while
+  building an hour was the one the editor could not answer. Every element now carries its
+  start time counted from the beginning of the playlist, and the header shows the total
+  against the hour with a bar. Lengths that are only known at playout (a fill element, a
+  random element) are marked as such instead of being guessed: everything behind them shows
+  "--:--", and a fill element is called out as filling the rest of the hour.
+
+### Changed
+- **The station settings use the width of the screen.** The cards were stacked in a single
+  narrow column, which meant a lot of scrolling on a wide monitor. They are laid out in a
+  grid now: three columns on a wide screen, two on a smaller one, and a single column on a
+  phone, as before.
+- **A timestamp is set on the element after inserting it, not while adding it.** The add
+  form carried a timestamp field for the element that was about to be created; the palette
+  has no form to carry it. Insert the element, then set its timestamp with the pencil button
+  in the list. Existing timestamps are untouched.
 
 ### Fixed
 - **A file uploaded in the playlist editor is now treated like any other upload.** It went

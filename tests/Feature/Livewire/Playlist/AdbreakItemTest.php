@@ -24,8 +24,7 @@ beforeEach(function () {
 
 test('user can add an adbreak item', function () {
     Livewire::test(Manager::class, ['playlist' => $this->playlist])
-        ->set('newType', 'adbreak')
-        ->call('addItem');
+        ->call('insertEntry', 'special:adbreak');
 
     $item = $this->playlist->items()->first();
     expect($item->type)->toBe('adbreak')

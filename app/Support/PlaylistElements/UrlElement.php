@@ -13,9 +13,9 @@ class UrlElement implements PlaylistElementType
     public function rules(): array
     {
         return [
-            'newTitle' => 'required|string|min:1|max:200',
-            'newUrl' => 'required|url|max:2048',
-            'newDuration' => 'nullable|integer|min:1|max:86400',
+            'urlTitle' => 'required|string|min:1|max:200',
+            'urlAddress' => 'required|url|max:2048',
+            'urlDuration' => 'nullable|integer|min:1|max:86400',
         ];
     }
 

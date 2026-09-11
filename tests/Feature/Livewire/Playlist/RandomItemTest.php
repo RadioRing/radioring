@@ -24,8 +24,7 @@ beforeEach(function () {
 
 test('user can add a random item without tags', function () {
     Livewire::test(Manager::class, ['playlist' => $this->playlist])
-        ->set('newType', 'random')
-        ->call('addItem');
+        ->call('insertEntry', 'special:random');
 
     $item = $this->playlist->items()->first();
     expect($item->type)->toBe('random')
@@ -37,24 +36,32 @@ test('user can add a random item without tags', function () {
 test('user can add a random item with tag filter', function () {
     $tag = $this->station->tags()->create(['name' => 'Jingles']);
 
-    Livewire::test(Manager::class, ['playlist' => $this->playlist])
-        ->set('newType', 'random')
-        ->set('newFillTagIds', [(string) $tag->id])
-        ->call('addItem');
+    $component = Livewire::test(Manager::class, ['playlist' => $this->playlist])
+        ->call('insertEntry', 'special:random');
 
-    expect($this->playlist->items()->first()->fill_tags)->toContain($tag->id);
+    $item = $this->playlist->items()->first();
+
+    $component->call('startEditingItem', $item->id)
+        ->set('editFillTagIds', [(string) $tag->id])
+        ->call('saveItem');
+
+    expect($item->fresh()->fill_tags)->toContain($tag->id);
 });
 
 test('foreign tag ids are rejected in random item', function () {
     $otherStation = Station::factory()->create();
     $foreignTag = $otherStation->tags()->create(['name' => 'Fremd']);
 
-    Livewire::test(Manager::class, ['playlist' => $this->playlist])
-        ->set('newType', 'random')
-        ->set('newFillTagIds', [(string) $foreignTag->id])
-        ->call('addItem');
+    $component = Livewire::test(Manager::class, ['playlist' => $this->playlist])
+        ->call('insertEntry', 'special:random');
 
-    expect($this->playlist->items()->first()->fill_tags)->toBeEmpty();
+    $item = $this->playlist->items()->first();
+
+    $component->call('startEditingItem', $item->id)
+        ->set('editFillTagIds', [(string) $foreignTag->id])
+        ->call('saveItem');
+
+    expect($item->fresh()->fill_tags)->toBeEmpty();
 });
 
 test('rundown generator picks exactly one tagged media file for a random item', function () {

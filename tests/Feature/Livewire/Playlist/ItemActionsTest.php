@@ -145,11 +145,10 @@ test('an upload from the editor lands in the tenant library and is analysed', fu
     Queue::fake();
 
     Livewire::test(Manager::class, ['playlist' => $this->playlist])
-        ->set('newType', 'jingle')
-        ->set('addMode', 'upload')
-        ->set('newTitle', 'Station Jingle')
-        ->set('newFile', UploadedFile::fake()->create('jingle.mp3', 120, 'audio/mpeg'))
-        ->call('addItem');
+        ->set('uploadType', 'jingle')
+        ->set('uploadTitle', 'Station Jingle')
+        ->set('uploadFile', UploadedFile::fake()->create('jingle.mp3', 120, 'audio/mpeg'))
+        ->call('submitUpload');
 
     $mediaFile = $this->station->mediaFiles()->first();
 
@@ -163,7 +162,7 @@ test('an upload from the editor lands in the tenant library and is analysed', fu
     expect($this->playlist->items()->first()->media_file_id)->toBe($mediaFile->id);
 });
 
-test('the library list keeps its type filter while searching', function () {
+test('the palette keeps its type filter while searching', function () {
     $this->station->mediaFiles()->create([
         'title' => 'Sunrise', 'type' => 'music',
         'file_path' => 'tenants/t/media/sunrise.mp3', 'duration_seconds' => 200,
@@ -174,8 +173,7 @@ test('the library list keeps its type filter while searching', function () {
     ]);
 
     Livewire::test(Manager::class, ['playlist' => $this->playlist])
-        ->set('showAddForm', true)
-        ->set('newType', 'jingle')
-        ->set('librarySearch', 'Sunrise')
-        ->assertViewHas('libraryFiles', fn ($files) => $files->pluck('title')->all() === ['Sunrise Jingle']);
+        ->set('paletteMediaType', 'jingle')
+        ->set('paletteSearch', 'Sunrise')
+        ->assertViewHas('paletteEntries', fn ($entries) => $entries->pluck('title')->all() === ['Sunrise Jingle']);
 });
