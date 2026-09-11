@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -217,4 +218,60 @@ test('an ftp address with spaces in the path is accepted and stored encoded', fu
 
     expect($this->station->externalSources()->first()->url)
         ->toBe('ftp://markstafford.co.uk/All/current/Show%20-%20Stafford%201A.mp3');
+});
+
+test('the prepared copies of a source can be shown and hidden', function () {
+    Storage::fake('local');
+
+    $source = ExternalSource::factory()->create(['station_id' => $this->station->id]);
+
+    $rundown = $this->station->generatedPlaylists()->create([
+        'broadcast_date' => today(),
+        'broadcast_hour' => 8,
+        'status' => 'ready',
+    ]);
+
+    Storage::disk('local')->put("stations/{$this->station->slug}/prepared/1.mp3", 'AUDIO');
+
+    $item = $rundown->items()->create([
+        'position' => 0,
+        'source_type' => 'external',
+        'external_source_id' => $source->id,
+        'title' => 'Show',
+        'prepared_path' => "stations/{$this->station->slug}/prepared/1.mp3",
+        'prepared_at' => now(),
+        'absolute_broadcast_at' => today()->setHour(8),
+    ]);
+
+    Livewire::test(Index::class)
+        ->assertDontSee($item->prepared_path)
+        ->call('togglePreparedFiles', $source->id)
+        ->assertSee($item->prepared_path)
+        ->call('togglePreparedFiles', $source->id)
+        ->assertDontSee($item->prepared_path);
+});
+
+test('the prepared copies of another station stay hidden', function () {
+    Storage::fake('local');
+
+    $source = ExternalSource::factory()->create(['station_id' => $this->station->id]);
+
+    $foreign = Station::factory()->create();
+    $foreignRundown = $foreign->generatedPlaylists()->create([
+        'broadcast_date' => today(),
+        'broadcast_hour' => 8,
+        'status' => 'ready',
+    ]);
+    $foreignRundown->items()->create([
+        'position' => 0,
+        'source_type' => 'external',
+        'external_source_id' => $source->id,
+        'title' => 'Show',
+        'prepared_path' => 'stations/foreign/prepared/99.mp3',
+        'absolute_broadcast_at' => today()->setHour(8),
+    ]);
+
+    Livewire::test(Index::class)
+        ->call('togglePreparedFiles', $source->id)
+        ->assertDontSee('stations/foreign/prepared/99.mp3');
 });

@@ -403,7 +403,47 @@
                                     @endif
                                 </div>
                             @endif
+
+                            {{-- Vorbereitete Kopien auf der Platte --}}
+                            @if($showingFilesForId === $source->id)
+                                <div class="mt-2 border-start border-2 ps-2" style="font-size:.72rem">
+                                    @forelse($preparedFiles as $file)
+                                        <div class="d-flex gap-2 align-items-baseline">
+                                            @if($file['exists'])
+                                                <i class="bi bi-file-earmark-music text-success"></i>
+                                            @else
+                                                <i class="bi bi-file-earmark-x text-danger" title="{{ __('File is gone') }}"></i>
+                                            @endif
+                                            <code class="text-body">{{ $file['path'] }}</code>
+                                            <span class="text-muted text-nowrap">
+                                                @if($file['bytes'] !== null)
+                                                    {{ number_format($file['bytes'] / 1048576, 1) }} MB
+                                                @else
+                                                    {{ __('gone') }}
+                                                @endif
+                                                @if($file['broadcast_at'])
+                                                    · {{ __('on air :time', ['time' => $file['broadcast_at']]) }}
+                                                @endif
+                                                @if($file['prepared_at'])
+                                                    · {{ __('fetched :time', ['time' => $file['prepared_at']]) }}
+                                                @endif
+                                            </span>
+                                        </div>
+                                    @empty
+                                        <span class="text-muted">{{ __('No prepared copy on disk right now.') }}</span>
+                                    @endforelse
+                                    <div class="text-muted mt-1">
+                                        {{ __('Copies are deleted an hour after they aired.') }}
+                                    </div>
+                                </div>
+                            @endif
                         </div>
+
+                        <button class="btn btn-sm btn-link text-muted px-1"
+                                wire:click="togglePreparedFiles({{ $source->id }})"
+                                title="{{ __('Show the prepared copies on disk') }}">
+                            <i class="bi bi-{{ $showingFilesForId === $source->id ? 'hdd-fill' : 'hdd' }}"></i>
+                        </button>
 
                         <span class="text-muted-sm text-nowrap">
                             @if($source->playlist_items_count > 0)

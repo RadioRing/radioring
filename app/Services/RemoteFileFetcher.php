@@ -102,7 +102,46 @@ class RemoteFileFetcher
             throw new RemoteFetchException(__('Download failed (HTTP :status).', ['status' => $response->status()]));
         }
 
-        return $response->body();
+        $body = $response->body();
+
+        $this->assertComplete(
+            strlen($body),
+            $response->header('Content-Length'),
+            // A compressed response announces the compressed length while the client hands
+            // us the decoded body, so the two are not comparable and the check is skipped.
+            $response->header('Content-Encoding') === '',
+        );
+
+        return $body;
+    }
+
+    /**
+     * Guards against a transfer that ended early.
+     *
+     * A connection that dies mid-body yields a short response without an error: the HTTP
+     * client does not verify that as many bytes arrived as were announced. The truncated
+     * file used to be stored, trimmed, measured and aired as if it were complete, and its
+     * shortened duration was written back to the source, where it went on to distort the
+     * timing of every hour planned from it.
+     *
+     * @throws RemoteFetchException
+     */
+    private function assertComplete(int $received, string $announcedLength, bool $comparable): void
+    {
+        if (! $comparable || ! ctype_digit($announcedLength)) {
+            return;
+        }
+
+        $announced = (int) $announcedLength;
+
+        if ($announced <= 0 || $received >= $announced) {
+            return;
+        }
+
+        throw new RemoteFetchException(__('The download broke off: :received of :announced bytes arrived.', [
+            'received' => number_format($received),
+            'announced' => number_format($announced),
+        ]));
     }
 
     /**
@@ -148,12 +187,17 @@ class RemoteFileFetcher
 
         $body = curl_exec($handle);
         $error = curl_error($handle);
+        $announced = (float) curl_getinfo($handle, CURLINFO_CONTENT_LENGTH_DOWNLOAD);
         curl_close($handle);
 
         if ($body === false) {
             throw new RemoteFetchException(__('FTP download failed: :error', ['error' => $error !== '' ? $error : __('unknown error')]));
         }
 
-        return (string) $body;
+        $body = (string) $body;
+
+        $this->assertComplete(strlen($body), $announced > 0 ? (string) (int) $announced : '', true);
+
+        return $body;
     }
 }

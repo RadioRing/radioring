@@ -376,5 +376,14 @@
     "plus up to :time of fill music": "plus bis zu :time Fill-Musik",
     "Adds music until its budget is used up, rotation-aware": "Füllt mit Musik, bis das Budget aufgebraucht ist, rotationsgerecht",
     "Hard start on the hour": "Harter Start zur vollen Stunde",
-    "Soft start: the running track finishes first": "Weicher Start: der laufende Titel spielt zu Ende"
+    "Soft start: the running track finishes first": "Weicher Start: der laufende Titel spielt zu Ende",
+    "The download broke off: :received of :announced bytes arrived.": "Der Download ist abgebrochen: :received von :announced Bytes sind angekommen.",
+    "length unknown": "Länge unbekannt",
+    "File is gone": "Datei ist verschwunden",
+    "gone": "verschwunden",
+    "on air :time": "Sendung :time",
+    "fetched :time": "geholt :time",
+    "No prepared copy on disk right now.": "Aktuell liegt keine vorbereitete Kopie auf der Platte.",
+    "Copies are deleted an hour after they aired.": "Kopien werden eine Stunde nach der Ausstrahlung gelöscht.",
+    "Show the prepared copies on disk": "Vorbereitete Kopien auf der Platte anzeigen"
 }

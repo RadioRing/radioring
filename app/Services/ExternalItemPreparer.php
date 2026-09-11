@@ -19,6 +19,9 @@ use Illuminate\Support\Facades\Storage;
  */
 class ExternalItemPreparer
 {
+    /** Below this share of the previously seen length, a prepared copy is worth a log line. */
+    private const SHORTENING_ALERT_RATIO = 0.8;
+
     public function __construct(
         private readonly RemoteFileFetcher $fetcher,
         private readonly LoudnessAnalyzerService $analyzer,
@@ -41,6 +44,9 @@ class ExternalItemPreparer
         }
 
         $path = "stations/{$station->slug}/prepared/{$item->id}.mp3";
+        $startedAt = microtime(true);
+
+        Log::info("External source #{$source->id} ({$source->name}): fetching for item #{$item->id} of station {$station->slug}, on air ".($item->absolute_broadcast_at?->toDateTimeString() ?? '?').'.');
 
         try {
             $body = $this->fetcher->fetch($url, $source->url_username, $source->url_password, $timeoutSeconds);
@@ -91,12 +97,50 @@ class ExternalItemPreparer
         ];
 
         if ($duration !== null && $duration > 0) {
+            $this->warnAboutSuddenShortening($source, $duration);
             $sourceUpdate['expected_duration_seconds'] = $duration;
         }
 
         $source->update($sourceUpdate);
 
+        Log::info(sprintf(
+            'External source #%d (%s): prepared item #%d as %s, %s bytes, %s, took %.1fs.%s',
+            $source->id,
+            $source->name,
+            $item->id,
+            $path,
+            number_format(strlen($body)),
+            $duration !== null && $duration > 0 ? gmdate('H:i:s', (int) $duration) : __('length unknown'),
+            microtime(true) - $startedAt,
+            $measurement !== null ? ' '.number_format($measurement['lufs'], 1).' LUFS.' : '',
+        ));
+
         return true;
+    }
+
+    /**
+     * A file that is suddenly much shorter than what this source delivered before is the
+     * signature of a transfer that ended early. RemoteFileFetcher rejects the ones that
+     * announce their length, but a server can also close a stream cleanly at the wrong
+     * point, and then only the duration gives it away. The copy is still used: a show
+     * really can be shorter this week, and dropping it would take an hour off the air for
+     * a suspicion. It is written to the log so the cause is findable afterwards.
+     */
+    private function warnAboutSuddenShortening(ExternalSource $source, float $duration): void
+    {
+        $previous = $source->expected_duration_seconds;
+
+        if ($previous === null || $previous <= 0 || $duration >= $previous * self::SHORTENING_ALERT_RATIO) {
+            return;
+        }
+
+        Log::warning(sprintf(
+            'External source #%d (%s): the prepared copy is %s long, previously %s. A download that ended early looks like this.',
+            $source->id,
+            $source->name,
+            gmdate('H:i:s', (int) $duration),
+            gmdate('H:i:s', (int) $previous),
+        ));
     }
 
     /**
@@ -105,7 +149,7 @@ class ExternalItemPreparer
      */
     private function recordFailure(GeneratedPlaylistItem $item, ExternalSource $source, string $message): void
     {
-        Log::warning("Externe Quelle #{$source->id} ({$source->name}): {$message}");
+        Log::warning("External source #{$source->id} ({$source->name}): {$message} (item #{$item->id}, attempt ".($item->prepare_attempts + 1).').');
 
         $item->update([
             'prepare_attempts' => $item->prepare_attempts + 1,

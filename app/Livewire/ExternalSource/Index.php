@@ -3,10 +3,12 @@
 namespace App\Livewire\ExternalSource;
 
 use App\Models\ExternalSource;
+use App\Models\GeneratedPlaylistItem;
 use App\Models\Station;
 use App\Services\RemoteFileFetcher;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -14,8 +16,14 @@ use Livewire\Component;
 #[Title('Externe Quellen')]
 class Index extends Component
 {
+    /** How many prepared copies of a source are listed at most. */
+    private const PREPARED_FILES_SHOWN = 10;
+
     #[Locked]
     public Station $station;
+
+    /** The source whose prepared copies on disk are currently shown, if any. */
+    public ?int $showingFilesForId = null;
 
     public bool $showForm = false;
 
@@ -211,6 +219,12 @@ class Index extends Component
 
         $this->resetForm();
         $this->dispatch('notify', message: $message, type: 'success');
+    }
+
+    /** Shows or hides the prepared copies of one source. */
+    public function togglePreparedFiles(int $id): void
+    {
+        $this->showingFilesForId = $this->showingFilesForId === $id ? null : $id;
     }
 
     public function delete(int $id): void
@@ -533,12 +547,53 @@ class Index extends Component
             ->all();
     }
 
+    /**
+     * The prepared copies of one source that are on disk right now.
+     *
+     * Answers "which file is this actually" when a download has to be inspected by hand:
+     * the copy lives under the item id, not under the source, so it cannot be guessed
+     * from the source alone. Missing files are listed too, because a row without a file
+     * is exactly what a failed preparation looks like.
+     *
+     * @return list<array{item_id: int, path: string, exists: bool, bytes: ?int, prepared_at: ?string, broadcast_at: ?string}>
+     */
+    private function preparedFiles(): array
+    {
+        if ($this->showingFilesForId === null) {
+            return [];
+        }
+
+        $disk = Storage::disk('local');
+
+        return GeneratedPlaylistItem::query()
+            ->where('external_source_id', $this->showingFilesForId)
+            ->whereNotNull('prepared_path')
+            ->whereHas('generatedPlaylist', fn ($q) => $q->where('station_id', $this->station->id))
+            ->orderByDesc('absolute_broadcast_at')
+            ->limit(self::PREPARED_FILES_SHOWN)
+            ->get()
+            ->map(function (GeneratedPlaylistItem $item) use ($disk): array {
+                $exists = $disk->exists($item->prepared_path);
+
+                return [
+                    'item_id' => $item->id,
+                    'path' => $item->prepared_path,
+                    'exists' => $exists,
+                    'bytes' => $exists ? $disk->size($item->prepared_path) : null,
+                    'prepared_at' => $item->prepared_at?->format('d.m.Y H:i:s'),
+                    'broadcast_at' => $item->absolute_broadcast_at?->format('d.m.Y H:i'),
+                ];
+            })
+            ->all();
+    }
+
     public function render()
     {
         return view('livewire.external-source.index', [
             'sources' => $this->sources(),
             'totalSources' => $this->station->externalSources()->count(),
             'importedSyndications' => $this->showImport ? $this->importedSyndications() : [],
+            'preparedFiles' => $this->preparedFiles(),
         ])->layout('layouts.app');
     }
 }

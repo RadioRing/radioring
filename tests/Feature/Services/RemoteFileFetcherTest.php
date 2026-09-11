@@ -95,3 +95,27 @@ test('it fetches the encoded address when the path contains spaces', function ()
 
     Http::assertSent(fn ($request) => $request->url() === 'https://example.com/All/Show%20-%20Stafford%201A.mp3');
 });
+
+test('it rejects a download that broke off mid transfer', function () {
+    Http::fake(['example.com/*' => Http::response('SHORT', 200, ['Content-Length' => '4200000'])]);
+
+    expect(fn () => app(RemoteFileFetcher::class)->fetch('https://example.com/show.mp3'))
+        ->toThrow(RemoteFetchException::class, '4,200,000');
+});
+
+test('it accepts a download that arrived in full', function () {
+    Http::fake(['example.com/*' => Http::response('AUDIO-BYTES', 200, ['Content-Length' => '11'])]);
+
+    expect(app(RemoteFileFetcher::class)->fetch('https://example.com/show.mp3'))->toBe('AUDIO-BYTES');
+});
+
+test('it does not compare lengths when the response was compressed', function () {
+    // The announced length is the compressed one while the body arrives decoded, so the
+    // two are not comparable and a complete download must not be rejected.
+    Http::fake(['example.com/*' => Http::response('AUDIO-BYTES-DECODED', 200, [
+        'Content-Length' => '6',
+        'Content-Encoding' => 'gzip',
+    ])]);
+
+    expect(app(RemoteFileFetcher::class)->fetch('https://example.com/show.mp3'))->toBe('AUDIO-BYTES-DECODED');
+});
