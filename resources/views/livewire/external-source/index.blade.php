@@ -439,12 +439,6 @@
                             @endif
                         </div>
 
-                        <button class="btn btn-sm btn-link text-muted px-1"
-                                wire:click="togglePreparedFiles({{ $source->id }})"
-                                title="{{ __('Show the prepared copies on disk') }}">
-                            <i class="bi bi-{{ $showingFilesForId === $source->id ? 'hdd-fill' : 'hdd' }}"></i>
-                        </button>
-
                         <span class="text-muted-sm text-nowrap">
                             @if($source->playlist_items_count > 0)
                                 <i class="bi bi-collection me-1"></i>{{ $source->playlist_items_count }}×
@@ -461,6 +455,11 @@
                                 <i class="bi bi-arrow-clockwise"></i>
                             </button>
                         @endif
+                        <button class="btn btn-sm {{ $showingFilesForId === $source->id ? 'btn-secondary' : 'btn-outline-secondary' }}"
+                                wire:click="togglePreparedFiles({{ $source->id }})"
+                                title="{{ __('Show the prepared copies on disk') }}">
+                            <i class="bi bi-hdd"></i>
+                        </button>
                         <button class="btn btn-sm btn-outline-secondary" wire:click="startEdit({{ $source->id }})" title="{{ __('Bearbeiten') }}">
                             <i class="bi bi-pencil"></i>
                         </button>
