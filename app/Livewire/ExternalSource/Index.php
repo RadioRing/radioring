@@ -21,6 +21,14 @@ class Index extends Component
 
     public ?int $editingId = null;
 
+    // Suche & Filter der Liste
+    public string $search = '';
+
+    public string $filterKind = '';
+
+    /** '', 'error', 'used' or 'unused'. */
+    public string $filterStatus = '';
+
     // Formularfelder
     public string $name = '';
 
@@ -68,6 +76,9 @@ class Index extends Component
     public string $importVariant = '';
 
     public ?string $importError = null;
+
+    /** Informational message of the wizard, for example when nothing was left to import. */
+    public ?string $importNotice = null;
 
     public function mount(): void
     {
@@ -237,7 +248,7 @@ class Index extends Component
     public function disconnectS4r(): void
     {
         $this->station->update(['s4r_partner_token' => null]);
-        $this->reset('showImport', 'importStep', 'importShows', 'importSelectedShow', 'importVariant', 'importError');
+        $this->reset('showImport', 'importStep', 'importShows', 'importSelectedShow', 'importVariant', 'importError', 'importNotice');
         $this->dispatch('notify', message: __('Verbindung zu Syndications4Radio getrennt.'), type: 'success');
     }
 
@@ -252,7 +263,7 @@ class Index extends Component
             return;
         }
 
-        $this->reset('importStep', 'importSelectedShow', 'importVariant', 'importError');
+        $this->reset('importStep', 'importSelectedShow', 'importVariant', 'importError', 'importNotice');
         $this->importStep = 1;
 
         try {
@@ -346,7 +357,27 @@ class Index extends Component
         $variantLabel = $this->importVariant === 'lfm' ? 'laut.fm' : 'Standard';
         $multiple = count($files) > 1;
 
+        // Schon importierte Dateien nicht ein zweites Mal anlegen. Gepinnt wird auf
+        // Sendung + Variante + Dateiname: ein erneuter Import holt damit nur die Teile,
+        // die seit dem letzten Mal dazugekommen sind, und lässt bestehende Quellen
+        // samt ihrer vom Betreiber angepassten Einstellungen in Ruhe.
+        $alreadyImported = $this->station->externalSources()
+            ->where('kind', 'syndication')
+            ->where('syndication_sendung_id', $show['id'])
+            ->where('syndication_variant', $this->importVariant)
+            ->pluck('syndication_filename')
+            ->all();
+
+        $created = 0;
+        $skipped = 0;
+
         foreach (array_values($files) as $index => $file) {
+            if (in_array($file['filename'] ?? null, $alreadyImported, true)) {
+                $skipped++;
+
+                continue;
+            }
+
             // Bei mehreren Dateien jede einzeln benennen (sprechender Titel der API,
             // sonst „Teil n"); bei genau einer Datei reicht der Sendungsname.
             $baseName = $multiple
@@ -370,16 +401,27 @@ class Index extends Component
                 'freshness_seconds' => 0,
                 'normalize' => true,
             ]);
+
+            $created++;
         }
 
-        $count = count($files);
-        $this->reset('showImport', 'importStep', 'importShows', 'importSelectedShow', 'importVariant', 'importError');
-        $this->dispatch('notify', message: trans_choice('{1}Syndication „:name" importiert.|[2,*]:count Dateien von „:name" importiert.', $count, ['name' => $show['name'], 'count' => $count]), type: 'success');
+        // Nichts Neues dabei: den Assistenten offen lassen, damit die andere Variante
+        // noch gewählt werden kann.
+        if ($created === 0) {
+            $this->importNotice = __('„:name" is already fully imported in this variant.', ['name' => $show['name']]);
+
+            return;
+        }
+
+        $this->reset('showImport', 'importStep', 'importShows', 'importSelectedShow', 'importVariant', 'importError', 'importNotice');
+        $this->dispatch('notify', type: 'success', message: $skipped > 0
+            ? trans_choice('{1}1 new file from „:name" imported, :skipped were already there.|[2,*]:count new files from „:name" imported, :skipped were already there.', $created, ['name' => $show['name'], 'count' => $created, 'skipped' => $skipped])
+            : trans_choice('{1}Syndication „:name" importiert.|[2,*]:count Dateien von „:name" importiert.', $created, ['name' => $show['name'], 'count' => $created]));
     }
 
     public function cancelImport(): void
     {
-        $this->reset('showImport', 'importStep', 'importShows', 'importSelectedShow', 'importVariant', 'importError');
+        $this->reset('showImport', 'importStep', 'importShows', 'importSelectedShow', 'importVariant', 'importError', 'importNotice');
     }
 
     /**
@@ -428,21 +470,75 @@ class Index extends Component
             : __('Aktualisiert – für diese Datei ist keine Länge verfügbar.'), type: 'success');
     }
 
+    public function resetFilters(): void
+    {
+        $this->reset('search', 'filterKind', 'filterStatus');
+    }
+
+    public function hasActiveFilters(): bool
+    {
+        return $this->search !== '' || $this->filterKind !== '' || $this->filterStatus !== '';
+    }
+
     /**
+     * The station's sources, narrowed by search and filters.
+     *
      * @return Collection<int, ExternalSource>
      */
     public function sources()
     {
+        $query = $this->station->externalSources()->withCount('playlistItems');
+
+        if ($this->filterKind !== '') {
+            $query->where('kind', $this->filterKind);
+        }
+
+        match ($this->filterStatus) {
+            'error' => $query->whereNotNull('last_error'),
+            'used' => $query->whereHas('playlistItems'),
+            'unused' => $query->whereDoesntHave('playlistItems'),
+            default => null,
+        };
+
+        // Die Suchbedingungen gehoeren geklammert, sonst hebt das orWhere die Filter auf.
+        if ($this->search !== '') {
+            $term = '%'.$this->search.'%';
+
+            $query->where(fn ($sub) => $sub
+                ->where('name', 'like', $term)
+                ->orWhere('broadcast_title', 'like', $term)
+                ->orWhere('url', 'like', $term)
+                ->orWhere('syndication_filename', 'like', $term)
+                ->when(is_numeric($this->search), fn ($q) => $q
+                    ->orWhere('syndication_sendung_id', (int) $this->search)));
+        }
+
+        return $query->orderBy('name')->get();
+    }
+
+    /**
+     * Which S4R shows already have sources here, and in which variants.
+     *
+     * @return array<int, list<string>> sendung id to variants
+     */
+    private function importedSyndications(): array
+    {
         return $this->station->externalSources()
-            ->withCount('playlistItems')
-            ->orderBy('name')
-            ->get();
+            ->where('kind', 'syndication')
+            ->get(['syndication_sendung_id', 'syndication_variant'])
+            ->groupBy('syndication_sendung_id')
+            ->mapWithKeys(fn ($rows, $sendungId) => [
+                (int) $sendungId => $rows->pluck('syndication_variant')->unique()->values()->all(),
+            ])
+            ->all();
     }
 
     public function render()
     {
         return view('livewire.external-source.index', [
             'sources' => $this->sources(),
+            'totalSources' => $this->station->externalSources()->count(),
+            'importedSyndications' => $this->showImport ? $this->importedSyndications() : [],
         ])->layout('layouts.app');
     }
 }

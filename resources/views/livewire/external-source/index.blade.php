@@ -69,6 +69,12 @@
                     </div>
                 @endif
 
+                @if($importNotice)
+                    <div class="alert alert-info py-2 small">
+                        <i class="bi bi-info-circle me-1"></i>{{ $importNotice }}
+                    </div>
+                @endif
+
                 @if($importStep === 1)
                     @if(empty($importShows) && ! $importError)
                         <p class="text-muted small mb-0">{{ __('Keine genehmigten Sendungen mit abrufbaren Dateien gefunden.') }}</p>
@@ -76,12 +82,20 @@
                         <p class="small fw-medium mb-2">{{ __('Welche Sendung möchtest du importieren?') }}</p>
                         <div class="list-group">
                             @foreach($importShows as $show)
+                                @php $importedVariants = $importedSyndications[$show['id']] ?? []; @endphp
                                 <button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-3"
                                         wire:key="show-{{ $show['id'] }}"
                                         wire:click="selectImportShow({{ $show['id'] }})">
                                     <i class="bi bi-broadcast text-primary"></i>
                                     <div class="flex-grow-1 overflow-hidden">
-                                        <div class="fw-medium small text-truncate">{{ $show['name'] }}</div>
+                                        <div class="fw-medium small text-truncate">
+                                            {{ $show['name'] }}
+                                            @if($importedVariants)
+                                                <span class="badge bg-secondary-subtle text-secondary-emphasis fw-normal ms-1">
+                                                    {{ __('already imported: :variants', ['variants' => implode(', ', $importedVariants)]) }}
+                                                </span>
+                                            @endif
+                                        </div>
                                         <div class="text-muted text-truncate" style="font-size:.75rem">
                                             @if(! empty($show['genre'])){{ $show['genre'] }} · @endif
                                             @if(! empty($show['frequency'])){{ $show['frequency'] }} · @endif
@@ -99,6 +113,7 @@
                     </p>
                     <p class="text-muted mb-3" style="font-size:.78rem">
                         <i class="bi bi-info-circle me-1"></i>{{ __('Enthält die Sendung mehrere Dateien, wird pro Datei eine eigene Quelle angelegt.') }}
+                        {{ __('Files that are already here are skipped, so importing again only picks up what is new.') }}
                     </p>
                     <div class="d-flex flex-column gap-2 mb-3" style="max-width:480px">
                         @foreach(($importSelectedShow['available_variants'] ?? []) as $variant)
@@ -273,11 +288,59 @@
         </div>
     @endif
 
+    {{-- Suche & Filter --}}
+    @if($totalSources > 0)
+        <div class="row g-2 mb-3 align-items-center">
+            <div class="col-sm-4 col-md-3">
+                <select wire:model.live="filterKind" class="form-select form-select-sm">
+                    <option value="">{{ __('All kinds') }}</option>
+                    <option value="syndication">{{ __('Syndication') }}</option>
+                    <option value="url">{{ __('Address') }}</option>
+                    <option value="news_weather">{{ __('Nachrichten + Wetter') }}</option>
+                    <option value="news">{{ __('Nachrichten') }}</option>
+                    <option value="weather">{{ __('Wetter') }}</option>
+                </select>
+            </div>
+            <div class="col-sm-4 col-md-3">
+                <select wire:model.live="filterStatus" class="form-select form-select-sm">
+                    <option value="">{{ __('Any status') }}</option>
+                    <option value="error">{{ __('Only with an error') }}</option>
+                    <option value="used">{{ __('Only used in playlists') }}</option>
+                    <option value="unused">{{ __('Only unused') }}</option>
+                </select>
+            </div>
+            <div class="col-sm-4 col-md-4">
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" wire:model.live.debounce.300ms="search"
+                           class="form-control" placeholder="{{ __('Search name, address, file...') }}">
+                </div>
+            </div>
+            <div class="col-md-2 d-flex align-items-center gap-2">
+                @if($this->hasActiveFilters())
+                    <span class="text-muted-sm text-nowrap">{{ __(':shown of :total', ['shown' => $sources->count(), 'total' => $totalSources]) }}</span>
+                    <button class="btn btn-sm btn-link p-0 text-nowrap" wire:click="resetFilters">
+                        <i class="bi bi-x-lg me-1"></i>{{ __('Filter aufheben') }}
+                    </button>
+                @else
+                    <span class="text-muted-sm text-nowrap">{{ trans_choice('{1}1 source|[2,*]:count sources', $totalSources, ['count' => $totalSources]) }}</span>
+                @endif
+            </div>
+        </div>
+    @endif
+
     {{-- Liste --}}
     @if($sources->isEmpty())
         <div class="text-center py-5">
             <i class="bi bi-rss display-4 text-muted"></i>
-            <p class="mt-3 text-muted">{{ __('Noch keine externen Quellen angelegt.') }}</p>
+            @if($totalSources > 0)
+                <p class="mt-3 text-muted">{{ __('No source matches the search or the filters.') }}</p>
+                <button class="btn btn-outline-secondary btn-sm" wire:click="resetFilters">
+                    <i class="bi bi-x-lg me-1"></i>{{ __('Filter aufheben') }}
+                </button>
+            @else
+                <p class="mt-3 text-muted">{{ __('Noch keine externen Quellen angelegt.') }}</p>
+            @endif
         </div>
     @else
         @php

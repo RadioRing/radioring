@@ -119,7 +119,7 @@ class PlaylistPalette
                 kind: self::TAB_SPECIAL,
                 id: 'fill',
                 title: __('Auffüllen mit Musik'),
-                subtitle: __('Fills the rest of the hour, rotation-aware'),
+                subtitle: __('Adds music until its budget is used up, rotation-aware'),
                 badge: __('Fill'),
                 badgeClass: 'bg-success',
                 icon: 'bi-hourglass-split',

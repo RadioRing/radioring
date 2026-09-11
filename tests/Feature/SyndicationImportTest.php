@@ -211,3 +211,138 @@ test('startImport surfaces an error when the token is rejected', function () {
         ->assertSet('importShows', [])
         ->assertSee('Token ungültig');
 });
+
+test('importing the same show twice does not create the sources a second time', function () {
+    $this->station->update(['s4r_partner_token' => 'tok-1234567890']);
+
+    Http::fake([
+        'https://s4r.test/api/v1/partner/shows' => Http::response([
+            'data' => [[
+                'id' => 42,
+                'name' => 'Q-Burn',
+                'is_lautfm' => true,
+                'available_variants' => ['lfm', 'normal'],
+            ]],
+        ]),
+        'https://s4r.test/api/v1/partner/shows/42/files*' => Http::response([
+            'files' => [
+                ['title' => 'Q-Burn #1', 'filename' => 'qburn_1.mp3', 'duration' => 1200, 'url' => 'https://s4r.test/dl/1'],
+                ['title' => 'Q-Burn #2', 'filename' => 'qburn_2.mp3', 'duration' => 1180, 'url' => 'https://s4r.test/dl/2'],
+            ],
+        ]),
+    ]);
+
+    $import = function () {
+        return Livewire::test(Index::class)
+            ->call('startImport')
+            ->call('selectImportShow', 42)
+            ->call('importShow');
+    };
+
+    $import()->assertHasNoErrors();
+    expect(ExternalSource::where('station_id', $this->station->id)->count())->toBe(2);
+
+    // Zweiter Anlauf: nichts Neues, der Assistent bleibt mit einem Hinweis offen.
+    $import()
+        ->assertSet('importNotice', '„Q-Burn" is already fully imported in this variant.')
+        ->assertSet('showImport', true);
+
+    expect(ExternalSource::where('station_id', $this->station->id)->count())->toBe(2);
+});
+
+test('a second import only adds the files that are new', function () {
+    $this->station->update(['s4r_partner_token' => 'tok-1234567890']);
+
+    // Teil 1 ist schon importiert, Teil 2 kommt jetzt neu aus der API.
+    ExternalSource::factory()->create([
+        'station_id' => $this->station->id,
+        'name' => 'Q-Burn #1 (laut.fm)',
+        'kind' => 'syndication',
+        'syndication_sendung_id' => 42,
+        'syndication_variant' => 'lfm',
+        'syndication_filename' => 'qburn_1.mp3',
+    ]);
+
+    Http::fake([
+        'https://s4r.test/api/v1/partner/shows' => Http::response([
+            'data' => [['id' => 42, 'name' => 'Q-Burn', 'is_lautfm' => true, 'available_variants' => ['lfm']]],
+        ]),
+        'https://s4r.test/api/v1/partner/shows/42/files*' => Http::response([
+            'files' => [
+                ['title' => 'Q-Burn #1', 'filename' => 'qburn_1.mp3', 'duration' => 1200, 'url' => 'https://s4r.test/dl/1'],
+                ['title' => 'Q-Burn #2', 'filename' => 'qburn_2.mp3', 'duration' => 1180, 'url' => 'https://s4r.test/dl/2'],
+            ],
+        ]),
+    ]);
+
+    Livewire::test(Index::class)
+        ->call('startImport')
+        ->call('selectImportShow', 42)
+        ->call('importShow')
+        ->assertHasNoErrors();
+
+    $sources = ExternalSource::where('station_id', $this->station->id)->orderBy('id')->get();
+
+    expect($sources)->toHaveCount(2)
+        ->and($sources->pluck('syndication_filename')->all())->toBe(['qburn_1.mp3', 'qburn_2.mp3'])
+        // Die bestehende Quelle wurde nicht angefasst.
+        ->and($sources->first()->name)->toBe('Q-Burn #1 (laut.fm)');
+});
+
+test('the other variant of an imported show can still be imported', function () {
+    $this->station->update(['s4r_partner_token' => 'tok-1234567890']);
+
+    ExternalSource::factory()->create([
+        'station_id' => $this->station->id,
+        'kind' => 'syndication',
+        'syndication_sendung_id' => 42,
+        'syndication_variant' => 'lfm',
+        'syndication_filename' => 'qburn_1.mp3',
+    ]);
+
+    Http::fake([
+        'https://s4r.test/api/v1/partner/shows' => Http::response([
+            'data' => [['id' => 42, 'name' => 'Q-Burn', 'is_lautfm' => false, 'available_variants' => ['lfm', 'normal']]],
+        ]),
+        'https://s4r.test/api/v1/partner/shows/42/files*' => Http::response([
+            'files' => [
+                ['title' => 'Q-Burn #1', 'filename' => 'qburn_1.mp3', 'duration' => 1200, 'url' => 'https://s4r.test/dl/1'],
+            ],
+        ]),
+    ]);
+
+    Livewire::test(Index::class)
+        ->call('startImport')
+        ->call('selectImportShow', 42)
+        ->set('importVariant', 'normal')
+        ->call('importShow')
+        ->assertHasNoErrors();
+
+    expect(ExternalSource::where('station_id', $this->station->id)->count())->toBe(2)
+        ->and(ExternalSource::where('syndication_variant', 'normal')->count())->toBe(1);
+});
+
+test('the wizard marks shows that are already imported', function () {
+    $this->station->update(['s4r_partner_token' => 'tok-1234567890']);
+
+    ExternalSource::factory()->create([
+        'station_id' => $this->station->id,
+        'kind' => 'syndication',
+        'syndication_sendung_id' => 42,
+        'syndication_variant' => 'lfm',
+        'syndication_filename' => 'qburn_1.mp3',
+    ]);
+
+    Http::fake([
+        'https://s4r.test/api/v1/partner/shows' => Http::response([
+            'data' => [
+                ['id' => 42, 'name' => 'Q-Burn', 'is_lautfm' => true, 'available_variants' => ['lfm']],
+                ['id' => 43, 'name' => 'Fresh Show', 'is_lautfm' => false, 'available_variants' => ['normal']],
+            ],
+        ]),
+    ]);
+
+    Livewire::test(Index::class)
+        ->call('startImport')
+        ->assertViewHas('importedSyndications', [42 => ['lfm']]);
+});

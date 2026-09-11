@@ -126,6 +126,26 @@ test('everything behind a fill element has no start time', function () {
         ->and($runtime->total())->toBe(260);
 });
 
+test('the fill budget is the ceiling the generator is given', function () {
+    addMusic($this->playlist, 0, 200);
+    // Ohne eigene Maximaldauer bekommt der Generator 3600 Sekunden als Budget.
+    $this->playlist->items()->create(['position' => 1, 'type' => 'fill', 'title' => 'Auffüllen mit Musik']);
+    $this->playlist->items()->create([
+        'position' => 2, 'type' => 'fill', 'title' => 'Auffüllen mit Musik', 'fill_max_duration_seconds' => 600,
+    ]);
+
+    $runtime = runtimeFor($this->playlist);
+
+    expect($runtime->hasOpenEnd())->toBeTrue()
+        ->and($runtime->fillBudget())->toBe(4200);
+});
+
+test('a playlist without a fill element has no fill budget', function () {
+    addMusic($this->playlist, 0, 200);
+
+    expect(runtimeFor($this->playlist)->fillBudget())->toBe(0);
+});
+
 test('a random element is counted as unknown, not as open end', function () {
     addMusic($this->playlist, 0, 200);
     $this->playlist->items()->create(['position' => 1, 'type' => 'random', 'title' => 'Zufälliges Element']);

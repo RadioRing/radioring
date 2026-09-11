@@ -8,10 +8,11 @@ use Illuminate\Support\Collection;
 /**
  * Works out when each element of a playlist starts and how long the whole thing runs.
  *
- * A playlist is a template, so not every length is known in advance: a fill element runs
- * until the hour is over, a random element is one file of unknown length, and an external
- * source is only as long as its last download suggests. Everything from the first such
- * element on has no start time, which is shown as "-" instead of a made-up number.
+ * A playlist is a template, so not every length is known in advance: a fill element plays
+ * music until its budget is used up (its maximum duration, an hour by default) or the
+ * library runs out, a random element is one file of unknown length, and an external source
+ * is only as long as its last download suggests. Everything from the first such element on
+ * has no start time, which is shown as "-" instead of a made-up number.
  */
 class PlaylistRuntime
 {
@@ -28,6 +29,8 @@ class PlaylistRuntime
     private bool $hasOpenEnd = false;
 
     private int $unknownCount = 0;
+
+    private int $fillBudget = 0;
 
     /**
      * @param  Collection<int, PlaylistItem>  $items
@@ -49,6 +52,7 @@ class PlaylistRuntime
 
                 if ($item->type === 'fill') {
                     $runtime->hasOpenEnd = true;
+                    $runtime->fillBudget += $item->fill_max_duration_seconds ?? self::HOUR_SECONDS;
                 } else {
                     $runtime->unknownCount++;
                 }
@@ -79,10 +83,21 @@ class PlaylistRuntime
         return $this->total;
     }
 
-    /** Is there a fill element that stretches to the end of the hour? */
+    /** Is there a fill element, whose length is decided when the rundown is generated? */
     public function hasOpenEnd(): bool
     {
         return $this->hasOpenEnd;
+    }
+
+    /**
+     * How much music the fill elements may add at most, in seconds.
+     *
+     * This is a ceiling, not a promise: the generator stops early when the library has
+     * nothing left to play that keeps the rotation rules.
+     */
+    public function fillBudget(): int
+    {
+        return $this->fillBudget;
     }
 
     /** How many elements have a length that is only known at playout. */
@@ -122,7 +137,7 @@ class PlaylistRuntime
     private function lengthOf(PlaylistItem $item): ?int
     {
         return match ($item->type) {
-            // Fills the rest of the hour, random picks one file of unknown length.
+            // Fill plays until its budget is used up, random picks one file of unknown length.
             'fill', 'random' => null,
             // A marker, not audio: it costs no time in the playlist itself.
             'adbreak' => 0,

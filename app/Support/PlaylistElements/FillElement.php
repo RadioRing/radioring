@@ -5,8 +5,8 @@ namespace App\Support\PlaylistElements;
 use App\Models\Playlist;
 
 /**
- * Fills the rest of the hour with rotation-aware music, optionally limited by tags
- * and by a maximum duration.
+ * Adds rotation-aware music until the maximum duration is reached (an hour by default)
+ * or the pool of matching files is used up. Optionally limited by tags.
  */
 class FillElement implements PlaylistElementType
 {

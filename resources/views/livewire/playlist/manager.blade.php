@@ -40,7 +40,7 @@
                 @endunless
                 <div class="text-muted" style="font-size:.7rem">
                     @if($runtime->hasOpenEnd())
-                        <i class="bi bi-hourglass-split me-1"></i>{{ __('plus fill up to the end of the hour') }}
+                        <i class="bi bi-hourglass-split me-1"></i>{{ __('plus up to :time of fill music', ['time' => $runtime::format($runtime->fillBudget())]) }}
                     @elseif($runtime->unknownCount() > 0)
                         <i class="bi bi-question-circle me-1"></i>{{ trans_choice('{1}1 element of unknown length|[2,*]:count elements of unknown length', $runtime->unknownCount(), ['count' => $runtime->unknownCount()]) }}
                     @elseif(! $playlist->isContainer() && $runtime->fitsInHour())
@@ -547,7 +547,7 @@
                                             <label class="form-label form-label-sm">{{ __('Max. Füll-Dauer (Sek.)') }}</label>
                                             <input type="number" wire:model="editFillMaxDuration"
                                                    class="form-control form-control-sm @error('editFillMaxDuration') is-invalid @enderror"
-                                                   placeholder="{{ __('leer = bis Stunden-Ende') }}" min="60" max="7200">
+                                                   placeholder="{{ __('leer = bis zu 60 Minuten') }}" min="60" max="7200">
                                             @error('editFillMaxDuration') <div class="invalid-feedback">{{ $message }}</div> @enderror
                                         </div>
                                     @elseif($item->type === 'random')

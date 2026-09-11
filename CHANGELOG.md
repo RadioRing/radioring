@@ -36,12 +36,17 @@ to stand on its own.
   be ticked and inserted as a block in the order they were picked, dragged straight into the
   playlist at the position they belong, or appended with a single click. The media library
   is paged now, so a big library no longer arrives in one go.
+- **The list of external sources can be searched and filtered.** With a handful of
+  syndications imported the list got long and there was nothing but scrolling. There is now
+  a search across name, broadcast title, address and file name (a number also matches the
+  S4R show id), plus filters by kind and by status: only sources whose last fetch failed,
+  only those used in a playlist, only the unused ones.
 - **The playlist editor shows how long the hour is.** The one question that matters while
   building an hour was the one the editor could not answer. Every element now carries its
   start time counted from the beginning of the playlist, and the header shows the total
   against the hour with a bar. Lengths that are only known at playout (a fill element, a
   random element) are marked as such instead of being guessed: everything behind them shows
-  "--:--", and a fill element is called out as filling the rest of the hour.
+  "--:--", and a fill element is shown with the most music it may add.
 
 ### Changed
 - **The station settings use the width of the screen.** The cards were stacked in a single
@@ -54,6 +59,13 @@ to stand on its own.
   in the list. Existing timestamps are untouched.
 
 ### Fixed
+- **A syndication cannot be imported twice any more.** The import wizard created its sources
+  without looking at what was already there, so importing the same show again produced a
+  second set of identical external sources. Files that are already imported are now skipped:
+  importing a show again picks up only the parts that have been added since, and leaves the
+  existing sources with their settings untouched. The wizard marks shows that are already
+  imported and says in which variant. Duplicates created before this fix stay as they are and
+  can be deleted in the source list.
 - **A file uploaded in the playlist editor is now treated like any other upload.** It went
   into an old per-station folder, its ID3 tags were never read, and its loudness was never
   measured, so the track went on air unnormalised and showed up in the library without
