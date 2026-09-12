@@ -66,6 +66,7 @@ to stand on its own.
 - **Weekly Grid update** Now has clearer indicators and better navigation through the grid.
 
 ### Fixed
+- **A prepared element is no longer thrown away shortly before it airs.**
 - **A show in long parts is no longer torn apart.** External elements were fetched a set
   number of minutes before their airtime, but the station container asks for an element
   once the few before it have been handed out, not at a fixed distance from the clock. With

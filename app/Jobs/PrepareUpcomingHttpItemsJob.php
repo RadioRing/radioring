@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\ExternalSource;
 use App\Models\GeneratedPlaylistItem;
+use App\Models\LiquidsoapState;
 use App\Models\Station;
 use App\Services\ExternalItemPreparer;
 use App\Services\LiquidsoapStateService;
@@ -30,6 +31,11 @@ class PrepareUpcomingHttpItemsJob implements ShouldBeUnique, ShouldQueue
 
     /** Kulanz nach der geschätzten Sendezeit, bis ein Item nicht mehr vorbereitet wird. */
     private const PAST_GRACE_SECONDS = 60;
+
+    /** Kulanz nach der Ausstrahlung, bis eine vorbereitete Kopie gelöscht wird. */
+    private const KEEP_AFTER_AIRTIME_SECONDS = 3600;
+
+    private const FORGET_AFTER_AIRTIME_SECONDS = 86400;
 
     /**
      * How far down the programme the pull cursor is followed. Liquidsoap resolves three
@@ -168,17 +174,61 @@ class PrepareUpcomingHttpItemsJob implements ShouldBeUnique, ShouldQueue
     }
 
     /**
-     * Entfernt vorbereitete Kopien längst gesendeter Items, damit der Cache nicht wächst.
+     * Removes cached items so drive doesn't fill up.
      */
     private function cleanupStalePreparedFiles(): void
     {
-        GeneratedPlaylistItem::query()
+        $items = GeneratedPlaylistItem::query()
             ->whereNotNull('prepared_path')
-            ->where('absolute_broadcast_at', '<', now()->subHour())
-            ->get()
-            ->each(function (GeneratedPlaylistItem $item) {
-                Storage::disk('local')->delete($item->prepared_path);
-                $item->update(['prepared_path' => null]);
-            });
+            ->where('absolute_broadcast_at', '<', now()->subSeconds(self::KEEP_AFTER_AIRTIME_SECONDS))
+            ->with('generatedPlaylist')
+            ->get();
+
+        if ($items->isEmpty()) {
+            return;
+        }
+
+        $cursors = LiquidsoapState::whereIn(
+            'station_id',
+            $items->pluck('generatedPlaylist.station_id')->filter()->unique(),
+        )->get()->keyBy('station_id');
+
+        foreach ($items as $item) {
+            if ($this->isStillAhead($item, $cursors)) {
+                continue;
+            }
+
+            Storage::disk('local')->delete($item->prepared_path);
+            $item->update(['prepared_path' => null]);
+        }
+    }
+
+    /**
+     * Is this element still to be handed out, whatever its planned time says?
+     *
+     * @param  Collection<int, LiquidsoapState>  $cursors  keyed by station
+     */
+    private function isStillAhead(GeneratedPlaylistItem $item, Collection $cursors): bool
+    {
+        $rundown = $item->generatedPlaylist;
+
+        if (! $rundown || $rundown->status === 'played') {
+            return false;
+        }
+
+        // Nobody is going to ask for this any more, whatever the cursor says.
+        if ($item->absolute_broadcast_at->lt(now()->subSeconds(self::FORGET_AFTER_AIRTIME_SECONDS))) {
+            return false;
+        }
+
+        $state = $cursors->get($rundown->station_id);
+
+        if (! $state || $state->current_rundown_id !== $rundown->id) {
+            // A rundown the cursor has left behind is marked played by the now-playing
+            // callback, so what is left here is one it has not reached yet.
+            return true;
+        }
+
+        return $item->position >= $state->current_item_position;
     }
 }
