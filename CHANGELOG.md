@@ -15,6 +15,12 @@ to stand on its own.
 ## [Unreleased]
 
 ### Added
+- **The dashboard shows which external elements are ready to play.** A syndication, a news
+  bulletin or a weather report is fetched from somewhere else before it can go on air, and
+  until now the only way to tell whether that had happened was the protocol, after the fact.
+  Every external element in the playlist now carries its state: ready, not fetched yet, or
+  failed with the reason in the tooltip. The header of the list counts them, so a glance
+  says whether the coming hours are covered.
 - **Containers: reusable blocks of elements for playlists.** A jingle, the news and an ad
   break that always run together had to be assembled again in every playlist, and a change
   to the block meant editing each of them. Such a block can now be saved once as a
@@ -60,6 +66,18 @@ to stand on its own.
 - **Weekly Grid update** Now has clearer indicators and better navigation through the grid.
 
 ### Fixed
+- **A show in long parts is no longer torn apart.** External elements were fetched a set
+  number of minutes before their airtime, but the station container asks for an element
+  once the few before it have been handed out, not at a fixed distance from the clock. With
+  three minute tracks that is a quarter of an hour and the lead covered it; with a
+  syndicated show in half hour parts the container asked an hour and a half early, long
+  before anything had been fetched. The panel then downloaded the part while the container
+  waited, which for a file of that size took longer than it was willing to wait, and the
+  part was dropped from the programme. A show could lose part after part this way and never
+  ran through to the end. Elements are now prepared as soon as the programme cursor
+  approaches them, whatever their airtime says, so the file is there before it is asked
+  for. On top of that a single request gives up after a few unusable elements instead of
+  working its way through the rest of the hour.
 - **The queue no longer stops working after a database deadlock.** The queue ran on the
   database, where the worker and the scheduler compete for the same `jobs` table. A deadlock
   on the COMMIT of a job pull left the worker with a connection it could never open a

@@ -9,11 +9,19 @@ use App\Models\StationLog;
 use App\Services\ExternalItemPreparer;
 use App\Services\LiquidsoapStateService;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 
 class LiquidsoapNextTrackController extends Controller
 {
+    /**
+     * How many elements a single pull may drop before it gives up and hands the turn back.
+     */
+    private const MAX_SKIPS_PER_REQUEST = 3;
+
+    private int $skips = 0;
+
     public function __construct(private readonly ExternalItemPreparer $preparer) {}
 
     public function __invoke(string $slug, LiquidsoapStateService $stateService): Response
@@ -50,7 +58,7 @@ class LiquidsoapNextTrackController extends Controller
             if (! ($item->prepared_path && Storage::disk('local')->exists($item->prepared_path))) {
                 $this->logSkippedExternalItem($item, $station);
 
-                return $this->__invoke($slug, $stateService);
+                return $this->skipToNextItem($slug, $stateService);
             }
 
             $url = $this->signedDeliveryUrl('liquidsoap.prepared', [
@@ -90,7 +98,7 @@ class LiquidsoapNextTrackController extends Controller
 
             if ($url === null) {
                 // Kein laut.fm-Ausgang / keine Credentials → überspringen, nächsten Track holen
-                return $this->__invoke($slug, $stateService);
+                return $this->skipToNextItem($slug, $stateService);
             }
 
             return $this->plain("annotate:radioring_item_id=\"{$item->id}\":{$this->safeUri($url)}");
@@ -154,6 +162,22 @@ class LiquidsoapNextTrackController extends Controller
     private function safeUri(string $url): string
     {
         return "safe:{$url}";
+    }
+
+    /**
+     * Moves on to the element after one that cannot be aired, up to a limit.
+     */
+    private function skipToNextItem(string $slug, LiquidsoapStateService $stateService): Response
+    {
+        $this->skips++;
+
+        if ($this->skips > self::MAX_SKIPS_PER_REQUEST) {
+            Log::warning("Station {$slug}: ".self::MAX_SKIPS_PER_REQUEST.' elements in a row could not be aired, handing the turn back to the container.');
+
+            return response('', 200);
+        }
+
+        return $this->__invoke($slug, $stateService);
     }
 
     /**

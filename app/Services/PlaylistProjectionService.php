@@ -117,7 +117,7 @@ class PlaylistProjectionService
             ->whereDate('broadcast_date', $anchorRundown->broadcast_date->toDateString())
             ->where('broadcast_hour', '>=', $anchorRundown->broadcast_hour)
             ->orderBy('broadcast_hour')
-            ->with(['items.mediaFile', 'playlist'])
+            ->with(['items.mediaFile', 'items.externalSource', 'playlist'])
             ->get();
     }
 
@@ -127,7 +127,7 @@ class PlaylistProjectionService
             ->where('status', 'ready')
             ->whereDate('broadcast_date', today())
             ->where('broadcast_hour', now()->hour)
-            ->with(['items.mediaFile', 'playlist'])
+            ->with(['items.mediaFile', 'items.externalSource', 'playlist'])
             ->first();
     }
 

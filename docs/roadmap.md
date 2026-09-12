@@ -18,6 +18,15 @@ The difference between "works" and "can be left alone overnight".
   During a deploy, a database outage or a failing `/next`, the station sends silence. Every
   station gets an emergency playlist held inside the container. The underrun watchdog exists
   already; it has nothing to play.
+- **Intervening in the running hour.** Watching something go wrong in the dashboard and
+  having nothing to do about it but regenerate the rundown, which throws away the hour. An
+  element should be draggable into the programme that is on air, right behind the track
+  playing now. Two things make this more than a list edit. Liquidsoap has already resolved
+  the next few requests, so an insert only becomes audible once that queue is dropped: the
+  telnet command for it exists (`flush_and_skip`, written for hard starts) but it currently
+  cuts the running track as well, which is wrong here. And an external element has to be
+  downloaded, trimmed and measured before it can be handed out, so the panel has to prepare
+  it on insert instead of leaving it to the minutely job.
 - **Alerting.** Underruns, dropped streams, missing rundowns and stalled queue workers go to
   the protocol and the dashboard, where nobody looks at three in the morning. Mail and
   webhook notifications per station.

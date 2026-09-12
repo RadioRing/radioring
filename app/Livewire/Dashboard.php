@@ -10,6 +10,8 @@ use App\Services\IcecastStatusService;
 use App\Services\LiquidsoapCommandService;
 use App\Services\LiquidsoapStateService;
 use App\Services\PlaylistProjectionService;
+use App\Support\ProjectedPlaylistItem;
+use Illuminate\Support\Collection;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
@@ -116,6 +118,25 @@ class Dashboard extends Component
             message: $ok ? __('Nächster Track ...') : __('Skip fehlgeschlagen – läuft der Container?'),
             type: $ok ? 'success' : 'info',
         );
+    }
+
+    /**
+     * Counts how many of the external elements still to come have a local copy ready.
+     *
+     * @param  Collection<int, ProjectedPlaylistItem>  $playlist
+     * @return array{ready: int, total: int}
+     */
+    private function externalPreparation(Collection $playlist): array
+    {
+        $states = $playlist
+            ->reject(fn (ProjectedPlaylistItem $entry): bool => $entry->isSkipped)
+            ->map(fn (ProjectedPlaylistItem $entry): ?string => $entry->item->preparationState())
+            ->filter();
+
+        return [
+            'ready' => $states->filter(fn (string $state): bool => $state === 'ready')->count(),
+            'total' => $states->count(),
+        ];
     }
 
     private function requireStation(): Station
@@ -227,6 +248,7 @@ class Dashboard extends Component
             'liveArtist' => $state?->live_artist,
             'liveStartedAt' => $state?->live_started_at,
             'underrunSeconds' => $state?->underrunSeconds(),
+            'externalPreparation' => $this->externalPreparation($playlist),
         ])->layout('layouts.app');
     }
 }

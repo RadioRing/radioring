@@ -385,5 +385,9 @@
     "fetched :time": "geholt :time",
     "No prepared copy on disk right now.": "Aktuell liegt keine vorbereitete Kopie auf der Platte.",
     "Copies are deleted an hour after they aired.": "Kopien werden eine Stunde nach der Ausstrahlung gelöscht.",
-    "Show the prepared copies on disk": "Vorbereitete Kopien auf der Platte anzeigen"
+    "Show the prepared copies on disk": "Vorbereitete Kopien auf der Platte anzeigen",
+    ":ready of :total external elements ready": ":ready von :total externen Elementen bereit",
+    "Prepared, ready to play": "Vorbereitet, bereit zur Ausspielung",
+    "Fetching failed: :error": "Abruf fehlgeschlagen: :error",
+    "Not fetched yet": "Noch nicht geholt"
 }

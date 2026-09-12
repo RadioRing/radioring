@@ -84,6 +84,31 @@ class GeneratedPlaylistItem extends Model
             : null;
     }
 
+    /**
+     * How far the local copy of an external element has got, for the dashboard.
+     *
+     * Only external elements have such a state: everything else is served from the media
+     * library, which sits on the disk the station is served from anyway.
+     *
+     * Deliberately reads the recorded path and not the disk. The dashboard renders the
+     * whole remaining day and polls, so a stat call per row would add up, and the panel
+     * writes this state itself: a copy that is cleaned up has its path nulled with it.
+     *
+     * @return 'ready'|'failed'|'pending'|null null for anything but an external element
+     */
+    public function preparationState(): ?string
+    {
+        if ($this->source_type !== 'external') {
+            return null;
+        }
+
+        if ($this->prepared_path !== null) {
+            return 'ready';
+        }
+
+        return $this->prepare_failed_at !== null ? 'failed' : 'pending';
+    }
+
     public function durationFormatted(): ?string
     {
         if (! $this->duration_seconds) {

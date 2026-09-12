@@ -8,6 +8,7 @@ use App\Models\LiquidsoapState;
 use App\Models\Station;
 use App\Models\StationLog;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class LiquidsoapStateService
@@ -726,6 +727,69 @@ class LiquidsoapStateService
                 'now_playing_started_at' => null,
             ]);
         }, self::TRANSACTION_ATTEMPTS);
+    }
+
+    /**
+     * How many rundowns past the current one the pull horizon may reach into. Two hours of
+     * programme are enough for any prefetch depth and keep the query small.
+     */
+    private const HORIZON_RUNDOWNS = 2;
+
+    /**
+     * The items the pull cursor is about to hand out, in broadcast order, across rundown
+     * boundaries.
+     *
+     * @return Collection<int, GeneratedPlaylistItem>
+     */
+    public function upcomingItems(Station $station, int $limit): Collection
+    {
+        $state = LiquidsoapState::where('station_id', $station->id)->first();
+
+        if (! $state || ! $state->current_rundown_id) {
+            return collect();
+        }
+
+        $current = GeneratedPlaylist::find($state->current_rundown_id);
+
+        if (! $current) {
+            return collect();
+        }
+
+        // The relation orders by position, so this is the cursor and everything behind it.
+        $items = $current->items()
+            ->where('position', '>=', $state->current_item_position)
+            ->limit($limit)
+            ->get();
+
+        if ($items->count() >= $limit) {
+            return $items;
+        }
+
+        // The hour runs out inside the horizon: the following rundowns continue it. Taken
+        // in broadcast order, the same order advanceToNextRundown walks.
+        $following = GeneratedPlaylist::where('station_id', $station->id)
+            ->where('status', 'ready')
+            ->where(function ($query) use ($current) {
+                $query->where('broadcast_date', '>', $current->broadcast_date)
+                    ->orWhere(function ($q) use ($current) {
+                        $q->where('broadcast_date', $current->broadcast_date)
+                            ->where('broadcast_hour', '>', $current->broadcast_hour);
+                    });
+            })
+            ->orderBy('broadcast_date')
+            ->orderBy('broadcast_hour')
+            ->limit(self::HORIZON_RUNDOWNS)
+            ->get();
+
+        foreach ($following as $rundown) {
+            if ($items->count() >= $limit) {
+                break;
+            }
+
+            $items = $items->concat($rundown->items()->limit($limit - $items->count())->get());
+        }
+
+        return $items;
     }
 
     /**

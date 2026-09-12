@@ -358,6 +358,14 @@
                     <i class="bi bi-list-ol text-primary"></i>
                     <span class="fw-medium">{{ __('Playlist') }}</span>
                     <span class="text-muted small">{{ $playlist->count() }} {{ __('Elemente') }}</span>
+                    @if($externalPreparation['total'] > 0)
+                        {{-- Externe Elemente muessen vor dem Abruf durch den Container lokal
+                             vorliegen. Zaehler im Kopf, Zustand an der jeweiligen Zeile. --}}
+                        <span class="badge {{ $externalPreparation['ready'] === $externalPreparation['total'] ? 'bg-success-subtle text-success-emphasis' : 'bg-warning-subtle text-warning-emphasis' }}"
+                              style="font-size:.6rem">
+                            <i class="bi bi-cloud-arrow-down me-1"></i>{{ __(':ready of :total external elements ready', ['ready' => $externalPreparation['ready'], 'total' => $externalPreparation['total']]) }}
+                        </span>
+                    @endif
                 </div>
                 <a href="{{ route('hour-grid.index') }}" class="btn btn-sm btn-outline-secondary" wire:navigate>
                     <i class="bi bi-calendar3 me-1"></i>{{ __('Wochenraster') }}
@@ -443,6 +451,25 @@
                         <span class="text-truncate flex-grow-1 small {{ $entry->isPlaying ? 'fw-semibold' : '' }}">
                             {{ $item->title }}@if($item->mediaFile?->artist)<span class="text-muted"> &ndash; {{ $item->mediaFile->artist }}</span>@endif
                         </span>
+
+                        {{-- Vorbereitungszustand externer Elemente --}}
+                        @php $preparation = $item->preparationState(); @endphp
+                        @if($preparation)
+                            <span class="text-nowrap" style="font-size:.75rem"
+                                  title="{{ match($preparation) {
+                                      'ready'  => __('Prepared, ready to play'),
+                                      'failed' => __('Fetching failed: :error', ['error' => $item->externalSource?->last_error ?: __('reason unknown')]),
+                                      default  => __('Not fetched yet'),
+                                  } }}">
+                                @if($preparation === 'ready')
+                                    <i class="bi bi-check-circle-fill text-success"></i>
+                                @elseif($preparation === 'failed')
+                                    <i class="bi bi-exclamation-triangle-fill text-danger"></i>
+                                @else
+                                    <i class="bi bi-hourglass-split text-muted"></i>
+                                @endif
+                            </span>
+                        @endif
 
                         {{-- Dauer --}}
                         @if($item->duration_seconds)

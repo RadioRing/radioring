@@ -6,9 +6,11 @@ use App\Models\ExternalSource;
 use App\Models\GeneratedPlaylistItem;
 use App\Models\Station;
 use App\Services\ExternalItemPreparer;
+use App\Services\LiquidsoapStateService;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -29,6 +31,13 @@ class PrepareUpcomingHttpItemsJob implements ShouldBeUnique, ShouldQueue
     /** Kulanz nach der geschätzten Sendezeit, bis ein Item nicht mehr vorbereitet wird. */
     private const PAST_GRACE_SECONDS = 60;
 
+    /**
+     * How far down the programme the pull cursor is followed. Liquidsoap resolves three
+     * requests ahead (prefetch=3 in the generated script); the margin covers elements that
+     * are skipped on the way and a hard start that reshuffles what comes next.
+     */
+    private const PULL_HORIZON_ITEMS = 10;
+
     /** Wait after the first failed attempt; doubles with every further one. */
     private const RETRY_BASE_SECONDS = 60;
 
@@ -41,7 +50,7 @@ class PrepareUpcomingHttpItemsJob implements ShouldBeUnique, ShouldQueue
      */
     public int $uniqueFor = 600;
 
-    public function handle(ExternalItemPreparer $preparer): void
+    public function handle(ExternalItemPreparer $preparer, LiquidsoapStateService $stateService): void
     {
         $this->cleanupStalePreparedFiles();
 
@@ -57,20 +66,23 @@ class PrepareUpcomingHttpItemsJob implements ShouldBeUnique, ShouldQueue
         $maxLeadSeconds = (int) ExternalSource::max('prefetch_lead_seconds');
 
         foreach ($stations as $station) {
-            $items = GeneratedPlaylistItem::query()
-                ->where('source_type', 'external')
-                ->whereNotNull('external_source_id')
-                ->whereNotNull('absolute_broadcast_at')
-                ->where('absolute_broadcast_at', '>=', now()->subSeconds(self::PAST_GRACE_SECONDS))
-                ->where('absolute_broadcast_at', '<=', now()->addSeconds($maxLeadSeconds))
-                ->whereHas('generatedPlaylist', fn ($q) => $q->where('station_id', $station->id)->where('status', 'ready'))
-                ->with('externalSource')
-                ->get();
+            $horizon = $this->itemsWithinPullHorizon($station, $stateService);
+            $horizonIds = $horizon->pluck('id')->all();
 
-            foreach ($items as $item) {
+            foreach ($this->itemsNearAirtime($station, $maxLeadSeconds)->merge($horizon)->unique('id') as $item) {
                 $source = $item->externalSource;
 
-                if (! $source || ! $this->isDue($item, $source) || ! $this->needsPreparing($item, $source)) {
+                if (! $source) {
+                    continue;
+                }
+
+                $withinLead = $this->isDue($item, $source);
+
+                if (! $withinLead && ! in_array($item->id, $horizonIds, true)) {
+                    continue;
+                }
+
+                if (! $this->needsPreparing($item, $source, $withinLead)) {
                     continue;
                 }
 
@@ -79,21 +91,59 @@ class PrepareUpcomingHttpItemsJob implements ShouldBeUnique, ShouldQueue
         }
     }
 
+    /**
+     * External items of this station whose planned airtime falls into the widest lead any
+     * source has configured. Each one is checked against its own source afterwards.
+     *
+     * @return Collection<int, GeneratedPlaylistItem>
+     */
+    private function itemsNearAirtime(Station $station, int $maxLeadSeconds): Collection
+    {
+        return GeneratedPlaylistItem::query()
+            ->where('source_type', 'external')
+            ->whereNotNull('external_source_id')
+            ->whereNotNull('absolute_broadcast_at')
+            ->where('absolute_broadcast_at', '>=', now()->subSeconds(self::PAST_GRACE_SECONDS))
+            ->where('absolute_broadcast_at', '<=', now()->addSeconds($maxLeadSeconds))
+            ->whereHas('generatedPlaylist', fn ($q) => $q->where('station_id', $station->id)->where('status', 'ready'))
+            ->with('externalSource')
+            ->get();
+    }
+
+    /**
+     * External items the pull cursor is about to reach, whatever their airtime says.
+     *
+     * @return Collection<int, GeneratedPlaylistItem>
+     */
+    private function itemsWithinPullHorizon(Station $station, LiquidsoapStateService $stateService): Collection
+    {
+        return $stateService->upcomingItems($station, self::PULL_HORIZON_ITEMS)
+            ->where('source_type', 'external')
+            ->whereNotNull('external_source_id')
+            ->each(fn (GeneratedPlaylistItem $item) => $item->loadMissing('externalSource'));
+    }
+
     /** Liegt die geschätzte Sendezeit innerhalb des Quellen-Vorlaufs? */
     private function isDue(GeneratedPlaylistItem $item, ExternalSource $source): bool
     {
         return $item->absolute_broadcast_at->lte(now()->addSeconds($source->prefetch_lead_seconds));
     }
 
-    private function needsPreparing(GeneratedPlaylistItem $item, ExternalSource $source): bool
+    /**
+     * @param  bool  $withinLead  Whether the airtime is inside the source's configured lead.
+     */
+    private function needsPreparing(GeneratedPlaylistItem $item, ExternalSource $source, bool $withinLead): bool
     {
         // Noch nie vorbereitet oder Datei verschwunden → vorbereiten.
         if (! $item->prepared_path || ! Storage::disk('local')->exists($item->prepared_path)) {
             return $this->retryIsDue($item);
         }
 
-        // Frische-Fenster gesetzt und überschritten → neu holen.
-        return $source->freshness_seconds > 0
+        // Frische-Fenster gesetzt und überschritten → neu holen. Bewusst nur innerhalb des
+        // Vorlaufs: ein weit im Voraus gezogenes Item würde sonst bei jedem Lauf erneut
+        // geholt, und Liquidsoap hält die Fassung, die es spielt, längst in der Hand.
+        return $withinLead
+            && $source->freshness_seconds > 0
             && $item->prepared_at !== null
             && $item->prepared_at->lt(now()->subSeconds($source->freshness_seconds));
     }

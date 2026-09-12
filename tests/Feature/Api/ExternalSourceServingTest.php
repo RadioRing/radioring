@@ -3,6 +3,7 @@
 use App\Models\ExternalSource;
 use App\Models\GeneratedPlaylist;
 use App\Models\GeneratedPlaylistItem;
+use App\Models\LiquidsoapState;
 use App\Models\Station;
 use App\Models\StationLog;
 use App\Models\User;
@@ -244,4 +245,40 @@ test('the inline fallback prepares the item fully: trim, loudness and duration',
     // And the measured length reached the source instead of the guess.
     expect($item->fresh()->loudness_lufs)->toBe(-20.0)
         ->and($source->fresh()->expected_duration_seconds)->toBe(1802);
+});
+
+test('one pull gives up after a few unplayable elements instead of eating the hour', function () {
+    $source = ExternalSource::factory()->create([
+        'station_id' => $this->station->id, 'kind' => 'url', 'url' => 'https://syndi.example/live.mp3',
+    ]);
+
+    $rundown = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id,
+        'broadcast_date' => today(), 'broadcast_hour' => 10, 'status' => 'ready',
+    ]);
+
+    foreach (range(0, 9) as $position) {
+        GeneratedPlaylistItem::factory()->create([
+            'generated_playlist_id' => $rundown->id,
+            'external_source_id' => $source->id,
+            'position' => $position,
+            'source_type' => 'external',
+            'title' => 'Externe Quelle',
+            'prepared_path' => null,
+        ]);
+    }
+
+    Http::fake(['syndi.example/*' => Http::response('', 503)]);
+
+    $response = $this->withToken($this->token)->get("/api/liquidsoap/{$this->station->slug}/next");
+
+    // Empty answer: next_track turns it into null() and request.dynamic asks again.
+    $response->assertStatus(200);
+    expect($response->getContent())->toBe('');
+
+    // Four elements consumed at most (the first plus three skips), not the whole hour.
+    expect(LiquidsoapState::where('station_id', $this->station->id)->value('current_item_position'))
+        ->toBeLessThanOrEqual(4);
+    expect(StationLog::where('event', StationLog::EVENT_EXTERNAL_FAILED)->count())
+        ->toBeLessThanOrEqual(4);
 });
