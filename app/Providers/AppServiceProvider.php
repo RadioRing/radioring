@@ -6,6 +6,7 @@ use App\Contracts\ContainerServiceInterface;
 use App\Models\Setting;
 use App\Services\DockerService;
 use App\Services\PortainerService;
+use App\Support\StaleTransactionGuard;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -44,10 +45,18 @@ class AppServiceProvider extends ServiceProvider
     {
         Date::use(CarbonImmutable::class);
 
-        // Settings are memoised per process. A queue worker lives for many jobs, so the
-        // memo has to be dropped between them. Otherwise a mode switched in the admin
-        // area would not reach running workers until they restart.
-        Queue::looping(fn () => Setting::flushMemo());
+        Queue::looping(function (): void {
+            // A worker process keeps its database connection for its whole life, so a
+            // connection left in a broken transaction state would take every following
+            // job with it. Checked before each pull, which is the first thing that
+            // would run into it.
+            StaleTransactionGuard::reset();
+
+            // Settings are memoised per process. A queue worker lives for many jobs, so
+            // the memo has to be dropped between them. Otherwise a mode switched in the
+            // admin area would not reach running workers until they restart.
+            Setting::flushMemo();
+        });
 
         DB::prohibitDestructiveCommands(
             app()->isProduction(),

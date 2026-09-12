@@ -61,7 +61,7 @@ services:
       # Keep sessions and cache out of SQLite: avoids write contention per request.
       SESSION_DRIVER: redis
       CACHE_STORE: redis
-      QUEUE_CONNECTION: database
+      QUEUE_CONNECTION: redis
       LOG_CHANNEL: stderr
       SERVER_NAME: ":80"
       PORTAINER_TOKEN: ${PORTAINER_TOKEN}

@@ -1,95 +1,121 @@
 <?php
 
+/*
+|--------------------------------------------------------------------------
+| Default Queue Connection Name
+|--------------------------------------------------------------------------
+|
+| Laravel's queue supports a variety of backends via a single, unified
+| API, giving you convenient access to each backend using identical
+| syntax for each. The default queue connection is defined below.
+|
+*/
+
+$default = env('QUEUE_CONNECTION', 'database');
+
+/*
+|--------------------------------------------------------------------------
+| Queue Connections
+|--------------------------------------------------------------------------
+|
+| Here you may configure the connection options for every queue backend
+| used by your application. An example configuration is provided for
+| each backend supported by Laravel. You're also free to add more.
+|
+| Drivers: "sync", "database", "beanstalkd", "sqs", "redis",
+|          "deferred", "background", "failover", "null"
+|
+*/
+
+$connections = [
+
+    'sync' => [
+        'driver' => 'sync',
+    ],
+
+    'database' => [
+        'driver' => 'database',
+        'connection' => env('DB_QUEUE_CONNECTION'),
+        'table' => env('DB_QUEUE_TABLE', 'jobs'),
+        'queue' => env('DB_QUEUE', 'default'),
+        'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
+        'after_commit' => false,
+    ],
+
+    'beanstalkd' => [
+        'driver' => 'beanstalkd',
+        'host' => env('BEANSTALKD_QUEUE_HOST', 'localhost'),
+        'queue' => env('BEANSTALKD_QUEUE', 'default'),
+        'retry_after' => (int) env('BEANSTALKD_QUEUE_RETRY_AFTER', 90),
+        'block_for' => 0,
+        'after_commit' => false,
+    ],
+
+    'sqs' => [
+        'driver' => 'sqs',
+        'key' => env('AWS_ACCESS_KEY_ID'),
+        'secret' => env('AWS_SECRET_ACCESS_KEY'),
+        'prefix' => env('SQS_PREFIX', 'https://sqs.us-east-1.amazonaws.com/your-account-id'),
+        'queue' => env('SQS_QUEUE', 'default'),
+        'suffix' => env('SQS_SUFFIX'),
+        'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
+        'after_commit' => false,
+    ],
+
+    'redis' => [
+        'driver' => 'redis',
+        'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+        'queue' => env('REDIS_QUEUE', 'default'),
+        'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
+        'block_for' => null,
+        'after_commit' => false,
+    ],
+
+    'deferred' => [
+        'driver' => 'deferred',
+    ],
+
+    'background' => [
+        'driver' => 'background',
+    ],
+
+    'failover' => [
+        'driver' => 'failover',
+        'connections' => [
+            'database',
+            'deferred',
+        ],
+    ],
+
+];
+
+/*
+|--------------------------------------------------------------------------
+| Long Running Work
+|--------------------------------------------------------------------------
+|
+| Loudness analysis, backups and container starts run for minutes at a time.
+| On the default queue they hold up the jobs the programme depends on, and
+| their runtime outlasts `retry_after`, so the queue hands the very same job
+| to the next worker while the first one is still busy. They therefore get a
+| queue of their own, served by a second worker process, with a retry window
+| that outlasts the longest job timeout.
+|
+| The driver mirrors the default connection: an installation on the database
+| queue keeps working, and `sync` still runs everything inline.
+|
+*/
+
+$connections['media'] = array_merge($connections[$default] ?? $connections['database'], [
+    'queue' => env('MEDIA_QUEUE', 'media'),
+    'retry_after' => (int) env('MEDIA_QUEUE_RETRY_AFTER', 3900),
+]);
+
 return [
 
-    /*
-    |--------------------------------------------------------------------------
-    | Default Queue Connection Name
-    |--------------------------------------------------------------------------
-    |
-    | Laravel's queue supports a variety of backends via a single, unified
-    | API, giving you convenient access to each backend using identical
-    | syntax for each. The default queue connection is defined below.
-    |
-    */
+    'default' => $default,
 
-    'default' => env('QUEUE_CONNECTION', 'database'),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Queue Connections
-    |--------------------------------------------------------------------------
-    |
-    | Here you may configure the connection options for every queue backend
-    | used by your application. An example configuration is provided for
-    | each backend supported by Laravel. You're also free to add more.
-    |
-    | Drivers: "sync", "database", "beanstalkd", "sqs", "redis",
-    |          "deferred", "background", "failover", "null"
-    |
-    */
-
-    'connections' => [
-
-        'sync' => [
-            'driver' => 'sync',
-        ],
-
-        'database' => [
-            'driver' => 'database',
-            'connection' => env('DB_QUEUE_CONNECTION'),
-            'table' => env('DB_QUEUE_TABLE', 'jobs'),
-            'queue' => env('DB_QUEUE', 'default'),
-            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
-            'after_commit' => false,
-        ],
-
-        'beanstalkd' => [
-            'driver' => 'beanstalkd',
-            'host' => env('BEANSTALKD_QUEUE_HOST', 'localhost'),
-            'queue' => env('BEANSTALKD_QUEUE', 'default'),
-            'retry_after' => (int) env('BEANSTALKD_QUEUE_RETRY_AFTER', 90),
-            'block_for' => 0,
-            'after_commit' => false,
-        ],
-
-        'sqs' => [
-            'driver' => 'sqs',
-            'key' => env('AWS_ACCESS_KEY_ID'),
-            'secret' => env('AWS_SECRET_ACCESS_KEY'),
-            'prefix' => env('SQS_PREFIX', 'https://sqs.us-east-1.amazonaws.com/your-account-id'),
-            'queue' => env('SQS_QUEUE', 'default'),
-            'suffix' => env('SQS_SUFFIX'),
-            'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
-            'after_commit' => false,
-        ],
-
-        'redis' => [
-            'driver' => 'redis',
-            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
-            'queue' => env('REDIS_QUEUE', 'default'),
-            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
-            'block_for' => null,
-            'after_commit' => false,
-        ],
-
-        'deferred' => [
-            'driver' => 'deferred',
-        ],
-
-        'background' => [
-            'driver' => 'background',
-        ],
-
-        'failover' => [
-            'driver' => 'failover',
-            'connections' => [
-                'database',
-                'deferred',
-            ],
-        ],
-
-    ],
+    'connections' => $connections,
 
     /*
     |--------------------------------------------------------------------------

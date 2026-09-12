@@ -186,9 +186,11 @@ model is identical; only the row count differs.
 
 ## Application processes
 
-The app image runs FrankenPHP as PID 1. With `APP_MODE=all` the queue worker and scheduler
-run alongside it in restart loops rather than under a supervisor, so the container's
-lifetime is tied to the web process.
+The app image runs FrankenPHP as PID 1. With `APP_MODE=all` two queue workers and the
+scheduler run alongside it in restart loops rather than under a supervisor, so the
+container's lifetime is tied to the web process. One worker takes the queue the programme
+depends on, the other the long running work (loudness analysis, backups, container starts),
+so a ten minute image pull cannot hold up the next rundown.
 
 The queue matters for playout: rundown generation, container starts, loudness analysis and
 external prefetching all run there. A stalled queue does not stop the current programme,

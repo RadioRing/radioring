@@ -78,7 +78,7 @@ The installer writes all of this. The tables are for when you edit by hand.
 | `RADIORING_MODE` | `standalone` | Initial operating mode only. The effective value lives in the database, see section 4. |
 | `DB_CONNECTION` | `mysql` | |
 | `DB_HOST` / `DB_DATABASE` / `DB_USERNAME` / `DB_PASSWORD` | | |
-| `QUEUE_CONNECTION` | `database` | Rundowns and container starts run as jobs |
+| `QUEUE_CONNECTION` | `redis` | Rundowns and container starts run as jobs. `database` works but deadlocks on the jobs table under load, which can stall the worker until it restarts. |
 
 ### 3.2 Container control
 
@@ -218,8 +218,9 @@ Registered in `routes/console.php`:
 | hourly | `media:prune-chunks` | Remove abandoned upload chunks |
 | daily, configurable | `backup:run --auto` | Configuration backup, only when enabled in the panel |
 
-**Without a running scheduler and queue worker no rundowns are created**, and the station
-falls silent after the current hour. With `APP_MODE=all` both run inside the app container.
+**Without a running scheduler and queue workers no rundowns are created**, and the station
+falls silent after the current hour. With `APP_MODE=all` all of them run inside the app
+container.
 If you split them, add a cron entry:
 
 ```
@@ -235,8 +236,16 @@ If you split them, add a cron entry:
 FrankenPHP on port 8080, health check on `/up`. On start it runs `migrate --force`,
 `storage:link` and the config, route, view and event caches.
 
-With `APP_MODE=all`, FrankenPHP is PID 1 and the queue worker and scheduler run alongside
-it in restart loops. If FrankenPHP dies, the container ends and Docker restarts it.
+With `APP_MODE=all`, FrankenPHP is PID 1 and the queue workers and the scheduler run
+alongside it in restart loops. If FrankenPHP dies, the container ends and Docker restarts
+it.
+
+There are two workers, because the jobs have very different runtimes. The `default` worker
+takes the ones the programme depends on: rundown generation, external prefetching, the
+schedule files. Seconds each, but what waits here is missing on air. The `media` worker
+takes the long ones: loudness analysis, backups and container starts including the image
+pull, minutes to an hour. In one queue a ten minute image pull holds up everything behind
+it.
 
 ### Station containers
 
@@ -369,14 +378,14 @@ relative paths. The database refers to exactly those paths.
 
 ### The station plays silence
 
-- Are the **scheduler and queue worker** running? Without them no rundowns are generated.
+- Are the **scheduler and the queue workers** running? Without them no rundowns are generated.
 - Is there a `ready` rundown for the **current hour**? Check the weekly grid.
 - Is a **stream output** active and is the container running?
 - `php artisan radioring:schedule-status {station}` shows cursor and current rundown.
 
 ### The container does not start, the dashboard stays on "starting"
 
-- Is the **queue worker** running? Starting is a job.
+- Is the **`media` queue worker** running? Starting is a job, and it runs on that queue.
 - `docker compose logs app` now shows Docker's own error message, for example
   `network radioring not found` or `manifest unknown`.
 - Does `STATION_IMAGE` exist, and are `STATION_REGISTRY_*` set for a private registry?

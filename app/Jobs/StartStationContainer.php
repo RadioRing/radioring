@@ -25,7 +25,14 @@ class StartStationContainer implements ShouldQueue
     /** @var array<int, int> */
     public array $backoff = [5, 15, 30];
 
-    public function __construct(public readonly int $stationId) {}
+    /**
+     * A cold start pulls the station image first, which takes minutes. The long running
+     * queue has a retry window that outlasts it; the default one does not.
+     */
+    public function __construct(public readonly int $stationId)
+    {
+        $this->onConnection('media');
+    }
 
     /**
      * @return array<int, object>

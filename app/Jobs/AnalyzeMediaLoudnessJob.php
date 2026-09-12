@@ -17,7 +17,14 @@ class AnalyzeMediaLoudnessJob implements ShouldQueue
 
     public int $backoff = 30;
 
-    public function __construct(public readonly int $mediaFileId) {}
+    /**
+     * ffmpeg needs minutes on a long file. That belongs on the long running queue, away
+     * from the jobs the programme depends on.
+     */
+    public function __construct(public readonly int $mediaFileId)
+    {
+        $this->onConnection('media');
+    }
 
     public function handle(LoudnessAnalyzerService $analyzer): void
     {

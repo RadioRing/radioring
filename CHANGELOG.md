@@ -60,6 +60,22 @@ to stand on its own.
 - **Weekly Grid update** Now has clearer indicators and better navigation through the grid.
 
 ### Fixed
+- **The queue no longer stops working after a database deadlock.** The queue ran on the
+  database, where the worker and the scheduler compete for the same `jobs` table. A deadlock
+  on the COMMIT of a job pull left the worker with a connection it could never open a
+  transaction on again: it logged "There is already an active transaction" every few seconds
+  and processed no job at all until it restarted, which could take up to an hour. In that
+  window no rundowns were generated and no station container would start. New installations
+  use Redis for the queue, which has no such contention, and `update.sh` moves existing ones
+  over (the jobs still in the table are worked off first). On top of that a worker now drops
+  a connection that has ended up in this state instead of running into it on every pull, so
+  the same class of problem cannot take a worker down again, whichever queue it runs on.
+- **A long job no longer holds up the programme.** Loudness analysis, backups and container
+  starts share the queue with rundown generation and the prefetching of external sources, so
+  an image pull of ten minutes could delay the next hour's programme. The long running jobs
+  have their own queue and a second worker process now. Their runtime also outlasted the
+  queue's retry window, which meant the same job could be handed to a second worker while
+  the first was still busy with it: a station container start could be attempted twice over.
 - **A syndication cannot be imported twice any more.** The import wizard created its sources
   without looking at what was already there, so importing the same show again produced a
   second set of identical external sources. Files that are already imported are now skipped:

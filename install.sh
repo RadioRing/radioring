@@ -407,7 +407,7 @@ REDIS_DB=0
 
 SESSION_DRIVER=redis
 CACHE_STORE=redis
-QUEUE_CONNECTION=database
+QUEUE_CONNECTION=redis
 
 # Container control. Careful: anyone who reaches the Docker API is effectively
 # root on the host. See SECURITY.md.

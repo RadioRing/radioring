@@ -81,7 +81,7 @@ nacharbeitest.
 | `RADIORING_MODE` | `standalone` | Nur der Startwert des Betriebsmodus. Der wirksame liegt in der Datenbank, siehe Abschnitt 4. |
 | `DB_CONNECTION` | `mysql` | |
 | `DB_HOST` / `DB_DATABASE` / `DB_USERNAME` / `DB_PASSWORD` | | |
-| `QUEUE_CONNECTION` | `database` | Rundowns und Container-Starts laufen als Jobs |
+| `QUEUE_CONNECTION` | `redis` | Rundowns und Container-Starts laufen als Jobs. `database` funktioniert, läuft unter Last aber in Deadlocks auf der jobs-Tabelle, die den Worker bis zum Neustart lahmlegen können. |
 
 ### 3.2 Container-Steuerung
 
@@ -223,7 +223,7 @@ Registriert in `routes/console.php`:
 | täglich, einstellbar | `backup:run --auto` | Konfigurations-Backup, nur wenn im Panel aktiviert |
 
 **Ohne laufenden Scheduler und Queue-Worker entstehen keine Rundowns**, die Station fällt
-nach der aktuellen Stunde in Stille. Mit `APP_MODE=all` laufen beide im App-Container. Wer
+nach der aktuellen Stunde in Stille. Mit `APP_MODE=all` laufen alle im App-Container. Wer
 sie aufteilt, braucht einen Cron-Eintrag:
 
 ```
@@ -239,8 +239,15 @@ sie aufteilt, braucht einen Cron-Eintrag:
 FrankenPHP auf Port 8080, Healthcheck auf `/up`. Beim Start laufen `migrate --force`,
 `storage:link` und die Config-, Route-, View- und Event-Caches.
 
-Mit `APP_MODE=all` ist FrankenPHP PID 1, Queue-Worker und Scheduler laufen daneben in
-Neustart-Schleifen. Stirbt FrankenPHP, endet der Container und Docker startet ihn neu.
+Mit `APP_MODE=all` ist FrankenPHP PID 1, die Queue-Worker und der Scheduler laufen daneben
+in Neustart-Schleifen. Stirbt FrankenPHP, endet der Container und Docker startet ihn neu.
+
+Es sind zwei Worker, weil die Jobs sehr verschiedene Laufzeiten haben. Der `default`-Worker
+nimmt die programmkritischen: Rundown-Generierung, Vorabholen externer Quellen, die
+Zeitplan-Dateien. Jeweils Sekunden, aber was hier wartet, fehlt on air. Der `media`-Worker
+nimmt die langen: Lautheitsmessung, Backups und Container-Starts samt Image-Pull, also
+Minuten bis zu einer Stunde. In einer gemeinsamen Queue blockiert ein zehnminütiger
+Image-Pull alles dahinter.
 
 ### Station-Container
 
@@ -378,14 +385,14 @@ relativen Pfaden. Die Datenbank verweist auf genau diese Pfade.
 
 ### Die Station sendet Stille
 
-- Laufen **Scheduler und Queue-Worker**? Ohne sie entstehen keine Rundowns.
+- Laufen **Scheduler und die Queue-Worker**? Ohne sie entstehen keine Rundowns.
 - Gibt es für die **aktuelle Stunde** einen Rundown mit Status `ready`?
 - Ist ein **Ausgang** aktiv und der Container gestartet?
 - `php artisan radioring:schedule-status {station}` zeigt Cursor und Rundown.
 
 ### Der Container startet nicht, das Dashboard bleibt auf „starting"
 
-- Läuft der **Queue-Worker**? Der Start ist ein Job.
+- Läuft der **`media`-Queue-Worker**? Der Start ist ein Job und läuft auf dieser Queue.
 - `docker compose logs app` zeigt jetzt die Fehlermeldung von Docker selbst, etwa
   `network radioring not found` oder `manifest unknown`.
 - Existiert `STATION_IMAGE`, und sind bei privater Registry die `STATION_REGISTRY_*`

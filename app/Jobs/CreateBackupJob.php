@@ -26,10 +26,15 @@ class CreateBackupJob implements ShouldBeEncrypted, ShouldQueue
 
     public int $timeout = 3600;
 
+    /**
+     * A full dump takes minutes and must not hold up the jobs the programme depends on.
+     */
     public function __construct(
         public readonly int $backupId,
         public readonly ?string $passphrase = null,
-    ) {}
+    ) {
+        $this->onConnection('media');
+    }
 
     public function handle(BackupService $backups): void
     {

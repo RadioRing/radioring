@@ -176,7 +176,7 @@ random_secret() {
     if command -v openssl >/dev/null 2>&1; then
         openssl rand -hex 24
     else
-        head -c 24 /dev/urandom | od -An -tx1 | tr -d ' 
+        head -c 24 /dev/urandom | od -An -tx1 | tr -d '
 '
     fi
 }
@@ -226,6 +226,17 @@ fi
 if [ -z "$(env_get DOCKER_WEB_NETWORK)" ] && [ -n "$(env_get WEB_NETWORK)" ]; then
     env_set DOCKER_WEB_NETWORK "$(env_get WEB_NETWORK)"
     echo "DOCKER_WEB_NETWORK set to $(env_get WEB_NETWORK) (internal Icecast)"
+fi
+
+if [ "$(env_get QUEUE_CONNECTION)" = "database" ] && [ -n "$(env_get REDIS_HOST)" ]; then
+    echo "Moving the queue from the database to Redis."
+
+    if ! docker compose exec -T app php artisan queue:work database --stop-when-empty --max-time=120 </dev/null; then
+        echo "Warning: could not drain the jobs table. Jobs that were still queued are lost." >&2
+    fi
+
+    env_set QUEUE_CONNECTION redis
+    echo "QUEUE_CONNECTION set to redis"
 fi
 
 echo ".env pinned to $TARGET_VERSION"
