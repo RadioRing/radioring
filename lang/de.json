@@ -396,5 +396,8 @@
     "Role": "Rolle",
     "Member promoted to owner.": "Mitglied zum Besitzer befördert.",
     "Member set back to editor.": "Mitglied wieder auf Editor gesetzt.",
-    "Editors build and air shows. Owners can do that too, plus delete media and manage the station and its team. Only the founder can delete the station.": "Editoren bauen Sendungen und spielen sie aus. Besitzer können das ebenfalls und dürfen zusätzlich Medien löschen sowie Station und Team verwalten. Nur der Gründer kann die Station löschen."
+    "Editors build and air shows. Owners can do that too, plus delete media and manage the station and its team. Only the founder can delete the station.": "Editoren bauen Sendungen und spielen sie aus. Besitzer können das ebenfalls und dürfen zusätzlich Medien löschen sowie Station und Team verwalten. Nur der Gründer kann die Station löschen.",
+    "Tags for this upload": "Tags für diesen Upload",
+    "Every file in this batch gets these tags when you save.": "Beim Speichern bekommen alle Dateien dieses Uploads diese Tags.",
+    "New tag...": "Neuer Tag ..."
 }

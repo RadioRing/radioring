@@ -15,6 +15,9 @@ to stand on its own.
 ## [Unreleased]
 
 ### Added
+- Tags can be set while uploading.
+- **A second person can be given full rights on a station.** Old owners are now founders.
+  You can therefore elevate a person being an owner who has more rights (like deleting media).
 - **The dashboard shows which external elements are ready to play.** A syndication, a news
   bulletin or a weather report is fetched from somewhere else before it can go on air, and
   until now the only way to tell whether that had happened was the protocol, after the fact.

@@ -55,6 +55,16 @@ class Index extends Component
 
     public string $newTagName = '';
 
+    /**
+     * Tags handed to every file of the current upload batch, picked while the files
+     * are still in the queue so nobody has to hunt for untagged files afterwards.
+     *
+     * @var array<int, string>
+     */
+    public array $uploadTagIds = [];
+
+    public string $newUploadTagName = '';
+
     public ?int $editingTagsForFileId = null;
 
     /** @var array<int> */
@@ -224,6 +234,7 @@ class Index extends Component
             'pendingUploads.*.type' => 'required|in:music,jingle',
         ]);
 
+        $uploadTagIds = $this->selectedUploadTagIds();
         $count = 0;
 
         foreach ($this->pendingUploads as $upload) {
@@ -237,12 +248,16 @@ class Index extends Component
             ]);
 
             // Lautheit offline (per ffmpeg) messen – einmalig, asynchron.
+            if ($uploadTagIds !== []) {
+                $file->tags()->sync($uploadTagIds);
+            }
+
             AnalyzeMediaLoudnessJob::dispatch($file->id);
 
             $count++;
         }
 
-        $this->reset('pendingUploads', 'showUploadForm');
+        $this->reset('pendingUploads', 'showUploadForm', 'uploadTagIds', 'newUploadTagName');
         $this->dispatch('notify', message: __(':n file(s) uploaded.', ['n' => $count]), type: 'success');
     }
 
@@ -252,7 +267,36 @@ class Index extends Component
             Storage::disk('local')->delete($upload['path']);
         }
 
-        $this->reset('pendingUploads', 'showUploadForm');
+        $this->reset('pendingUploads', 'showUploadForm', 'uploadTagIds', 'newUploadTagName');
+    }
+
+    /**
+     * The picked upload tags, narrowed to tags that really belong to this tenant.
+     *
+     * @return array<int, int>
+     */
+    private function selectedUploadTagIds(): array
+    {
+        $tenantTagIds = $this->station->tags()->pluck('id')->all();
+
+        return array_values(array_intersect(array_map('intval', $this->uploadTagIds), $tenantTagIds));
+    }
+
+    /**
+     * Create a tag from inside the upload form and pick it for the batch right away.
+     */
+    public function createUploadTag(): void
+    {
+        abort_unless($this->mayWrite, 403);
+
+        $this->validate([
+            'newUploadTagName' => 'required|string|min:1|max:50',
+        ]);
+
+        $tag = $this->station->tags()->firstOrCreate(['name' => trim($this->newUploadTagName)]);
+
+        $this->uploadTagIds = array_values(array_unique([...$this->uploadTagIds, (string) $tag->id]));
+        $this->reset('newUploadTagName');
     }
 
     /**

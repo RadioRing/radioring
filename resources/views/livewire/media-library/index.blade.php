@@ -91,6 +91,44 @@
                            @change="onFileInput($event.target.files)">
                 </div>
 
+                {{-- Tags für diesen Upload --}}
+                <div class="border rounded-3 p-3 mb-3 bg-light">
+                    <div class="fw-medium small mb-1">
+                        <i class="bi bi-tags me-1"></i>{{ __('Tags for this upload') }}
+                    </div>
+                    <p class="text-muted mb-2" style="font-size:.75rem">
+                        {{ __('Every file in this batch gets these tags when you save.') }}
+                    </p>
+
+                    @if($tags->isNotEmpty())
+                        <div class="d-flex flex-wrap gap-2 mb-2">
+                            @foreach($tags as $tag)
+                                <div class="form-check form-check-inline mb-0">
+                                    <input class="form-check-input" type="checkbox"
+                                           id="upload-tag-{{ $tag->id }}"
+                                           value="{{ $tag->id }}"
+                                           wire:model="uploadTagIds">
+                                    <label class="form-check-label small" for="upload-tag-{{ $tag->id }}">
+                                        {{ $tag->name }}
+                                    </label>
+                                </div>
+                            @endforeach
+                        </div>
+                    @endif
+
+                    <form wire:submit="createUploadTag" class="input-group input-group-sm" style="max-width:320px">
+                        <input type="text" wire:model="newUploadTagName"
+                               class="form-control @error('newUploadTagName') is-invalid @enderror"
+                               placeholder="{{ __('New tag...') }}">
+                        <button type="submit" class="btn btn-outline-secondary">
+                            <i class="bi bi-plus-lg"></i>
+                        </button>
+                        @error('newUploadTagName')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
+                    </form>
+                </div>
+
                 {{-- Aktive Uploads (Fortschritt) --}}
                 <template x-if="queue.length > 0">
                     <div class="mb-3">

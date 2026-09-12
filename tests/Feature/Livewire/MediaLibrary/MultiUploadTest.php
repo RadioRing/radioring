@@ -109,3 +109,56 @@ test('cancelUpload deletes assembled files and hides the form', function () {
 
     Storage::disk('local')->assertMissing($path);
 });
+
+test('tags picked in the upload form land on every saved file', function () {
+    Bus::fake();
+
+    $jingles = $this->station->tags()->create(['name' => 'Jingles']);
+    $morning = $this->station->tags()->create(['name' => 'Morgenshow']);
+
+    $pathA = "tenants/{$this->station->tenant_id}/media/a_track.mp3";
+    $pathB = "tenants/{$this->station->tenant_id}/media/b_track.mp3";
+    Storage::disk('local')->put($pathA, 'data');
+    Storage::disk('local')->put($pathB, 'data');
+
+    Livewire::test(Index::class)
+        ->call('addPendingUpload', $pathA, 'Track A', 200, 'a.mp3')
+        ->call('addPendingUpload', $pathB, 'Track B', 180, 'b.mp3')
+        ->set('uploadTagIds', [(string) $jingles->id, (string) $morning->id])
+        ->call('save')
+        ->assertSet('uploadTagIds', []);
+
+    foreach (['Track A', 'Track B'] as $title) {
+        $file = $this->station->mediaFiles()->where('title', $title)->first();
+        expect($file->tags->pluck('id')->all())
+            ->toEqualCanonicalizing([$jingles->id, $morning->id]);
+    }
+});
+
+test('a tag foreign to the tenant is ignored on upload', function () {
+    Bus::fake();
+
+    $foreignStation = Station::factory()->create();
+    $foreignTag = $foreignStation->tags()->create(['name' => 'Fremd']);
+
+    $path = "tenants/{$this->station->tenant_id}/media/a_track.mp3";
+    Storage::disk('local')->put($path, 'data');
+
+    Livewire::test(Index::class)
+        ->call('addPendingUpload', $path, 'Track A', 200, 'a.mp3')
+        ->set('uploadTagIds', [(string) $foreignTag->id])
+        ->call('save');
+
+    expect($this->station->mediaFiles()->first()->tags)->toBeEmpty();
+});
+
+test('a new tag can be created straight from the upload form and is preselected', function () {
+    Livewire::test(Index::class)
+        ->set('newUploadTagName', 'Nachrichten')
+        ->call('createUploadTag')
+        ->assertHasNoErrors()
+        ->assertSet('newUploadTagName', '');
+
+    $tag = $this->station->tags()->where('name', 'Nachrichten')->first();
+    expect($tag)->not->toBeNull();
+});
