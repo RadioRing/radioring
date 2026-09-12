@@ -179,6 +179,7 @@
                 <div class="card-body">
                     <h6 class="fw-semibold">{{ __('Team / Zugriff') }}</h6>
                     <p class="text-muted-sm">{{ __('Erteile anderen registrierten Nutzern Zugriff, um die Station gemeinsam zu verwalten.') }}</p>
+                    <p class="text-muted-sm">{{ __('Editors build and air shows. Owners can do that too, plus delete media and manage the station and its team. Only the founder can delete the station.') }}</p>
 
                     <ul class="list-group list-group-flush mb-3">
                         @foreach ($members as $member)
@@ -188,10 +189,15 @@
                                     <div class="text-muted-sm">{{ $member->email }}</div>
                                 </div>
                                 <div class="d-flex align-items-center gap-2">
-                                    @if ($member->pivot->role === 'owner')
-                                        <span class="badge text-bg-primary">{{ __('Besitzer') }}</span>
+                                    @if ($member->id === $station->user_id)
+                                        <span class="badge text-bg-primary">{{ __('Founder') }}</span>
                                     @else
-                                        <span class="badge text-bg-secondary">{{ __('Editor') }}</span>
+                                        <select class="form-select form-select-sm w-auto"
+                                                aria-label="{{ __('Role') }}"
+                                                wire:change="changeMemberRole({{ $member->id }}, $event.target.value)">
+                                            <option value="editor" @selected($member->pivot->role === 'editor')>{{ __('Editor') }}</option>
+                                            <option value="owner" @selected($member->pivot->role === 'owner')>{{ __('Owner') }}</option>
+                                        </select>
                                         <button type="button" class="btn btn-outline-danger btn-sm"
                                                 @click="$dispatch('confirm-dialog', { message: @js(__('Zugriff für :name entziehen?', ['name' => $member->name])), confirmText: @js(__('Entziehen')), onConfirm: () => $wire.removeMember({{ $member->id }}) })">
                                             <i class="bi bi-x-lg"></i>
@@ -208,6 +214,11 @@
                             <input id="memberEmail" type="email" wire:model="memberEmail"
                                    class="form-control @error('memberEmail') is-invalid @enderror"
                                    placeholder="email@example.com">
+                            <select class="form-select flex-grow-0 w-auto" wire:model="memberRole"
+                                    aria-label="{{ __('Role') }}">
+                                <option value="editor">{{ __('Editor') }}</option>
+                                <option value="owner">{{ __('Owner') }}</option>
+                            </select>
                             <button type="submit" class="btn btn-primary">
                                 <i class="bi bi-person-plus me-1"></i>{{ __('Hinzufügen') }}
                             </button>
@@ -220,6 +231,7 @@
             </div>
         </div>
 
+        @if ($station->canBeDeletedBy(auth()->user()))
         <div class="col-12 col-xl-6 col-xxl-4">
             <div class="card border-danger">
                 <div class="card-body">
@@ -232,8 +244,10 @@
                 </div>
             </div>
         </div>
+        @endif
     </div>
 
+    @if ($station->canBeDeletedBy(auth()->user()))
     <div class="modal fade" id="deleteStationModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -253,4 +267,5 @@
             </div>
         </div>
     </div>
+    @endif
 </div>

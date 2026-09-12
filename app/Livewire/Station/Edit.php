@@ -175,7 +175,7 @@ class Edit extends Component
     {
         $this->validate([
             'memberEmail' => 'required|email',
-            'memberRole' => 'required|in:editor',
+            'memberRole' => 'required|in:editor,owner',
         ]);
 
         $user = User::where('email', $this->memberEmail)->first();
@@ -204,6 +204,27 @@ class Edit extends Component
         $this->dispatch('notify', message: __('Zugriff erteilt.'), type: 'success');
     }
 
+    /**
+     * Promote an editor to owner or demote an owner back to editor.
+     *
+     * The founder's own row is untouchable: their role is what keeps the station
+     * manageable if every promoted owner is later demoted or removed.
+     */
+    public function changeMemberRole(int $userId, string $role): void
+    {
+        abort_unless(in_array($role, ['owner', 'editor'], true), 422);
+
+        if ($userId === $this->station->user_id) {
+            return;
+        }
+
+        $this->station->members()->updateExistingPivot($userId, ['role' => $role]);
+
+        $this->dispatch('notify', message: $role === 'owner'
+            ? __('Member promoted to owner.')
+            : __('Member set back to editor.'), type: 'success');
+    }
+
     public function removeMember(int $userId): void
     {
         if ($userId === $this->station->user_id) {
@@ -218,6 +239,8 @@ class Edit extends Component
     public function delete(): void
     {
         $user = auth()->user();
+
+        abort_unless($this->station->canBeDeletedBy($user), 403);
 
         if ($user->currentStation()?->id === $this->station->id) {
             session()->forget('current_station_id');

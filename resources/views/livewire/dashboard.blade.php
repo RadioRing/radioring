@@ -14,7 +14,7 @@
         @endif
     </div>
     <div class="d-flex gap-2">
-        @if($station)
+        @if($station && $station->canBeManagedBy(auth()->user()))
             <a href="{{ route('station.edit', $station) }}" class="btn btn-sm btn-outline-secondary" wire:navigate>
                 <i class="bi bi-pencil me-1"></i>{{ __('Station bearbeiten') }}
             </a>

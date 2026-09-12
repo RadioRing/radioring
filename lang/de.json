@@ -389,5 +389,12 @@
     ":ready of :total external elements ready": ":ready von :total externen Elementen bereit",
     "Prepared, ready to play": "Vorbereitet, bereit zur Ausspielung",
     "Fetching failed: :error": "Abruf fehlgeschlagen: :error",
-    "Not fetched yet": "Noch nicht geholt"
+    "Not fetched yet": "Noch nicht geholt",
+    "Founder": "Gründer",
+    "Owner": "Besitzer",
+    "Editor": "Editor",
+    "Role": "Rolle",
+    "Member promoted to owner.": "Mitglied zum Besitzer befördert.",
+    "Member set back to editor.": "Mitglied wieder auf Editor gesetzt.",
+    "Editors build and air shows. Owners can do that too, plus delete media and manage the station and its team. Only the founder can delete the station.": "Editoren bauen Sendungen und spielen sie aus. Besitzer können das ebenfalls und dürfen zusätzlich Medien löschen sowie Station und Team verwalten. Nur der Gründer kann die Station löschen."
 }

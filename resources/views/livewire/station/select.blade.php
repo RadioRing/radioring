@@ -32,10 +32,12 @@
                                         {{ $station->status === 'active' ? __('Aktiv') : __('Pausiert') }}
                                     </span>
                                 </div>
-                                <a href="{{ route('station.edit', $station) }}"
-                                   class="btn btn-sm btn-outline-secondary" wire:navigate>
-                                    <i class="bi bi-pencil"></i>
-                                </a>
+                                @if ($station->canBeManagedBy(auth()->user()))
+                                    <a href="{{ route('station.edit', $station) }}"
+                                       class="btn btn-sm btn-outline-secondary" wire:navigate>
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                @endif
                             </div>
                         </div>
                         <div class="card-footer bg-transparent">

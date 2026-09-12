@@ -109,10 +109,21 @@ class Station extends Model
     }
 
     /**
-     * Darf der Nutzer die Station verwalten (Einstellungen, Team, Löschen)?
-     * Nur der Besitzer.
+     * Darf der Nutzer die Station verwalten (Einstellungen, Team)?
+     *
+     * Der Gründer immer, dazu jeder, der an dieser Station die Rolle "owner" hat.
+     * Nur der Gründer darf die Station löschen; siehe canBeDeletedBy().
      */
     public function canBeManagedBy(User $user): bool
+    {
+        return $this->isOwnedBy($user) || $this->roleFor($user) === 'owner';
+    }
+
+    /**
+     * Darf der Nutzer die Station löschen? Nur der Gründer, nicht ein nachträglich
+     * beförderter Besitzer.
+     */
+    public function canBeDeletedBy(User $user): bool
     {
         return $this->isOwnedBy($user);
     }

@@ -104,3 +104,52 @@ test('a shared editor can select the station and reach the dashboard', function 
 
     expect($colleague->currentStation()?->id)->toBe($this->station->id);
 });
+
+test('the founder can promote an editor to owner', function () {
+    $colleague = User::factory()->create();
+    $this->station->members()->attach($colleague->id, ['role' => 'editor']);
+
+    Livewire::actingAs($this->owner)
+        ->test(Edit::class, ['station' => $this->station])
+        ->call('changeMemberRole', $colleague->id, 'owner')
+        ->assertHasNoErrors();
+
+    expect($this->station->fresh()->roleFor($colleague))->toBe('owner');
+    expect($colleague->mayDeleteMediaOn($this->station))->toBeTrue();
+});
+
+test('a promoted owner may manage the station but not delete it', function () {
+    $colleague = User::factory()->create();
+    $this->station->members()->attach($colleague->id, ['role' => 'owner']);
+
+    expect($this->station->canBeManagedBy($colleague))->toBeTrue();
+    expect($this->station->canBeDeletedBy($colleague))->toBeFalse();
+
+    Livewire::actingAs($colleague)
+        ->test(Edit::class, ['station' => $this->station])
+        ->call('delete')
+        ->assertForbidden();
+
+    expect(Station::find($this->station->id))->not->toBeNull();
+});
+
+test('the founder role cannot be changed', function () {
+    Livewire::actingAs($this->owner)
+        ->test(Edit::class, ['station' => $this->station])
+        ->call('changeMemberRole', $this->owner->id, 'editor');
+
+    expect($this->station->fresh()->roleFor($this->owner))->toBe('owner');
+});
+
+test('a member can be added as owner right away', function () {
+    $colleague = User::factory()->create();
+
+    Livewire::actingAs($this->owner)
+        ->test(Edit::class, ['station' => $this->station])
+        ->set('memberEmail', $colleague->email)
+        ->set('memberRole', 'owner')
+        ->call('addMember')
+        ->assertHasNoErrors();
+
+    expect($this->station->fresh()->roleFor($colleague))->toBe('owner');
+});

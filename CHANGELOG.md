@@ -64,6 +64,7 @@ to stand on its own.
   has no form to carry it. Insert the element, then set its timestamp with the pencil button
   in the list. Existing timestamps are untouched.
 - **Weekly Grid update** Now has clearer indicators and better navigation through the grid.
+- **Role based permissions** We now have three roles. Founder, Owner, Editor. 
 
 ### Fixed
 - **A prepared element is no longer thrown away shortly before it airs.**
