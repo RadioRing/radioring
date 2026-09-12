@@ -316,11 +316,11 @@ test('leaves an item beyond the pull horizon alone', function () {
     Http::assertNothingSent();
 });
 
-test('does not refresh a prepared copy that is still far from its airtime', function () {
+test('refreshes a prepared copy once its freshness window has passed', function () {
     $source = ExternalSource::factory()->create([
         'station_id' => $this->station->id, 'kind' => 'url',
         'url' => 'https://example.com/news.mp3', 'prefetch_lead_seconds' => 300,
-        'freshness_seconds' => 600,
+        'freshness_seconds' => 600, 'normalize' => false,
     ]);
 
     $rundown = GeneratedPlaylist::factory()->create([
@@ -328,11 +328,11 @@ test('does not refresh a prepared copy that is still far from its airtime', func
         'broadcast_date' => today(), 'broadcast_hour' => 10, 'status' => 'ready',
     ]);
 
-    $path = "stations/{$this->station->slug}/prepared/kept.mp3";
-    Storage::disk('local')->put($path, 'AUDIO');
+    $path = "stations/{$this->station->slug}/prepared/news.mp3";
+    Storage::disk('local')->put($path, 'OLD-AUDIO');
 
-    // Inside the pull horizon, prepared well over the freshness window ago, but its airtime
-    // is an hour out: refetching now would only throw away the copy Liquidsoap holds.
+    // Airtime is still an hour out, so the pull horizon carries this one. A bulletin that
+    // sits there has to keep itself current, whatever the lead says.
     $item = GeneratedPlaylistItem::factory()->create([
         'generated_playlist_id' => $rundown->id,
         'external_source_id' => $source->id,
@@ -346,10 +346,107 @@ test('does not refresh a prepared copy that is still far from its airtime', func
 
     placeCursor($this->station, $rundown);
 
+    Http::fake(['example.com/*' => Http::response('FRESH-AUDIO', 200)]);
+    Process::fake();
+
+    (new PrepareUpcomingHttpItemsJob)->handle(app(ExternalItemPreparer::class), app(LiquidsoapStateService::class));
+
+    expect(Storage::disk('local')->get($item->fresh()->prepared_path))->toBe('FRESH-AUDIO');
+});
+
+test('leaves a prepared copy alone while it is still fresh', function () {
+    $source = ExternalSource::factory()->create([
+        'station_id' => $this->station->id, 'kind' => 'url',
+        'url' => 'https://example.com/news.mp3', 'prefetch_lead_seconds' => 300,
+        'freshness_seconds' => 600,
+    ]);
+
+    $rundown = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id,
+        'broadcast_date' => today(), 'broadcast_hour' => 10, 'status' => 'ready',
+    ]);
+
+    $path = "stations/{$this->station->slug}/prepared/fresh.mp3";
+    Storage::disk('local')->put($path, 'AUDIO');
+
+    GeneratedPlaylistItem::factory()->create([
+        'generated_playlist_id' => $rundown->id,
+        'external_source_id' => $source->id,
+        'position' => 1,
+        'source_type' => 'external',
+        'title' => 'News',
+        'absolute_broadcast_at' => now()->addHour(),
+        'prepared_path' => $path,
+        'prepared_at' => now()->subMinutes(2),
+    ]);
+
+    placeCursor($this->station, $rundown);
+
     Http::fake();
 
     (new PrepareUpcomingHttpItemsJob)->handle(app(ExternalItemPreparer::class), app(LiquidsoapStateService::class));
 
     Http::assertNothingSent();
-    expect($item->fresh()->prepared_at->toDateTimeString())->toBe(now()->subMinutes(30)->toDateTimeString());
+});
+
+test('prepares an element without a planned time from the horizon alone', function () {
+    // Only an element with a fixed timestamp gets an absolute_broadcast_at. Everything else
+    // is carried by the cursor, and must not make the run fall over on the missing date.
+    $source = ExternalSource::factory()->create([
+        'station_id' => $this->station->id, 'kind' => 'url',
+        'url' => 'https://example.com/show.mp3', 'normalize' => false,
+    ]);
+
+    $rundown = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id,
+        'broadcast_date' => today(), 'broadcast_hour' => 10, 'status' => 'ready',
+    ]);
+
+    $item = GeneratedPlaylistItem::factory()->create([
+        'generated_playlist_id' => $rundown->id,
+        'external_source_id' => $source->id,
+        'position' => 1,
+        'source_type' => 'external',
+        'title' => 'No fixed time',
+        'absolute_broadcast_at' => null,
+    ]);
+
+    placeCursor($this->station, $rundown);
+
+    Http::fake(['example.com/*' => Http::response('AUDIO', 200)]);
+    Process::fake();
+
+    (new PrepareUpcomingHttpItemsJob)->handle(app(ExternalItemPreparer::class), app(LiquidsoapStateService::class));
+
+    expect($item->fresh()->prepared_path)->not->toBeNull();
+});
+
+test('cleans up the copy of an element without a planned time once it is behind us', function () {
+    $source = ExternalSource::factory()->create([
+        'station_id' => $this->station->id, 'kind' => 'url', 'url' => 'https://example.com/show.mp3',
+    ]);
+
+    $rundown = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id,
+        'broadcast_date' => today(), 'broadcast_hour' => 9, 'status' => 'played',
+    ]);
+
+    $path = "stations/{$this->station->slug}/prepared/untimed.mp3";
+    Storage::disk('local')->put($path, 'AUDIO');
+
+    $item = GeneratedPlaylistItem::factory()->create([
+        'generated_playlist_id' => $rundown->id,
+        'external_source_id' => $source->id,
+        'position' => 0,
+        'source_type' => 'external',
+        'title' => 'No fixed time',
+        'absolute_broadcast_at' => null,
+        'prepared_path' => $path,
+        'prepared_at' => now()->subHours(3),
+    ]);
+
+    (new PrepareUpcomingHttpItemsJob)->handle(app(ExternalItemPreparer::class), app(LiquidsoapStateService::class));
+
+    expect($item->fresh()->prepared_path)->toBeNull();
+    Storage::disk('local')->assertMissing($path);
 });

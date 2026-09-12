@@ -82,13 +82,13 @@ class PrepareUpcomingHttpItemsJob implements ShouldBeUnique, ShouldQueue
                     continue;
                 }
 
-                $withinLead = $this->isDue($item, $source);
-
-                if (! $withinLead && ! in_array($item->id, $horizonIds, true)) {
+                // Two reasons to prepare an element, and it needs one of them: its airtime
+                // is within the source's lead, or the cursor is about to reach it.
+                if (! $this->isDue($item, $source) && ! in_array($item->id, $horizonIds, true)) {
                     continue;
                 }
 
-                if (! $this->needsPreparing($item, $source, $withinLead)) {
+                if (! $this->needsPreparing($item, $source)) {
                     continue;
                 }
 
@@ -132,24 +132,25 @@ class PrepareUpcomingHttpItemsJob implements ShouldBeUnique, ShouldQueue
     /** Liegt die geschätzte Sendezeit innerhalb des Quellen-Vorlaufs? */
     private function isDue(GeneratedPlaylistItem $item, ExternalSource $source): bool
     {
+        if ($item->absolute_broadcast_at === null) {
+            return false;
+        }
+
         return $item->absolute_broadcast_at->lte(now()->addSeconds($source->prefetch_lead_seconds));
     }
 
-    /**
-     * @param  bool  $withinLead  Whether the airtime is inside the source's configured lead.
-     */
-    private function needsPreparing(GeneratedPlaylistItem $item, ExternalSource $source, bool $withinLead): bool
+    private function needsPreparing(GeneratedPlaylistItem $item, ExternalSource $source): bool
     {
         // Noch nie vorbereitet oder Datei verschwunden → vorbereiten.
         if (! $item->prepared_path || ! Storage::disk('local')->exists($item->prepared_path)) {
             return $this->retryIsDue($item);
         }
 
-        // Frische-Fenster gesetzt und überschritten → neu holen. Bewusst nur innerhalb des
-        // Vorlaufs: ein weit im Voraus gezogenes Item würde sonst bei jedem Lauf erneut
-        // geholt, und Liquidsoap hält die Fassung, die es spielt, längst in der Hand.
-        return $withinLead
-            && $source->freshness_seconds > 0
+        // Frische-Fenster gesetzt und überschritten → neu holen, auch weit vor der Sendezeit.
+        // Ein Element, das lange im Abrufhorizont liegt, hält sich damit selbst aktuell, bis
+        // der Container es zieht. Jede Erneuerung setzt prepared_at, die nächste kommt also
+        // frühestens ein Frische-Fenster später.
+        return $source->freshness_seconds > 0
             && $item->prepared_at !== null
             && $item->prepared_at->lt(now()->subSeconds($source->freshness_seconds));
     }
@@ -178,9 +179,16 @@ class PrepareUpcomingHttpItemsJob implements ShouldBeUnique, ShouldQueue
      */
     private function cleanupStalePreparedFiles(): void
     {
+        $grace = now()->subSeconds(self::KEEP_AFTER_AIRTIME_SECONDS);
+
         $items = GeneratedPlaylistItem::query()
             ->whereNotNull('prepared_path')
-            ->where('absolute_broadcast_at', '<', now()->subSeconds(self::KEEP_AFTER_AIRTIME_SECONDS))
+            ->where(function ($query) use ($grace) {
+                // An element without a fixed timestamp has no planned time. Its copy is
+                // still ours to clean up, so the age of the copy stands in for it.
+                $query->where('absolute_broadcast_at', '<', $grace)
+                    ->orWhere(fn ($q) => $q->whereNull('absolute_broadcast_at')->where('prepared_at', '<', $grace));
+            })
             ->with('generatedPlaylist')
             ->get();
 
@@ -217,7 +225,9 @@ class PrepareUpcomingHttpItemsJob implements ShouldBeUnique, ShouldQueue
         }
 
         // Nobody is going to ask for this any more, whatever the cursor says.
-        if ($item->absolute_broadcast_at->lt(now()->subSeconds(self::FORGET_AFTER_AIRTIME_SECONDS))) {
+        $age = $item->absolute_broadcast_at ?? $item->prepared_at;
+
+        if ($age !== null && $age->lt(now()->subSeconds(self::FORGET_AFTER_AIRTIME_SECONDS))) {
             return false;
         }
 
