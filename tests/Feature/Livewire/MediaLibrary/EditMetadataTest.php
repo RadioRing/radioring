@@ -1,10 +1,10 @@
 <?php
 
+use App\Livewire\MediaLibrary\FileModal;
 use App\Livewire\MediaLibrary\Index;
 use App\Models\MediaFile;
 use App\Models\Station;
 use App\Models\User;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 
@@ -24,15 +24,14 @@ test('a file title and artist can be edited', function () {
         'artist' => 'Alter Interpret',
     ]);
 
-    Livewire::test(Index::class)
-        ->call('startEditingFile', $file->id)
-        ->assertSet('editTitle', 'Alt')
-        ->assertSet('editArtist', 'Alter Interpret')
-        ->set('editTitle', 'Neu')
-        ->set('editArtist', 'Neuer Interpret')
-        ->call('saveFileEdit')
-        ->assertHasNoErrors()
-        ->assertSet('editingFileId', null);
+    Livewire::test(FileModal::class)
+        ->call('open', $file->id)
+        ->assertSet('title', 'Alt')
+        ->assertSet('artist', 'Alter Interpret')
+        ->set('title', 'Neu')
+        ->set('artist', 'Neuer Interpret')
+        ->call('save')
+        ->assertHasNoErrors();
 
     expect($file->fresh())
         ->title->toBe('Neu')
@@ -45,18 +44,18 @@ test('fade-in can be toggled on and is loaded back into the form', function () {
         'fade_in' => false,
     ]);
 
-    Livewire::test(Index::class)
-        ->call('startEditingFile', $file->id)
-        ->assertSet('editFadeIn', false)
-        ->set('editFadeIn', true)
-        ->call('saveFileEdit')
+    Livewire::test(FileModal::class)
+        ->call('open', $file->id)
+        ->assertSet('fadeIn', false)
+        ->set('fadeIn', true)
+        ->call('save')
         ->assertHasNoErrors();
 
     expect($file->fresh()->fade_in)->toBeTrue();
 
-    Livewire::test(Index::class)
-        ->call('startEditingFile', $file->id)
-        ->assertSet('editFadeIn', true);
+    Livewire::test(FileModal::class)
+        ->call('open', $file->id)
+        ->assertSet('fadeIn', true);
 });
 
 test('the artist can be cleared back to null', function () {
@@ -65,10 +64,10 @@ test('the artist can be cleared back to null', function () {
         'artist' => 'Wird gelöscht',
     ]);
 
-    Livewire::test(Index::class)
-        ->call('startEditingFile', $file->id)
-        ->set('editArtist', '')
-        ->call('saveFileEdit')
+    Livewire::test(FileModal::class)
+        ->call('open', $file->id)
+        ->set('artist', '')
+        ->call('save')
         ->assertHasNoErrors();
 
     expect($file->fresh()->artist)->toBeNull();
@@ -77,20 +76,25 @@ test('the artist can be cleared back to null', function () {
 test('the title is required when editing', function () {
     $file = MediaFile::factory()->create(['tenant_id' => $this->station->tenant_id]);
 
-    Livewire::test(Index::class)
-        ->call('startEditingFile', $file->id)
-        ->set('editTitle', '')
-        ->call('saveFileEdit')
-        ->assertHasErrors('editTitle');
+    Livewire::test(FileModal::class)
+        ->call('open', $file->id)
+        ->set('title', '')
+        ->call('save')
+        ->assertHasErrors('title');
 });
 
 test('files from another station cannot be edited', function () {
     $other = Station::factory()->create();
-    $file = MediaFile::factory()->create(['tenant_id' => $other->tenant_id]);
+    $file = MediaFile::factory()->create(['tenant_id' => $other->tenant_id, 'title' => 'Fremd']);
 
-    Livewire::test(Index::class)
-        ->call('startEditingFile', $file->id);
-})->throws(ModelNotFoundException::class);
+    Livewire::test(FileModal::class)
+        ->call('open', $file->id)
+        ->assertSet('file', null)
+        ->set('title', 'Gekapert')
+        ->call('save');
+
+    expect($file->fresh()->title)->toBe('Fremd');
+});
 
 test('uploaded files keep the artist from id3 tags', function () {
     $path = "tenants/{$this->station->tenant_id}/media/song.mp3";

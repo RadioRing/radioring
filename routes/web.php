@@ -14,7 +14,6 @@ use App\Livewire\ExternalSource\Index as ExternalSourceIndex;
 use App\Livewire\Help\Index as HelpIndex;
 use App\Livewire\HourGrid\Index as HourGridIndex;
 use App\Livewire\MediaLibrary\Index as MediaLibraryIndex;
-use App\Livewire\MediaLibrary\Show as MediaLibraryShow;
 use App\Livewire\Output\Index as OutputIndex;
 use App\Livewire\Playlist\Index as PlaylistIndex;
 use App\Livewire\Playlist\Manager as PlaylistManager;
@@ -23,6 +22,7 @@ use App\Livewire\Rundown\Show as RundownShow;
 use App\Livewire\Station\Create as StationCreate;
 use App\Livewire\Station\Edit as StationEdit;
 use App\Livewire\Station\Select as StationSelect;
+use App\Models\MediaFile;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome')->name('home');
@@ -39,7 +39,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('media', MediaLibraryIndex::class)->name('media.index');
     Route::post('/media/upload-chunk', [MediaUploadController::class, 'store'])->name('media.upload.chunk');
     Route::get('/media/{mediaFile}/preview', MediaPreviewController::class)->name('media.preview');
-    Route::livewire('media/{mediaFile}', MediaLibraryShow::class)->name('media.show')->whereNumber('mediaFile');
+    // The file dialog lives inside the library list; the old detail URL keeps working
+    // as a deep link into it.
+    Route::get('media/{mediaFile}', fn (MediaFile $mediaFile) => redirect()->route('media.index', ['file' => $mediaFile->id]))
+        ->name('media.show')
+        ->whereNumber('mediaFile');
 
     Route::livewire('externe-quellen', ExternalSourceIndex::class)->name('external-source.index');
 

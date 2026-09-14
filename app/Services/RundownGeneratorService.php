@@ -18,13 +18,13 @@ class RundownGeneratorService
     public function __construct(private readonly MusicRotationPlanner $rotationPlanner) {}
 
     /**
-     * Generiert einen Rundown für einen konkreten Sendetermin.
+     * Generates the rundown for one broadcast slot.
      *
-     * - status=played  → wird nie überschrieben
-     * - status=ready   → nur bei $force=true
-     * - status=draft   → immer überschrieben
+     * - status=played  never overwritten
+     * - status=ready   only with $force
+     * - status=draft   always overwritten
      *
-     * @throws \RuntimeException wenn status=played
+     * @throws \RuntimeException when the rundown was already played
      */
     public function generate(Station $station, HourGridSlot $slot, Carbon $broadcastDate, bool $force = false): GeneratedPlaylist
     {
@@ -36,9 +36,8 @@ class RundownGeneratorService
             ->first();
 
         if ($rundown) {
-            // Bereits gespielt: ohne force schützen, mit force (manueller Trigger)
-            // bewusst neu generierbar – sonst lässt sich ein versehentlich/abgespielt
-            // markierter Rundown nie wieder aktivieren.
+            // Already played: protected without force, deliberately regeneratable with
+            // it, or a wrongly played-marked rundown could never be revived.
             if ($rundown->isPlayed() && ! $force) {
                 throw new \RuntimeException("Rundown für {$date} {$slot->hour}:00 wurde bereits gespielt und kann nicht überschrieben werden.");
             }
@@ -75,16 +74,15 @@ class RundownGeneratorService
 
         $rundown->update(['status' => 'ready', 'generated_at' => now()]);
 
-        // Falls dieser Rundown gerade live ist: Abspiel-Cursor zurücksetzen. Die Items
-        // haben neue IDs/Positionen – der alte Cursor wäre sonst inkonsistent. Der
-        // now_playing-FK zeigt auf ein gelöschtes Item und wird genullt; der
-        // denormalisierte Anzeige-Snapshot (Titel/Dauer/Startzeit) bleibt aber stehen,
-        // damit der Player den real noch laufenden Track weiter anzeigt, bis Liquidsoap
-        // beim nächsten Track-Wechsel einen frischen now_playing-Callback schickt.
-        // Scope auf die Station (station_id ist unique/indiziert) statt nur auf
-        // current_rundown_id – sonst sperrt der Update mangels Index per Table-Scan
-        // ALLE liquidsoap_states-Zeilen und kollidiert mit dem nebenläufigen /next-Pull
-        // (Deadlock). So wird nur die eine Zeile dieser Station gesperrt.
+        // If this rundown is live, reset the playout cursor: the items have new IDs
+        // and positions, so the old cursor would be inconsistent. The now_playing FK
+        // points at a deleted item and is nulled, but the denormalised display snapshot
+        // stays so the player keeps showing the track that is really still running,
+        // until Liquidsoap sends a fresh now_playing callback.
+        // Scoped to the station (station_id is unique and indexed) rather than to
+        // current_rundown_id alone: without an index the update locks EVERY
+        // liquidsoap_states row by table scan and deadlocks with the concurrent
+        // /next pull.
         DB::transaction(function () use ($station, $rundown) {
             LiquidsoapState::where('station_id', $station->id)
                 ->where('current_rundown_id', $rundown->id)
@@ -98,7 +96,7 @@ class RundownGeneratorService
 
         Log::info("Rundown generiert: Station #{$station->id}, {$date} {$slot->hour}:00, {$itemCount} Tracks");
 
-        // Protokoll: Rundown-Generierung festhalten (für die Betreiber-Nachvollziehbarkeit).
+        // Record the generation in the station protocol.
         StationLog::create([
             'station_id' => $station->id,
             'event' => StationLog::EVENT_RUNDOWN_GENERATED,
@@ -115,12 +113,12 @@ class RundownGeneratorService
     }
 
     /**
-     * Löst die Template-Items in konkrete Rundown-Items auf.
+     * Resolves the template items into concrete rundown items.
      *
-     * Begleitend wird eine Sende-Timeline (Interpret/Album je Zeitpunkt) mitgeführt –
-     * inklusive der Tracks aus den bereits generierten Stunden im 3h-Fenster davor –,
-     * damit die Fill-Auswahl die Rotationsregeln über Stundengrenzen hinweg einhält.
-     * Der Cursor spiegelt die Logik von calculateAbsoluteTimes wider.
+     * A broadcast timeline (artist and album per moment) is carried along, including
+     * the already generated hours in the 3h window before, so the fill selection keeps
+     * the rotation rules across hour boundaries. The cursor mirrors the logic of
+     * calculateAbsoluteTimes.
      */
     private function resolveItems(Station $station, HourGridSlot $slot, GeneratedPlaylist $rundown, Carbon $broadcastStart): void
     {
@@ -166,11 +164,11 @@ class RundownGeneratorService
                     'title' => 'START_AD_BREAK',
                     'source_type' => 'adbreak',
                 ]);
-                // Adbreaks unterbrechen eine Interpreten-/Album-Serie (kein Musiktitel).
+                // An adbreak breaks an artist or album streak: it is not a track.
                 $timeline[] = ['id' => null, 'artist' => null, 'album' => null, 'at' => $cursor->copy()];
             } elseif (in_array($item->type, ['news', 'weather', 'news_weather'], true)) {
-                // laut.fm-Nachrichten/Wetter – die /api/next-API baut zur Laufzeit die
-                // authentifizierte radioadmin-URL aus den Credentials des laut.fm-Ausgangs.
+                // laut.fm news and weather: /api/next builds the authenticated
+                // radioadmin URL at runtime from the credentials of the laut.fm output.
                 $newsDuration = (int) config('radioring.news_duration_seconds', 300);
                 $rundown->items()->create([
                     'position' => $position++,
@@ -181,10 +179,9 @@ class RundownGeneratorService
                 $timeline[] = ['id' => null, 'artist' => null, 'album' => null, 'at' => $cursor->copy()];
                 $cursor = $cursor->copy()->addSeconds($newsDuration);
             } elseif ($item->type === 'external') {
-                // Externe HTTP-Quelle (Syndication/News/Wetter): dynamischer Inhalt, der
-                // kurz vor Ausspielung geholt wird (PrepareUpcomingHttpItemsJob). Die Dauer
-                // ist dynamisch – die AKTUELLE erwartete Dauer der Quelle hat Vorrang vor
-                // einem ggf. veralteten Snapshot am Playlist-Item.
+                // External HTTP source: dynamic content fetched shortly before airing
+                // (PrepareUpcomingHttpItemsJob). The current expected duration of the
+                // source wins over a possibly stale snapshot on the playlist item.
                 $duration = $item->externalSource?->expected_duration_seconds
                     ?? $item->duration_seconds
                     ?? (int) config('radioring.news_duration_seconds', 300);
@@ -208,7 +205,7 @@ class RundownGeneratorService
             } else {
                 $duration = $item->duration_seconds ?? $item->mediaFile?->duration_seconds;
 
-                // Relativen Offset direkt in absolute Zeit umrechnen wenn gesetzt
+                // Turn a relative offset into absolute time right away.
                 $absoluteAt = $relativeOffset !== null
                     ? $broadcastStart->copy()->addSeconds($relativeOffset)
                     : null;
@@ -216,8 +213,8 @@ class RundownGeneratorService
                 $rundown->items()->create([
                     'position' => $position++,
                     'media_file_id' => $item->media_file_id,
-                    // Pfad + Lautheit einfrieren: wird die Datei spaeter ersetzt, spielt
-                    // dieser Rundown die alte Fassung zu Ende (siehe MediaReplacementService).
+                    // Freeze path and loudness: if the file is replaced later, this
+                    // rundown plays the old version out (see MediaReplacementService).
                     'media_file_path' => $item->mediaFile?->file_path,
                     'loudness_lufs' => $item->mediaFile?->loudness_lufs,
                     'loudness_true_peak' => $item->mediaFile?->loudness_true_peak,
@@ -269,15 +266,15 @@ class RundownGeneratorService
     }
 
     /**
-     * Baut die Sende-Timeline der bereits generierten Stunden im 3h-Fenster vor dem
-     * Sendestart (für die rundownübergreifende Rotationsprüfung).
+     * Builds the broadcast timeline of the already generated hours in the 3h window
+     * before the start, for the rotation check across rundowns.
      *
      * @return list<array{id: ?int, artist: ?string, album: ?string, at: Carbon}>
      */
     private function historyTimeline(Station $station, GeneratedPlaylist $rundown, Carbon $broadcastStart): array
     {
-        // Fenster so breit wie der größere von Rotations- und Titel-Cooldown, damit der
-        // Titel-Penalty auch Stunden zurückliegende Wiederholungen erkennt.
+        // The window spans the larger of the rotation and title cooldown so the title
+        // penalty still catches repeats from hours ago.
         $windowStart = $broadcastStart->copy()->subSeconds($this->rotationPlanner->historyWindowSeconds());
 
         return GeneratedPlaylistItem::query()
@@ -300,7 +297,7 @@ class RundownGeneratorService
     }
 
     /**
-     * Berechnet für jedes Item die absolute Sendezeit anhand der kumulierten Dauer.
+     * Works out the absolute airtime of every item from the accumulated durations.
      */
     private function calculateAbsoluteTimes(GeneratedPlaylist $rundown, Carbon $broadcastStart): void
     {
@@ -308,7 +305,7 @@ class RundownGeneratorService
 
         $rundown->items()->orderBy('position')->get()->each(function ($item) use (&$cursor) {
             if ($item->absolute_broadcast_at !== null) {
-                // Relativer Offset wurde bereits in resolveItems berechnet – Cursor anpassen
+                // The relative offset was resolved in resolveItems; move the cursor.
                 $cursor = $item->absolute_broadcast_at->copy()->addSeconds($item->duration_seconds ?? 0);
             } else {
                 $item->update(['absolute_broadcast_at' => $cursor->copy()]);
@@ -318,17 +315,19 @@ class RundownGeneratorService
     }
 
     /**
-     * Löst ein Fill-Element auf: wählt Tracks rotationskonform aus der Bibliothek und
-     * fügt sie ein. Cursor und Timeline werden für nachfolgende Items fortgeschrieben.
+     * Resolves a fill element: picks rotation-compliant tracks from the library and
+     * inserts them, moving cursor and timeline on for the items that follow.
      *
      * @param  list<array{id: ?int, artist: ?string, album: ?string, at: Carbon}>  $timeline
-     * @return int neue Position nach den eingefügten Tracks
+     * @return int next free position after the inserted tracks
      */
     private function resolveFillItem(Station $station, PlaylistItem $item, GeneratedPlaylist $rundown, int $position, Carbon &$cursor, array &$timeline): int
     {
         $maxDuration = $item->fill_max_duration_seconds ?? 3600;
 
-        $query = $station->poolMediaFiles()->where('type', 'music');
+        // Airtime windows are checked at the start of the block: the cursor moves on
+        // during it, but a candidate once picked stays allowed.
+        $query = $station->poolMediaFiles()->where('type', 'music')->airableAt($cursor);
 
         if (! empty($item->fill_tags)) {
             $query->whereHas('tags', fn ($q) => $q->whereIn('tags.id', $item->fill_tags));
@@ -336,9 +335,9 @@ class RundownGeneratorService
 
         $tracks = $query->get();
 
-        // Fallback: wenn keine Tracks mit Tags gefunden, alle Musik nehmen
+        // Fallback: no tagged tracks left, so take all music.
         if ($tracks->isEmpty() && ! empty($item->fill_tags)) {
-            $tracks = $station->poolMediaFiles()->where('type', 'music')->get();
+            $tracks = $station->poolMediaFiles()->where('type', 'music')->airableAt($cursor)->get();
         }
 
         $chosen = $this->rotationPlanner->plan($tracks, $timeline, $cursor, $maxDuration);
@@ -368,16 +367,16 @@ class RundownGeneratorService
     }
 
     /**
-     * Löst ein Zufalls-Element auf: wählt genau einen zufälligen Track aus dem
-     * Stations-Pool, optional gefiltert nach Tags (z.B. für zufällige Jingles).
-     * Findet sich kein passender Track, wird das Element übersprungen.
+     * Resolves a random element: picks exactly one track from the station pool,
+     * optionally narrowed by tags. A gated file only qualifies when the planned
+     * airtime falls into one of its windows; without a match the element is skipped.
      *
      * @param  list<array{id: ?int, artist: ?string, album: ?string, at: Carbon}>  $timeline
-     * @return int neue Position nach dem eingefügten Track
+     * @return int next free position after the inserted track
      */
     private function resolveRandomItem(Station $station, PlaylistItem $item, GeneratedPlaylist $rundown, int $position, Carbon &$cursor, array &$timeline): int
     {
-        $query = $station->poolMediaFiles();
+        $query = $station->poolMediaFiles()->airableAt($cursor);
 
         if (! empty($item->fill_tags)) {
             $query->whereHas('tags', fn ($q) => $q->whereIn('tags.id', $item->fill_tags));

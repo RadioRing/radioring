@@ -1,7 +1,7 @@
 <?php
 
 use App\Jobs\AnalyzeMediaLoudnessJob;
-use App\Livewire\MediaLibrary\Show;
+use App\Livewire\MediaLibrary\FileModal;
 use App\Models\GeneratedPlaylist;
 use App\Models\GeneratedPlaylistItem;
 use App\Models\MediaFile;
@@ -24,7 +24,7 @@ beforeEach(function () {
 });
 
 /**
- * Legt eine Mediendatei samt echter Datei auf der local-Disk an.
+ * Creates a media file together with a real file on the local disk.
  */
 function mediaFileOnDisk(int $tenantId, string $name = 'alt.mp3', array $attributes = []): MediaFile
 {
@@ -38,10 +38,11 @@ function mediaFileOnDisk(int $tenantId, string $name = 'alt.mp3', array $attribu
     ]);
 }
 
-test('the detail page saves metadata and notes', function () {
+test('the file dialog saves metadata and notes', function () {
     $file = mediaFileOnDisk($this->station->tenant_id);
 
-    Livewire::test(Show::class, ['mediaFile' => $file])
+    Livewire::test(FileModal::class)
+        ->call('open', $file->id)
         ->assertSet('title', $file->title)
         ->set('title', 'Neuer Titel')
         ->set('notes', 'Intro 8 Sekunden')
@@ -55,11 +56,13 @@ test('the detail page saves metadata and notes', function () {
         ->type->toBe('jingle');
 });
 
-test('a file of another tenant is not reachable', function () {
+test('a file of another tenant does not open in the dialog', function () {
     $foreign = MediaFile::factory()->create();
 
-    Livewire::test(Show::class, ['mediaFile' => $foreign])
-        ->assertStatus(404);
+    Livewire::test(FileModal::class)
+        ->call('open', $foreign->id)
+        ->assertSet('file', null)
+        ->assertSet('openFileId', null);
 });
 
 test('replacing swaps the file, archives the old version and re-measures the loudness', function () {
@@ -73,7 +76,8 @@ test('replacing swaps the file, archives the old version and re-measures the lou
     $newPath = "tenants/{$this->station->tenant_id}/media/neu.mp3";
     Storage::disk('local')->put($newPath, 'neue-fassung');
 
-    Livewire::test(Show::class, ['mediaFile' => $file])
+    Livewire::test(FileModal::class)
+        ->call('open', $file->id)
         ->call('addPendingReplacement', $newPath, 'Aus ID3', 240, 'neu.mp3')
         ->call('confirmReplacement')
         ->assertHasNoErrors()
@@ -93,7 +97,7 @@ test('replacing swaps the file, archives the old version and re-measures the lou
         ->duration_seconds->toBe(200)
         ->replaced_by_user_id->toBe($this->user->id);
 
-    // Die alte Fassung bleibt liegen: laufende Rundowns spielen sie zu Ende.
+    // The old version stays: running rundowns play it out.
     Storage::disk('local')->assertExists($version->file_path);
 
     Queue::assertPushed(AnalyzeMediaLoudnessJob::class);
@@ -110,7 +114,8 @@ test('an editor may not replace files', function () {
     $this->actingAs($editor);
     session(['current_station_id' => $this->station->id]);
 
-    Livewire::test(Show::class, ['mediaFile' => $file])
+    Livewire::test(FileModal::class)
+        ->call('open', $file->id)
         ->call('addPendingReplacement', $newPath, null, null, 'neu.mp3')
         ->assertStatus(403);
 });
@@ -138,13 +143,14 @@ test('an already generated rundown keeps playing the replaced version', function
     $newPath = "tenants/{$this->station->tenant_id}/media/neu.mp3";
     Storage::disk('local')->put($newPath, 'neue-fassung');
 
-    Livewire::test(Show::class, ['mediaFile' => $file])
+    Livewire::test(FileModal::class)
+        ->call('open', $file->id)
         ->call('addPendingReplacement', $newPath, null, 240, 'neu.mp3')
         ->call('confirmReplacement');
 
     expect($item->fresh()->supersededPath())->toBe("tenants/{$this->station->tenant_id}/media/alt.mp3");
 
-    // Auslieferung an Liquidsoap: mit Item-Bezug die eingefrorene, ohne die neue Fassung.
+    // Delivery to Liquidsoap: with an item the frozen version, without it the new one.
     $signed = signedDeliveryUrl('liquidsoap.media', [
         'slug' => $this->station->slug,
         'mediaFile' => $file->id,
@@ -169,7 +175,8 @@ test('a restored version becomes the current file again', function () {
     $newPath = "tenants/{$this->station->tenant_id}/media/neu.mp3";
     Storage::disk('local')->put($newPath, 'neue-fassung');
 
-    $component = Livewire::test(Show::class, ['mediaFile' => $file])
+    $component = Livewire::test(FileModal::class)
+        ->call('open', $file->id)
         ->call('addPendingReplacement', $newPath, null, 240, 'neu.mp3')
         ->call('confirmReplacement');
 
@@ -181,6 +188,6 @@ test('a restored version becomes the current file again', function () {
         ->file_path->toBe("tenants/{$this->station->tenant_id}/media/alt.mp3")
         ->duration_seconds->toBe(200);
 
-    // Die zwischenzeitlich aktuelle Fassung liegt jetzt im Archiv.
+    // The version that was current in between is archived now.
     expect(MediaFileVersion::where('media_file_id', $file->id)->sole()->file_path)->toBe($newPath);
 });

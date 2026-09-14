@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
@@ -33,24 +34,13 @@ class Index extends Component
     public bool $showUploadForm = false;
 
     /**
-     * Serverseitig fertig assemblierte Dateien, die noch nicht in der DB gespeichert sind.
+     * Files assembled on the server but not stored in the database yet.
      *
      * @var array<array{path: string, title: string, artist: ?string, type: string, duration: ?int, clientName: string}>
      */
     public array $pendingUploads = [];
 
-    // Metadaten-Bearbeitung (Titel/Interpret/Album) einer bestehenden Datei
-    public ?int $editingFileId = null;
-
-    public string $editTitle = '';
-
-    public string $editArtist = '';
-
-    public string $editAlbum = '';
-
-    public bool $editFadeIn = false;
-
-    // Tag-Verwaltung
+    // Tag management
     public bool $showTagManager = false;
 
     public string $newTagName = '';
@@ -65,12 +55,7 @@ class Index extends Component
 
     public string $newUploadTagName = '';
 
-    public ?int $editingTagsForFileId = null;
-
-    /** @var array<int> */
-    public array $editingTagIds = [];
-
-    // Massen-Auswahl
+    // Bulk selection
     /** @var array<int|string> */
     public array $selectedFileIds = [];
 
@@ -80,6 +65,16 @@ class Index extends Component
     {
         $this->station = auth()->user()->currentStation()
             ?? abort(403, __('No station selected.'));
+    }
+
+    /**
+     * The dialog edits files behind the list back, so a change there has to reach
+     * the cached lookups this list renders from.
+     */
+    #[On('media-library-changed')]
+    public function refreshLibrary(): void
+    {
+        unset($this->fillPools, $this->duplicateFileIds);
     }
 
     /**
@@ -102,8 +97,8 @@ class Index extends Component
     }
 
     /**
-     * Normalisiert Interpret + Titel zu einem Vergleichsschlüssel für die Duplikat-Erkennung:
-     * kleingeschrieben, ohne Rand-Leerzeichen und mit zusammengefassten Leerzeichen.
+     * Normalises artist and title into one comparison key for duplicate detection:
+     * lower case, trimmed, with runs of whitespace collapsed.
      */
     private function duplicateKey(?string $artist, string $title): string
     {
@@ -113,8 +108,8 @@ class Index extends Component
     }
 
     /**
-     * IDs eigener Dateien, die nach normalisiertem Interpret + Titel mit mindestens
-     * einer weiteren eigenen Datei übereinstimmen – also vermutlich doppelt hochgeladen.
+     * IDs of files that share a normalised artist and title with at least one other
+     * file, so they were most likely uploaded twice.
      *
      * @return array<int, int>
      */
@@ -130,12 +125,11 @@ class Index extends Component
     }
 
     /**
-     * Womit die Fill- und Zufalls-Elemente der Playlisten dieser Station gefuellt werden.
+     * What the fill and random elements of this station draw from.
      *
-     * Solche Elemente greifen erst bei der Rundown-Generierung auf die Bibliothek zu:
-     * Eine Datei kann also gesendet werden, ohne in einer Playlist zu stehen. Fill nimmt
-     * nur Musik, Zufall jeden Typ; ohne Tag-Filter kommt jeweils die ganze Bibliothek
-     * in Frage.
+     * They only reach into the library when the rundown is generated, so a file can go
+     * on air without standing in any playlist. Fill takes music only, random takes any
+     * type, and without a tag filter the whole library qualifies.
      *
      * @return array{music: bool, any: bool, musicTagIds: array<int, int>, anyTagIds: array<int, int>}
      */
@@ -166,8 +160,8 @@ class Index extends Component
     }
 
     /**
-     * Kann diese Datei ueber ein Fill-/Zufalls-Element auf Sendung gehen, auch wenn sie
-     * in keiner Playlist fest eingeplant ist?
+     * Can a fill or random element put this file on air even though no playlist
+     * schedules it directly?
      */
     public function isReachableByFill(MediaFile $file): bool
     {
@@ -186,8 +180,8 @@ class Index extends Component
     }
 
     /**
-     * Wird von Alpine aufgerufen, wenn ein Chunk-Upload abgeschlossen ist.
-     * Der Pfad ist bereits auf dem Server gespeichert.
+     * Called from Alpine when a chunked upload finished; the path is already on
+     * the server.
      */
     public function addPendingUpload(string $path, ?string $title, ?int $duration, string $clientName, ?string $artist = null, ?string $album = null): void
     {
@@ -247,7 +241,7 @@ class Index extends Component
                 'duration_seconds' => $upload['duration'],
             ]);
 
-            // Lautheit offline (per ffmpeg) messen – einmalig, asynchron.
+            // Measure loudness offline with ffmpeg: once, asynchronously.
             if ($uploadTagIds !== []) {
                 $file->tags()->sync($uploadTagIds);
             }
@@ -315,56 +309,6 @@ class Index extends Component
         $this->dispatch('notify', message: __('File deleted.'), type: 'success');
     }
 
-    public function startEditingFile(int $fileId): void
-    {
-        abort_unless($this->mayWrite, 403);
-
-        $file = $this->station->mediaFiles()->findOrFail($fileId);
-
-        $this->editingFileId = $file->id;
-        $this->editTitle = $file->title;
-        $this->editArtist = $file->artist ?? '';
-        $this->editAlbum = $file->album ?? '';
-        $this->editFadeIn = $file->fade_in;
-    }
-
-    public function saveFileEdit(): void
-    {
-        if (! $this->editingFileId) {
-            return;
-        }
-
-        abort_unless($this->mayWrite, 403);
-
-        $this->validate([
-            'editTitle' => 'required|string|min:1|max:200',
-            'editArtist' => 'nullable|string|max:200',
-            'editAlbum' => 'nullable|string|max:200',
-            'editFadeIn' => 'boolean',
-        ]);
-
-        $file = $this->station->mediaFiles()->findOrFail($this->editingFileId);
-
-        $file->update([
-            'title' => trim($this->editTitle),
-            'artist' => trim($this->editArtist) !== '' ? trim($this->editArtist) : null,
-            'album' => trim($this->editAlbum) !== '' ? trim($this->editAlbum) : null,
-            'fade_in' => $this->editFadeIn,
-        ]);
-
-        $this->cancelEditingFile();
-        $this->dispatch('notify', message: __('Metadata saved.'), type: 'success');
-    }
-
-    public function cancelEditingFile(): void
-    {
-        $this->editingFileId = null;
-        $this->editTitle = '';
-        $this->editArtist = '';
-        $this->editAlbum = '';
-        $this->editFadeIn = false;
-    }
-
     public function createTag(): void
     {
         abort_unless($this->mayWrite, 403);
@@ -384,49 +328,9 @@ class Index extends Component
         $this->station->tags()->findOrFail($tagId)->delete();
     }
 
-    public function startEditingTags(int $fileId): void
-    {
-        abort_unless($this->mayWrite, 403);
-
-        $file = $this->station->poolMediaFiles()->with('tags')->findOrFail($fileId);
-
-        $this->editingTagsForFileId = $fileId;
-        $this->editingTagIds = $file->tags
-            ->pluck('id')
-            ->map(fn ($id) => (string) $id)
-            ->all();
-    }
-
-    public function saveFileTags(): void
-    {
-        abort_unless($this->mayWrite, 403);
-
-        if (! $this->editingTagsForFileId) {
-            return;
-        }
-
-        $file = $this->station->poolMediaFiles()->findOrFail($this->editingTagsForFileId);
-
-        // Tags and files now share one tenant scope, so a plain sync is enough: there
-        // are no foreign tags left to preserve.
-        $tenantTagIds = $this->station->tags()->pluck('id')->all();
-        $selected = array_intersect(array_map('intval', $this->editingTagIds), $tenantTagIds);
-
-        $file->tags()->sync($selected);
-
-        $this->editingTagsForFileId = null;
-        $this->editingTagIds = [];
-    }
-
-    public function cancelEditingTags(): void
-    {
-        $this->editingTagsForFileId = null;
-        $this->editingTagIds = [];
-    }
-
     /**
-     * Wählt alle aktuell sichtbaren Dateien aus bzw. hebt die Auswahl auf,
-     * wenn bereits alle sichtbaren ausgewählt sind.
+     * Selects every visible file, or clears the selection when they are all
+     * selected already.
      */
     public function toggleSelectAll(): void
     {

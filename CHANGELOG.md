@@ -14,10 +14,32 @@ to stand on its own.
 
 ## [Unreleased]
 
+**New in this release: the playlist editor and date/time limits** Building an hour was quite complicated.
+ The playlist editor was redesigned to make things easier. Also we support limiting elements to certain
+ days and times. Like have a "morning jingle" you can set it to be played only in the morning even when
+ using a random element for your jingles.
+
+
 ### Added
-- Tags can be set while uploading.
-- **A second person can be given full rights on a station.** Old owners are now founders.
-  You can therefore elevate a person being an owner who has more rights (like deleting media).
+- **Elements can be limited to certain times and weekdays.** A good-morning jingle pulled
+  in by a random element could turn up at three in the afternoon. Every file can now carry
+  airtime windows: weekdays plus a from/to time, several if needed, and a window may run
+  past midnight. Fill and random elements only pick a file when its planned airtime falls
+  into one of them. What you place in a playlist yourself is never blocked.
+- **Everything about a file is edited in one dialog.** Title, artist and tags were edited
+  inline in the list, the rest lived on a separate detail page. Both are now one dialog
+  that opens wherever the list is scrolled: metadata, tags, airtime windows, replacing the
+  file and the version history. Old detail links open it too.
+- **Tags can be set while uploading.** New files had to be saved first and then hunted down
+  among the untagged ones. The upload form carries a tag picker now: every file of the batch
+  gets those tags when it is saved, and a tag that does not exist yet can be created there
+  without leaving the form.
+- **A second person can be given full rights on a station.** Members could only be editors,
+  and nothing in the interface could raise them. There are three roles now: founder, owner
+  and editor. Every member's role can be switched between editor and owner at any time, and
+  an owner may do everything an editor does plus delete media and manage the station and its
+  team. The founder is whoever created the station: their role cannot be changed or revoked,
+  and deleting the station stays with them alone.
 - **The dashboard shows which external elements are ready to play.** A syndication, a news
   bulletin or a weather report is fetched from somewhere else before it can go on air, and
   until now the only way to tell whether that had happened was the protocol, after the fact.
@@ -67,7 +89,6 @@ to stand on its own.
   has no form to carry it. Insert the element, then set its timestamp with the pencil button
   in the list. Existing timestamps are untouched.
 - **Weekly Grid update** Now has clearer indicators and better navigation through the grid.
-- **Role based permissions** We now have three roles. Founder, Owner, Editor. 
 
 ### Fixed
 - **A prepared element is no longer thrown away shortly before it airs.**
@@ -115,6 +136,27 @@ to stand on its own.
 - **Searching the library from the playlist editor no longer ignores the element type.**
   Looking for a jingle could list music tracks, which were then added as a jingle. The
   search also matches the artist now.
+
+### Upgrade
+
+```sh
+cd /opt/radioring && ./update.sh
+```
+
+The container runs the migrations on start, so no manual step is required. To run them
+yourself:
+
+```sh
+php artisan migrate
+```
+
+Installations that still run the queue on the database are moved to Redis by `update.sh`:
+the jobs still in the table are worked off first, then `QUEUE_CONNECTION` is switched over.
+Long running jobs get their own worker, which the compose template of this release brings
+with it, so make sure the update has pulled the new template before starting.
+
+***It is highly recommended*** to restart the streaming containers after the update. Use the
+stop and then the play button in your dashboard to do so.
 
 ## [0.4.0] - 2026-09-10
 
@@ -279,7 +321,8 @@ First public release. Media library, playlists, weekly grid and rundowns, extern
 live input, outputs to Icecast and laut.fm, per-station Liquidsoap containers, multi-tenant
 and standalone operation, installer and update script.
 
-[Unreleased]: https://github.com/RadioRing/radioring/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/RadioRing/radioring/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/RadioRing/radioring/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/RadioRing/radioring/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/RadioRing/radioring/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/RadioRing/radioring/compare/v0.1.0...v0.2.0

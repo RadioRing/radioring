@@ -1,5 +1,6 @@
 <?php
 
+use App\Livewire\MediaLibrary\FileModal;
 use App\Livewire\MediaLibrary\Index;
 use App\Models\GeneratedPlaylist;
 use App\Models\PlaylistItem;
@@ -70,10 +71,11 @@ test('user can assign tags to a media file', function () {
         'file_path' => 'tenants/test/media/song.mp3',
     ]);
 
-    Livewire::test(Index::class)
-        ->call('startEditingTags', $file->id)
-        ->set('editingTagIds', [(string) $tag1->id, (string) $tag2->id])
-        ->call('saveFileTags');
+    Livewire::test(FileModal::class)
+        ->call('open', $file->id)
+        ->set('tagIds', [(string) $tag1->id, (string) $tag2->id])
+        ->call('save')
+        ->assertHasNoErrors();
 
     expect($file->fresh()->tags->pluck('id')->toArray())
         ->toContain($tag1->id)
@@ -290,10 +292,11 @@ test('only tags from own station can be assigned', function () {
         'file_path' => 'tenants/test/media/song.mp3',
     ]);
 
-    Livewire::test(Index::class)
-        ->call('startEditingTags', $file->id)
-        ->set('editingTagIds', [(string) $foreignTag->id])
-        ->call('saveFileTags');
+    Livewire::test(FileModal::class)
+        ->call('open', $file->id)
+        ->set('tagIds', [(string) $foreignTag->id])
+        ->call('save')
+        ->assertHasNoErrors();
 
     expect($file->fresh()->tags()->count())->toBe(0);
 });

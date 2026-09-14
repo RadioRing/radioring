@@ -1,5 +1,5 @@
 <div x-data="mediaPreview">
-    {{-- Geteiltes Audio-Element zum Vorhören (es spielt immer nur ein Titel) --}}
+    {{-- Shared audio element for previews: only ever one track plays --}}
     <audio x-ref="audio" preload="none" class="d-none"
            @ended="playingId = null"
            x-on:error="errorId = playingId; loadingId = null; playingId = null"></audio>
@@ -32,7 +32,7 @@
         </div>
     @endunless
 
-    {{-- Tag-Manager --}}
+    {{-- Tag manager --}}
     @if($showTagManager && $this->mayWrite)
         <div class="card mb-4">
             <div class="card-header fw-medium d-flex align-items-center justify-content-between">
@@ -65,7 +65,7 @@
         </div>
     @endif
 
-    {{-- Upload-Bereich --}}
+    {{-- Upload area --}}
     @if($showUploadForm && $this->mayWrite)
         <div class="card mb-4" x-data="chunkUploader">
             <div class="card-header fw-medium d-flex align-items-center justify-content-between">
@@ -74,7 +74,7 @@
             </div>
             <div class="card-body">
 
-                {{-- Drop-Zone --}}
+                {{-- Drop zone --}}
                 <div class="border rounded-3 p-4 text-center mb-3"
                      :class="dragging ? 'border-primary bg-primary bg-opacity-10' : ''"
                      style="border-style: dashed !important; border-color: #6c757d; cursor: pointer; transition: all .15s"
@@ -91,7 +91,7 @@
                            @change="onFileInput($event.target.files)">
                 </div>
 
-                {{-- Tags für diesen Upload --}}
+                {{-- Tags for this upload --}}
                 <div class="border rounded-3 p-3 mb-3 bg-light">
                     <div class="fw-medium small mb-1">
                         <i class="bi bi-tags me-1"></i>{{ __('Tags for this upload') }}
@@ -129,10 +129,10 @@
                     </form>
                 </div>
 
-                {{-- Aktive Uploads (Fortschritt) --}}
+                {{-- Uploads in progress --}}
                 <template x-if="queue.length > 0">
                     <div class="mb-3">
-                        {{-- Gesamtstatus --}}
+                        {{-- Overall status --}}
                         <div class="d-flex align-items-center justify-content-between mb-2 small fw-medium">
                             <span>
                                 <span x-text="queue.filter(q => q.status === 'done').length"></span><span>/</span><span x-text="queue.length"></span>
@@ -174,7 +174,7 @@
                     </div>
                 </template>
 
-                {{-- Warteschlange: fertig hochgeladen, noch nicht gespeichert --}}
+                {{-- Queue: uploaded, not saved yet --}}
                 @if(! empty($pendingUploads))
                     <div class="mb-3">
                         <div class="fw-medium small mb-2">
@@ -309,7 +309,7 @@
         </div>
     </div>
 
-    {{-- Dateiliste --}}
+    {{-- File list --}}
     @if($files->isEmpty())
         <div class="text-center py-5">
             <i class="bi bi-music-note-beamed display-4 text-muted"></i>
@@ -318,7 +318,7 @@
     @else
         @php $allVisibleSelected = $files->isNotEmpty() && $files->pluck('id')->diff($selectedFileIds)->isEmpty(); @endphp
 
-        {{-- Auswahl-Leiste --}}
+        {{-- Selection bar --}}
         <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
             <div class="form-check mb-0">
                 <input class="form-check-input" type="checkbox" id="select-all"
@@ -366,16 +366,16 @@
                     <div wire:key="file-{{ $file->id }}">
                         <div class="list-group-item d-flex align-items-center gap-3 py-2">
 
-                            {{-- Auswahl --}}
+                            {{-- Select --}}
                             <input class="form-check-input mt-0 flex-shrink-0" type="checkbox"
                                    value="{{ $file->id }}" wire:model.live="selectedFileIds"
                                    aria-label="{{ __('Auswählen') }}">
 
-                            {{-- Feste Breite, damit die Spalten aller Zeilen fluchten --}}
+                            {{-- Fixed width so the columns line up across rows --}}
                             <span class="text-muted font-monospace flex-shrink-0 text-end"
                                   style="width:3.25rem;font-size:.75rem">#{{ $file->id }}</span>
 
-                            {{-- Vorhören --}}
+                            {{-- Preview --}}
                             <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0 rounded-circle p-0"
                                     style="width:32px;height:32px"
                                     @click="toggle({{ $file->id }}, '{{ route('media.preview', $file) }}')"
@@ -385,7 +385,7 @@
                                    class="bi" :class="playingId === {{ $file->id }} ? 'bi-pause-fill' : 'bi-play-fill'"></i>
                             </button>
 
-                            {{-- Typ-Badge --}}
+                            {{-- Type badge --}}
                             <span class="badge bg-{{ $file->type === 'music' ? 'primary' : 'warning text-dark' }} text-nowrap"
                                   style="min-width:52px">
                                 {{ $file->type === 'music' ? __('Musik') : __('Jingle') }}
@@ -394,7 +394,8 @@
                             {{-- Info --}}
                             <div class="flex-grow-1 overflow-hidden">
                                 <div class="text-truncate fw-medium small">
-                                    <a href="{{ route('media.show', $file) }}" wire:navigate class="text-decoration-none">{{ $file->title }}</a>
+                                    <button type="button" class="btn btn-link p-0 align-baseline text-decoration-none fw-medium"
+                                            wire:click="$dispatch('open-media-file', { fileId: {{ $file->id }} })">{{ $file->title }}</button>
                                     @if($file->artist)
                                         <span class="text-muted fw-normal">&ndash; {{ $file->artist }}</span>
                                     @endif
@@ -431,17 +432,25 @@
                                         </span>
                                     @endif
                                 </div>
-                                @if($visibleTags->isNotEmpty())
+                                @php $airtimeSummary = $file->airtimeWindowsSummary(); @endphp
+                                @if($visibleTags->isNotEmpty() || $airtimeSummary)
                                     <div class="mt-1 d-flex flex-wrap gap-1">
                                         @foreach($visibleTags as $tag)
                                             <span class="badge bg-secondary" style="font-size:.7rem">{{ $tag->name }}</span>
                                         @endforeach
+                                        @if($airtimeSummary)
+                                            <span class="badge text-bg-info-subtle text-info-emphasis border border-info-subtle"
+                                                  style="font-size:.7rem"
+                                                  title="{{ __('Fill and random elements may only pick this file inside these windows.') }}">
+                                                <i class="bi bi-clock-history me-1"></i>{{ $airtimeSummary }}
+                                            </span>
+                                        @endif
                                     </div>
                                 @endif
                             </div>
 
-                            {{-- Verwendung: fest eingeplant, ueber ein Fill-/Zufalls-Element
-                                 erreichbar oder wirklich unbenutzt. --}}
+                            {{-- Usage: scheduled directly, reachable through a fill or random
+                                 element, or really unused. --}}
                             <span class="text-muted-sm text-nowrap text-end flex-shrink-0" style="width:6.5rem">
                                 @if($file->playlist_items_count > 0)
                                     <i class="bi bi-collection me-1"></i>{{ $file->playlist_items_count }}×
@@ -454,29 +463,12 @@
                                 @endif
                             </span>
 
-                            @if($this->mayWrite)
-                                {{-- Edit tags --}}
-                                @if($tags->isNotEmpty())
-                                    <button class="btn btn-sm btn-outline-secondary"
-                                            wire:click="startEditingTags({{ $file->id }})"
-                                            title="{{ __('Edit tags') }}">
-                                        <i class="bi bi-tags"></i>
-                                    </button>
-                                @endif
-
-                                {{-- Edit metadata --}}
-                                <button class="btn btn-sm btn-outline-secondary"
-                                        wire:click="startEditingFile({{ $file->id }})"
-                                        title="{{ __('Edit title & artist') }}">
-                                    <i class="bi bi-pencil"></i>
-                                </button>
-                            @endif
-
-                            {{-- Details --}}
-                            <a href="{{ route('media.show', $file) }}" wire:navigate
-                               class="btn btn-sm btn-outline-secondary" title="{{ __('Details') }}">
-                                <i class="bi bi-info-circle"></i>
-                            </a>
+                            {{-- Everything about a file is edited in the dialog. --}}
+                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                    wire:click="$dispatch('open-media-file', { fileId: {{ $file->id }} })"
+                                    title="{{ $this->mayWrite ? __('Edit element') : __('Details') }}">
+                                <i class="bi {{ $this->mayWrite ? 'bi-pencil' : 'bi-info-circle' }}"></i>
+                            </button>
 
                             @if($this->mayDelete)
                                 {{-- Deleting removes the file from every station of the tenant. --}}
@@ -489,87 +481,13 @@
                             @endif
                         </div>
 
-                        {{-- Metadaten-Editor (inline) --}}
-                        @if($editingFileId === $file->id)
-                            <div class="list-group-item bg-light border-top-0 py-2 px-3">
-                                <form wire:submit="saveFileEdit">
-                                    <div class="row g-2 align-items-start">
-                                        <div class="col-12 col-sm-4">
-                                            <label class="form-label small fw-medium mb-1">{{ __('Titel') }}</label>
-                                            <input type="text" wire:model="editTitle"
-                                                   class="form-control form-control-sm @error('editTitle') is-invalid @enderror">
-                                            @error('editTitle') <div class="invalid-feedback">{{ $message }}</div> @enderror
-                                        </div>
-                                        <div class="col-6 col-sm-3">
-                                            <label class="form-label small fw-medium mb-1">{{ __('Interpret') }}</label>
-                                            <input type="text" wire:model="editArtist"
-                                                   class="form-control form-control-sm @error('editArtist') is-invalid @enderror"
-                                                   placeholder="{{ __('Unbekannt') }}">
-                                            @error('editArtist') <div class="invalid-feedback">{{ $message }}</div> @enderror
-                                        </div>
-                                        <div class="col-6 col-sm-3">
-                                            <label class="form-label small fw-medium mb-1">{{ __('Album') }}</label>
-                                            <input type="text" wire:model="editAlbum"
-                                                   class="form-control form-control-sm @error('editAlbum') is-invalid @enderror"
-                                                   placeholder="{{ __('Unbekannt') }}">
-                                            @error('editAlbum') <div class="invalid-feedback">{{ $message }}</div> @enderror
-                                        </div>
-                                        <div class="col-sm-2 d-flex align-items-end gap-1" style="height:100%">
-                                            <button type="submit" class="btn btn-sm btn-primary" title="{{ __('Speichern') }}">
-                                                <i class="bi bi-check-lg"></i>
-                                            </button>
-                                            <button type="button" class="btn btn-sm btn-outline-secondary"
-                                                    wire:click="cancelEditingFile" title="{{ __('Abbrechen') }}">
-                                                <i class="bi bi-x-lg"></i>
-                                            </button>
-                                        </div>
-                                        <div class="col-12">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" wire:model="editFadeIn"
-                                                       id="editFadeIn-{{ $file->id }}">
-                                                <label class="form-check-label small" for="editFadeIn-{{ $file->id }}">
-                                                    {{ __('Sanft einblenden (Fade-in)') }}
-                                                    <i class="bi bi-question-circle text-muted" title="{{ __('Blendet die Datei beim Ausspielen weich ein statt hart einzusetzen – z.B. für Jingles.') }}"></i>
-                                                </label>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </form>
-                            </div>
-                        @endif
-
-                        {{-- Tag-Editor (inline) --}}
-                        @if($editingTagsForFileId === $file->id)
-                            <div class="list-group-item bg-light border-top-0 py-2 px-3">
-                                <p class="small fw-medium mb-2">{{ __('Tags für') }} „{{ $file->title }}"</p>
-                                <div class="d-flex flex-wrap gap-2 mb-3">
-                                    @foreach($tags as $tag)
-                                        <div class="form-check form-check-inline mb-0">
-                                            <input class="form-check-input" type="checkbox"
-                                                   id="tag-{{ $file->id }}-{{ $tag->id }}"
-                                                   value="{{ $tag->id }}"
-                                                   wire:model="editingTagIds">
-                                            <label class="form-check-label small" for="tag-{{ $file->id }}-{{ $tag->id }}">
-                                                {{ $tag->name }}
-                                            </label>
-                                        </div>
-                                    @endforeach
-                                </div>
-                                <div class="d-flex gap-2">
-                                    <button class="btn btn-sm btn-primary" wire:click="saveFileTags">
-                                        <i class="bi bi-check-lg me-1"></i>{{ __('Speichern') }}
-                                    </button>
-                                    <button class="btn btn-sm btn-outline-secondary" wire:click="cancelEditingTags">
-                                        {{ __('Abbrechen') }}
-                                    </button>
-                                </div>
-                            </div>
-                        @endif
                     </div>
                 @endforeach
             </div>
         </div>
     @endif
+
+    <livewire:media-library.file-modal />
 </div>
 
 @script
@@ -582,7 +500,7 @@ Alpine.data('mediaPreview', () => ({
     toggle(id, url) {
         const audio = this.$refs.audio;
 
-        // Läuft dieser Titel bereits? → pausieren.
+        // Already playing this track? Pause it.
         if (this.playingId === id) {
             audio.pause();
             this.playingId = null;
@@ -608,7 +526,7 @@ Alpine.data('mediaPreview', () => ({
 Alpine.data('chunkUploader', () => ({
     dragging: false,
     queue: [],
-    CHUNK_SIZE: 4 * 1024 * 1024, // 4 MB – bleibt unter konservativen post_max_size/Proxy-Limits
+    CHUNK_SIZE: 4 * 1024 * 1024, // 4 MB, stays under conservative post_max_size and proxy limits
 
     onDrop(event) {
         this.dragging = false;
@@ -620,8 +538,8 @@ Alpine.data('chunkUploader', () => ({
         const files = Array.from(fileList).filter(f => allowed.test(f.name));
         this.$refs.fileInput.value = '';
 
-        // Komplette Auswahl SOFORT sichtbar machen (Status 'queued'),
-        // damit man sieht was ansteht und wann alles fertig ist.
+        // Show the whole selection at once (status 'queued') so you can see what is
+        // pending and when everything is done.
         const jobs = files.map(file => {
             const entry = {
                 id: crypto.randomUUID(),
@@ -634,8 +552,8 @@ Alpine.data('chunkUploader', () => ({
             return { entry, file };
         });
 
-        // Dateien NACHEINANDER hochladen – verhindert viele parallele Requests
-        // (sonst Write-Contention auf SQLite → Hänger/502 hinter dem Proxy).
+        // Upload one after another: parallel requests cause write contention on
+        // SQLite and stall behind the proxy.
         for (const { entry, file } of jobs) {
             await this.uploadFile(entry, file);
         }
@@ -660,7 +578,7 @@ Alpine.data('chunkUploader', () => ({
                 form.append('total_chunks', totalChunks);
                 form.append('file_name', file.name);
 
-                // Chunk mit bis zu 3 Versuchen senden (Netzwerk-/5xx-Fehler abfedern)
+                // Send the chunk with up to 3 attempts to absorb network and 5xx errors.
                 let response, lastErr;
                 for (let attempt = 1; attempt <= 3; attempt++) {
                     try {
