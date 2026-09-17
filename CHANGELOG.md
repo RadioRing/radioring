@@ -14,6 +14,8 @@ to stand on its own.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-17
+
 **New in this release: the playlist editor and date/time limits** Building an hour was quite complicated.
  The playlist editor was redesigned to make things easier. Also we support limiting elements to certain
  days and times. Like have a "morning jingle" you can set it to be played only in the morning even when
