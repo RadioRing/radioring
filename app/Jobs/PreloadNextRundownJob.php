@@ -34,7 +34,6 @@ class PreloadNextRundownJob implements ShouldBeUnique, ShouldQueue
 
     /**
      * Makes sure every active station has a playable rundown for the hours just ahead.
-     *
      */
     public function handle(RundownGeneratorService $generator): void
     {
