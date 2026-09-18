@@ -7,10 +7,12 @@ use App\Models\GeneratedPlaylist;
 use App\Models\GeneratedPlaylistItem;
 use App\Models\HourGridSlot;
 use App\Models\LiquidsoapState;
+use App\Models\MediaFile;
 use App\Models\PlaylistItem;
 use App\Models\Station;
 use App\Models\StationLog;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -383,6 +385,10 @@ class RundownGeneratorService
      * optionally narrowed by tags. A gated file only qualifies when the planned
      * airtime falls into one of its windows; without a match the element is skipped.
      *
+     * The pick is not blindly random: candidates that did not air recently win, so
+     * several random elements in the same hour (and across the previous hours) work
+     * through the pool instead of repeating the same file.
+     *
      * @param  list<array{id: ?int, artist: ?string, album: ?string, at: Carbon}>  $timeline
      * @return int next free position after the inserted track
      */
@@ -394,7 +400,7 @@ class RundownGeneratorService
             $query->whereHas('tags', fn ($q) => $q->whereIn('tags.id', $item->fill_tags));
         }
 
-        $track = $query->inRandomOrder()->first();
+        $track = $this->pickLeastRecentlyAired($query->get(), $timeline, $cursor);
 
         if (! $track) {
             return $position;
@@ -420,5 +426,71 @@ class RundownGeneratorService
         $cursor = $cursor->copy()->addSeconds($track->duration_seconds ?? 0);
 
         return $position;
+    }
+
+    /**
+     * Picks the candidate that aired longest ago, at random among equally old ones.
+     * Never-aired candidates always win; only the airings before $at count, so the
+     * choice follows the planned broadcast timeline, not the generation order.
+     *
+     * @param  Collection<int, MediaFile>  $candidates
+     * @param  list<array{id: ?int, artist: ?string, album: ?string, at: Carbon}>  $timeline
+     */
+    private function pickLeastRecentlyAired(Collection $candidates, array $timeline, Carbon $at): ?MediaFile
+    {
+        if ($candidates->isEmpty()) {
+            return null;
+        }
+
+        /** @var array<int, int> $lastAiredAt */
+        $lastAiredAt = [];
+
+        foreach ($timeline as $entry) {
+            $id = $entry['id'] ?? null;
+
+            if ($id === null || $entry['at'] > $at) {
+                continue;
+            }
+
+            $timestamp = $entry['at']->getTimestamp();
+
+            if (! isset($lastAiredAt[$id]) || $timestamp > $lastAiredAt[$id]) {
+                $lastAiredAt[$id] = $timestamp;
+            }
+        }
+
+        /** @var list<MediaFile> $best */
+        $best = [];
+        $bestAiredAt = null;
+
+        foreach ($candidates as $candidate) {
+            $airedAt = $lastAiredAt[$candidate->id] ?? null;
+
+            if ($best === [] || $this->airsEarlier($airedAt, $bestAiredAt)) {
+                $best = [$candidate];
+                $bestAiredAt = $airedAt;
+
+                continue;
+            }
+
+            if ($airedAt === $bestAiredAt) {
+                $best[] = $candidate;
+            }
+        }
+
+        return $best[array_rand($best)];
+    }
+
+    /**
+     * Whether the first airing is older than the second; null means never aired and
+     * therefore always older.
+     */
+    private function airsEarlier(?int $airedAt, ?int $comparedTo): bool
+    {
+        if ($comparedTo === null) {
+            return false;
+        }
+
+        return $airedAt === null || $airedAt < $comparedTo;
     }
 }

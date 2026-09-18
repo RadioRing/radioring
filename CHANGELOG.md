@@ -19,6 +19,9 @@ to stand on its own.
 - A missing hour is noticed before it goes on air.
 - A long download no longer kills the preparation of external content.
 
+### Changed
+- The random item element now picks the item first that has not been played recently.
+
 ### Upgrade
 
 ```sh
