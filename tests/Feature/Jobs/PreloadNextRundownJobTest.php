@@ -100,3 +100,71 @@ test('skips paused stations', function () {
 
     expect(GeneratedPlaylist::where('station_id', $this->station->id)->count())->toBe(0);
 });
+
+test('the whole horizon is generated, not just the next hour', function () {
+    $currentHour = now()->startOfHour();
+
+    for ($offset = 0; $offset <= 3; $offset++) {
+        $target = $currentHour->copy()->addHours($offset);
+        makeSlotForJob($this->station, $target->dayOfWeekIso - 1, $target->hour);
+    }
+
+    runJob();
+
+    expect(GeneratedPlaylist::where('station_id', $this->station->id)->count())->toBe(4);
+});
+
+test('an hour beyond the horizon is left alone', function () {
+    $beyond = now()->startOfHour()->addHours(4);
+    makeSlotForJob($this->station, $beyond->dayOfWeekIso - 1, $beyond->hour);
+
+    runJob();
+
+    expect(GeneratedPlaylist::where('station_id', $this->station->id)
+        ->where('broadcast_hour', $beyond->hour)
+        ->count())->toBe(0);
+});
+
+test('a half generated draft is rebuilt', function () {
+    $nextHour = now()->addHour()->startOfHour();
+    makeSlotForJob($this->station, $nextHour->dayOfWeekIso - 1, $nextHour->hour);
+
+    runJob();
+
+    // Simulate what an aborted generation used to leave behind.
+    $rundown = GeneratedPlaylist::where('station_id', $this->station->id)->first();
+    $rundown->update(['status' => 'draft', 'generated_at' => null]);
+
+    runJob();
+
+    expect($rundown->fresh()->status)->toBe('ready')
+        ->and($rundown->fresh()->generated_at)->not->toBeNull();
+});
+
+test('the running hour is covered too', function () {
+    $currentHour = now()->startOfHour();
+    makeSlotForJob($this->station, $currentHour->dayOfWeekIso - 1, $currentHour->hour);
+
+    runJob();
+
+    expect(GeneratedPlaylist::where('station_id', $this->station->id)
+        ->where('broadcast_hour', $currentHour->hour)
+        ->where('status', 'ready')
+        ->exists())->toBeTrue();
+});
+
+test('a played rundown in the horizon is not touched', function () {
+    $currentHour = now()->startOfHour();
+    makeSlotForJob($this->station, $currentHour->dayOfWeekIso - 1, $currentHour->hour);
+
+    runJob();
+    $rundown = GeneratedPlaylist::where('station_id', $this->station->id)->first();
+    $rundown->update(['status' => 'played']);
+    $generatedAt = $rundown->generated_at;
+
+    $this->travel(5)->minutes();
+    runJob();
+
+    expect($rundown->fresh()->status)->toBe('played')
+        ->and($rundown->fresh()->generated_at->eq($generatedAt))->toBeTrue();
+});

@@ -45,11 +45,14 @@ php artisan event:cache
 #            Image-Pull. Minuten bis zu einer Stunde.
 #
 # In einer gemeinsamen Queue blockiert ein zehnminütiger Image-Pull alles
-# dahinter. --timeout beim media-Worker gilt für Jobs ohne eigenes $timeout und
-# liegt unter dem retry_after der media-Verbindung (config/queue.php), sonst
-# würde derselbe Job ein zweites Mal ausgeliefert, während der erste noch läuft.
+# dahinter. --timeout gilt für Jobs ohne eigenes $timeout und muss bei BEIDEN
+# Workern unter dem retry_after der jeweiligen Verbindung liegen (config/queue.php),
+# sonst würde derselbe Job ein zweites Mal ausgeliefert, während der erste noch
+# läuft. Der Default-Wert von 60s lief ohne --timeout beim default-Worker: ein
+# Prefetch mit grossem Download oder die Generierung eines ganzen Tages wurde
+# mittendrin abgeschossen, und die Stunden dahinter fehlten on air.
 start_queue_workers() {
-    ( while true; do php artisan queue:work --sleep=3 --tries=3 --max-time=3600 || true; echo "[entrypoint] queue worker (default) beendet, Neustart in 2s"; sleep 2; done ) &
+    ( while true; do php artisan queue:work --sleep=3 --tries=3 --timeout=300 --max-time=3600 || true; echo "[entrypoint] queue worker (default) beendet, Neustart in 2s"; sleep 2; done ) &
     ( while true; do php artisan queue:work media --sleep=5 --tries=3 --timeout=1800 --max-time=3600 || true; echo "[entrypoint] queue worker (media) beendet, Neustart in 2s"; sleep 2; done ) &
 }
 

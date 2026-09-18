@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\RundownAlreadyPlayedException;
 use App\Models\GeneratedPlaylist;
 use App\Models\GeneratedPlaylistItem;
 use App\Models\HourGridSlot;
@@ -24,7 +25,7 @@ class RundownGeneratorService
      * - status=ready   only with $force
      * - status=draft   always overwritten
      *
-     * @throws \RuntimeException when the rundown was already played
+     * @throws RundownAlreadyPlayedException when the rundown was already played
      */
     public function generate(Station $station, HourGridSlot $slot, Carbon $broadcastDate, bool $force = false): GeneratedPlaylist
     {
@@ -39,40 +40,51 @@ class RundownGeneratorService
             // Already played: protected without force, deliberately regeneratable with
             // it, or a wrongly played-marked rundown could never be revived.
             if ($rundown->isPlayed() && ! $force) {
-                throw new \RuntimeException("Rundown für {$date} {$slot->hour}:00 wurde bereits gespielt und kann nicht überschrieben werden.");
+                throw new RundownAlreadyPlayedException("Rundown für {$date} {$slot->hour}:00 wurde bereits gespielt und kann nicht überschrieben werden.");
             }
 
             if ($rundown->isReady() && ! $force) {
                 return $rundown;
             }
-
-            $rundown->items()->delete();
-            $rundown->update([
-                'hour_grid_slot_id' => $slot->id,
-                'playlist_id' => $slot->playlist_id,
-                'start_mode' => $slot->playlist->start_mode ?? 'soft',
-                'status' => 'draft',
-                'generated_at' => null,
-            ]);
-        } else {
-            $rundown = GeneratedPlaylist::create([
-                'station_id' => $station->id,
-                'hour_grid_slot_id' => $slot->id,
-                'playlist_id' => $slot->playlist_id,
-                'start_mode' => $slot->playlist->start_mode ?? 'soft',
-                'broadcast_date' => $date,
-                'broadcast_hour' => $slot->hour,
-                'status' => 'draft',
-                'generated_at' => null,
-            ]);
         }
 
         $broadcastStart = $broadcastDate->copy()->setHour($slot->hour)->setMinute(0)->setSecond(0);
 
-        $this->resolveItems($station, $slot, $rundown, $broadcastStart);
-        $this->calculateAbsoluteTimes($rundown, $broadcastStart);
+        // Everything that touches the rundown runs in one transaction. Rebuilding wipes
+        // the items first, so an abort halfway through (a killed worker, a failing
+        // element) would otherwise leave a draft with a partial hour behind: the
+        // playout only ever serves "ready", so that hour would be silent. With the
+        // rollback the previous version simply stays in place.
+        $rundown = DB::transaction(function () use ($station, $slot, $rundown, $broadcastStart, $date): GeneratedPlaylist {
+            if ($rundown) {
+                $rundown->items()->delete();
+                $rundown->update([
+                    'hour_grid_slot_id' => $slot->id,
+                    'playlist_id' => $slot->playlist_id,
+                    'start_mode' => $slot->playlist->start_mode ?? 'soft',
+                    'status' => 'draft',
+                    'generated_at' => null,
+                ]);
+            } else {
+                $rundown = GeneratedPlaylist::create([
+                    'station_id' => $station->id,
+                    'hour_grid_slot_id' => $slot->id,
+                    'playlist_id' => $slot->playlist_id,
+                    'start_mode' => $slot->playlist->start_mode ?? 'soft',
+                    'broadcast_date' => $date,
+                    'broadcast_hour' => $slot->hour,
+                    'status' => 'draft',
+                    'generated_at' => null,
+                ]);
+            }
 
-        $rundown->update(['status' => 'ready', 'generated_at' => now()]);
+            $this->resolveItems($station, $slot, $rundown, $broadcastStart);
+            $this->calculateAbsoluteTimes($rundown, $broadcastStart);
+
+            $rundown->update(['status' => 'ready', 'generated_at' => now()]);
+
+            return $rundown;
+        }, 3);
 
         // If this rundown is live, reset the playout cursor: the items have new IDs
         // and positions, so the old cursor would be inconsistent. The now_playing FK

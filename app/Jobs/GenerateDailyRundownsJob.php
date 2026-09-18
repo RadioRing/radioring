@@ -3,12 +3,17 @@
 namespace App\Jobs;
 
 use App\Models\Station;
-use App\Services\RundownGeneratorService;
 use Carbon\Carbon;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Support\Facades\Log;
 
+/**
+ * Hands out one GenerateRundownJob per station and broadcast hour.
+ *
+ * This job only fans out; the work itself happens per hour. The hours of a station are
+ * dispatched in order, so a worker picks them up in broadcast order and the rotation
+ * history of the preceding hours is in place when the next one is built.
+ */
 class GenerateDailyRundownsJob implements ShouldQueue
 {
     use Queueable;
@@ -23,9 +28,8 @@ class GenerateDailyRundownsJob implements ShouldQueue
         public readonly bool $force = false,
     ) {}
 
-    public function handle(RundownGeneratorService $generator): void
+    public function handle(): void
     {
-        // Carbon\Carbon sicherstellen (nicht Immutable) – der Generator mutiert den Cursor in-place.
         $date = $this->targetDate ?? Carbon::now()->addDay()->startOfDay();
         // 0=Mo...6=So (Carbon: 1=Mo...7=So → -1)
         $weekday = ($date->dayOfWeekIso - 1);
@@ -42,18 +46,11 @@ class GenerateDailyRundownsJob implements ShouldQueue
 
             $slots = $station->hourGridSlots()
                 ->where('weekday', $weekday)
-                ->with('playlist.items.mediaFile')
                 ->orderBy('hour')
                 ->get();
 
             foreach ($slots as $slot) {
-                try {
-                    $generator->generate($station, $slot, $date, $force);
-                } catch (\RuntimeException $e) {
-                    // played-Rundowns überspringen – kein Fehler loggen
-                } catch (\Throwable $e) {
-                    Log::error("Rundown-Generierung fehlgeschlagen: Station #{$station->id}, {$date->toDateString()} {$slot->hour}:00 – {$e->getMessage()}");
-                }
+                GenerateRundownJob::dispatch($station->id, $slot->id, $date->toDateString(), $force);
             }
         }
     }

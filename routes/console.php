@@ -15,8 +15,7 @@ Artisan::command('inspire', function () {
 // Täglich um 22:00 – alle 24 Rundowns für den Folgetag generieren
 Schedule::job(new GenerateDailyRundownsJob)->dailyAt('22:00');
 
-// Jede Stunde um :55 – Rundown der nächsten Stunde sicherstellen (5 min Vorlauf)
-Schedule::job(new PreloadNextRundownJob)->hourlyAt(55);
+Schedule::job(new PreloadNextRundownJob)->everyFifteenMinutes();
 
 // Stündlich – verwaiste Upload-Chunks aufräumen
 Schedule::command('media:prune-chunks')->hourly();

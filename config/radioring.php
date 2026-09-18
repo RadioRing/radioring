@@ -133,6 +133,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Rundown-Vorlauf: Horizont der Selbstheilung
+    |--------------------------------------------------------------------------
+    | Wie viele Stunden im Voraus geprueft wird, ob ein sendefaehiger Rundown
+    | vorliegt. Der naechtliche Lauf erzeugt den ganzen Tag; dieser Horizont ist
+    | das Netz darunter: faellt eine Stunde aus, wird sie nachgezogen, lange bevor
+    | der Container sie anfragt. Die laufende Stunde (Offset 0) ist immer dabei.
+    |
+    */
+    'rundown_preload_horizon_hours' => (int) env('RUNDOWN_PRELOAD_HORIZON_HOURS', 3),
+
+    /*
+    |--------------------------------------------------------------------------
     | Musik-Rotation: Titel-Cooldown
     |--------------------------------------------------------------------------
     | Reduziert Wiederholungen desselben Titels über den Tag. Innerhalb des

@@ -6,6 +6,7 @@ use App\Models\LiquidsoapState;
 use App\Models\Station;
 use App\Models\StationLog;
 use App\Models\User;
+use App\Services\MusicRotationPlanner;
 use App\Services\RundownGeneratorService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -252,4 +253,49 @@ test('regenerating a live rundown resets the liquidsoap state cursor', function 
         // laufenden Track weiter anzeigt, bis der nächste Callback kommt.
         ->and($state->now_playing_title)->toBe('Song')
         ->and($state->now_playing_started_at)->not->toBeNull();
+});
+
+test('a failure during regeneration leaves the previous rundown intact', function () {
+    $slot = makeSlot($this->station);
+    $track = $this->station->mediaFiles()->create([
+        'title' => 'Song',
+        'type' => 'music',
+        'file_path' => 'song.mp3',
+        'duration_seconds' => 180,
+    ]);
+    $slot->playlist->items()->create([
+        'position' => 0,
+        'type' => 'music',
+        'title' => 'Song',
+        'media_file_id' => $track->id,
+    ]);
+    // A fill element, so the rotation planner is reached and can be made to fail.
+    $slot->playlist->items()->create([
+        'position' => 1,
+        'type' => 'fill',
+        'title' => 'Fill',
+        'fill_max_duration_seconds' => 600,
+    ]);
+
+    $rundown = $this->service->generate($this->station, $slot, $this->broadcastDate);
+    $itemIds = $rundown->items()->orderBy('position')->pluck('id')->all();
+    $generatedAt = $rundown->generated_at;
+
+    expect($itemIds)->not->toBeEmpty();
+
+    // The planner blows up halfway through the rebuild, after the items were wiped.
+    $this->mock(MusicRotationPlanner::class, function ($mock) {
+        $mock->shouldReceive('historyWindowSeconds')->andReturn(10800);
+        $mock->shouldReceive('plan')->andThrow(new RuntimeException('boom'));
+    });
+
+    expect(fn () => app(RundownGeneratorService::class)
+        ->generate($this->station, $slot, $this->broadcastDate, force: true))
+        ->toThrow(RuntimeException::class, 'boom');
+
+    $rundown->refresh();
+
+    expect($rundown->status)->toBe('ready')
+        ->and($rundown->generated_at->eq($generatedAt))->toBeTrue()
+        ->and($rundown->items()->orderBy('position')->pluck('id')->all())->toBe($itemIds);
 });

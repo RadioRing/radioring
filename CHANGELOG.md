@@ -14,6 +14,25 @@ to stand on its own.
 
 ## [Unreleased]
 
+### Fixed
+- Rundowns that were missing the next morning.
+- A missing hour is noticed before it goes on air.
+- A long download no longer kills the preparation of external content.
+
+### Upgrade
+
+```sh
+cd /opt/radioring && ./update.sh
+```
+
+No migrations, no manual step. The new worker timeout takes effect when the container
+restarts.
+
+If your `.env` sets `REDIS_QUEUE_RETRY_AFTER` (or `DB_QUEUE_RETRY_AFTER`) by hand, raise it
+to at least 360. It has to stay above the worker timeout, otherwise the queue hands the same
+job to the next worker while the first one is still working on it. Installations that never
+set the value get the new default automatically.
+
 ## [0.5.0] - 2026-09-17
 
 **New in this release: the playlist editor and date/time limits** Building an hour was quite complicated.
