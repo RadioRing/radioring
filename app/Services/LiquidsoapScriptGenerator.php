@@ -99,7 +99,10 @@ class LiquidsoapScriptGenerator
         $lines[] = $this->liveStatusCallbacks();
         $lines[] = '';
         $lines[] = "live = input.harbor(\"live\", port={$livePort}, password=\"{$livePassword}\", buffer=5., max=60., on_connect=on_live_connect, on_disconnect=on_live_disconnect)";
-        $lines[] = "radio = fallback(track_sensitive=false, [live, {$programSource}, blank()])";
+        $lines[] = '';
+        $lines[] = $this->emergencyBranch();
+        $lines[] = '';
+        $lines[] = "radio = fallback(track_sensitive=false, [live, {$programSource}, emergency, blank()])";
         $lines[] = '';
         $lines[] = $this->requestQueueWatchdog($programSource);
 
@@ -311,6 +314,43 @@ LIQ;
     }
 
     /**
+     * The emergency loop, on air whenever neither live nor the programme is available.
+     *
+     * Plays from inside the container, so it also covers an outage of this application:
+     * the files are downloaded by the entrypoint before Liquidsoap starts and stay there.
+     * blank() remains the last member for the cases the loop cannot cover either (nothing
+     * selected, nothing synced yet, every file broken).
+     *
+     * An .m3u rather than the directory itself, because Liquidsoap accepts annotate: lines
+     * in a playlist file, which is how each file carries its offline measured liq_amplify.
+     * cut_gain and fade.in stay on the programme branch: a hard cut must not turn the
+     * emergency loop down.
+     *
+     * track_sensitive=false on the fallback means the returning programme cuts an
+     * emergency file off mid-word. That is what a station wants.
+     */
+    private function emergencyBranch(): string
+    {
+        $playlist = rtrim((string) config('radioring.emergency.directory'), '/').'/emergency.m3u';
+
+        $lines = [
+            '# Emergency loop: local files, played while the programme branch is unavailable.',
+            "emergency = playlist(id=\"emergency\", mode=\"randomize\", reload_mode=\"rounds\", reload=1, \"{$playlist}\")",
+        ];
+
+        if (config('radioring.loudness.enabled', true)) {
+            $lines[] = 'emergency = amplify(1., override="liq_amplify", emergency)';
+        }
+
+        // Marks the branch for the now-playing callback: without it an emergency file,
+        // which carries no radioring_item_id, would be reported as a live takeover.
+        $lines[] = 'emergency = metadata.map(fun (_) -> [("radioring_source", "emergency")], emergency)';
+
+        return implode('
+', $lines);
+    }
+
+    /**
      * How often the watchdog looks at the programme branch, in seconds.
      */
     private const WATCHDOG_INTERVAL_SECONDS = 10;
@@ -358,7 +398,8 @@ def on_meta(m) =
     item_id = m["radioring_item_id"],
     filename = m["filename"],
     title = m["title"],
-    artist = m["artist"]
+    artist = m["artist"],
+    source = m["radioring_source"]
   })
   try
     ignore(http.post(

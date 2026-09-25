@@ -14,10 +14,6 @@ input has reordered this document before.
 
 The difference between "works" and "can be left alone overnight".
 
-- **An emergency loop.** The station script ends on `fallback([live, program, blank()])`.
-  During a deploy, a database outage or a failing `/next`, the station sends silence. Every
-  station gets an emergency playlist held inside the container. The underrun watchdog exists
-  already; it has nothing to play.
 - **Intervening in the running hour.** Watching something go wrong in the dashboard and
   having nothing to do about it but regenerate the rundown, which throws away the hour. An
   element should be draggable into the programme that is on air, right behind the track

@@ -167,6 +167,19 @@ class Station extends Model
     }
 
     /**
+     * The files this station falls back to while the programme branch is unavailable.
+     * Played from inside the container, so the loop survives an outage of this app.
+     */
+    public function emergencyItems(): BelongsToMany
+    {
+        return $this->belongsToMany(MediaFile::class, 'station_emergency_items')
+            ->withPivot('position')
+            ->withTimestamps()
+            ->orderByPivot('position')
+            ->orderByPivot('id');
+    }
+
+    /**
      * Tags are tenant-wide too, so one file can be tagged consistently across every
      * station of the tenant.
      */

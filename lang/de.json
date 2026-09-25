@@ -417,5 +417,22 @@
     "Airs around the clock.": "Läuft rund um die Uhr.",
     "Fill and random elements may only pick this file inside these windows.": "Fill- und Zufallselemente dürfen diese Datei nur in diesen Fenstern ziehen.",
     "Edit element": "Element bearbeiten",
-    "No tags yet. Create them from the library list.": "Noch keine Tags. Lege sie in der Bibliotheksliste an."
+    "No tags yet. Create them from the library list.": "Noch keine Tags. Lege sie in der Bibliotheksliste an.",
+    "Emergency loop": "Notfallschleife",
+    "The emergency loop took over: neither the programme nor a live takeover was available.": "Die Notfallschleife hat übernommen: weder das Programm noch eine Live-Übernahme war verfügbar.",
+    "The programme is back, the emergency loop is off air.": "Das Programm ist zurück, die Notfallschleife ist beendet.",
+    "Programme underrun: nothing left to play since :time, the emergency loop took over.": "Programm-Underrun: seit :time nichts mehr zum Abspielen, die Notfallschleife hat übernommen.",
+    "Programme underrun: the emergency loop is on air.": "Programm-Underrun: die Notfallschleife ist auf Sendung.",
+    "EMERGENCY LOOP": "NOTFALLSCHLEIFE",
+    "Programme is back": "Programm zurück",
+    "These files play whenever neither a live takeover nor the programme is available: during an update, a database outage or a rundown that ran out. They are held inside the station container, so they keep playing even while RadioRing itself is unreachable.": "Diese Dateien laufen, wenn weder eine Live-Übernahme noch das Programm verfügbar ist: bei einem Update, einem Datenbankausfall oder einem Rundown, der zu früh endet. Sie liegen im Stationscontainer und spielen daher weiter, selbst wenn RadioRing selbst nicht erreichbar ist.",
+    "Nothing selected: this station sends silence during a fault.": "Nichts ausgewählt: diese Station sendet bei einer Störung Stille.",
+    ":used of :max files, :size": ":used von :max Dateien, :size",
+    "Container last fetched them :time.": "Der Container hat sie :time geholt.",
+    "The container has not fetched them yet.": "Der Container hat sie noch nicht geholt.",
+    "Add from the media library": "Aus der Mediathek hinzufügen",
+    "Search title or artist": "Titel oder Interpret suchen",
+    "No file found.": "Keine Datei gefunden.",
+    "The emergency loop holds at most :count files.": "Die Notfallschleife fasst höchstens :count Dateien.",
+    "The emergency loop holds at most :size.": "Die Notfallschleife fasst höchstens :size."
 }

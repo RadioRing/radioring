@@ -14,6 +14,16 @@ to stand on its own.
 
 ## [Unreleased]
 
+### Added
+- **An emergency loop per station.** Without a live takeover and without a programme the
+  station sent silence: during an update, a database outage or an hour whose rundown ran out
+  early. Pick a few files from the library under *Edit station* and they play instead. They
+  are held inside the station container, so the loop also covers RadioRing being unreachable,
+  and the measured loudness travels with them. The dashboard shows *EMERGENCY LOOP* while it
+  is on air, the protocol records the start and the return to the programme, and a changed
+  selection reaches the container within seconds without restarting the stream. Stations that
+  select nothing keep sending silence.
+
 ### Fixed
 - Rundowns that were missing the next morning.
 - A missing hour is noticed before it goes on air.
@@ -28,8 +38,11 @@ to stand on its own.
 cd /opt/radioring && ./update.sh
 ```
 
-No migrations, no manual step. The new worker timeout takes effect when the container
-restarts.
+This release migrates the database. `update.sh` runs the migrations itself. The new worker
+timeout takes effect when the container restarts.
+
+The station containers are rebuilt on update and then fetch their emergency files by
+themselves. Nothing has to be copied by hand.
 
 If your `.env` sets `REDIS_QUEUE_RETRY_AFTER` (or `DB_QUEUE_RETRY_AFTER`) by hand, raise it
 to at least 360. It has to stay above the worker timeout, otherwise the queue hands the same

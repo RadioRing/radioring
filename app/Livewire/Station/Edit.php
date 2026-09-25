@@ -5,8 +5,10 @@ namespace App\Livewire\Station;
 use App\Models\Station;
 use App\Models\User;
 use App\Services\LiquidsoapCommandService;
+use App\Support\EmergencyLoop;
 use App\Support\StereoToolPresetLibrary;
 use App\Support\StereoToolTerms;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Locked;
@@ -39,6 +41,8 @@ class Edit extends Component
     public ?TemporaryUploadedFile $presetUpload = null;
 
     public string $presetName = '';
+
+    public string $emergencySearch = '';
 
     public string $memberEmail = '';
 
@@ -171,6 +175,60 @@ class Edit extends Component
         );
     }
 
+    /**
+     * The emergency loop is capped in count and in size: the files are copied into the
+     * container's writable layer, where a whole library would not fit.
+     */
+    public function addEmergencyFile(int $mediaFileId): void
+    {
+        $file = $this->station->poolMediaFiles()->findOrFail($mediaFileId);
+
+        if ($this->station->emergencyItems()->count() >= EmergencyLoop::maxFiles()) {
+            $this->dispatch('notify',
+                message: __('The emergency loop holds at most :count files.', ['count' => EmergencyLoop::maxFiles()]),
+                type: 'error',
+            );
+
+            return;
+        }
+
+        $maxBytes = EmergencyLoop::maxBytes();
+        $size = Storage::disk('local')->exists($file->file_path)
+            ? (int) Storage::disk('local')->size($file->file_path)
+            : 0;
+
+        if ($maxBytes > 0 && EmergencyLoop::totalBytes($this->station) + $size > $maxBytes) {
+            $this->dispatch('notify',
+                message: __('The emergency loop holds at most :size.', ['size' => $this->formatBytes($maxBytes)]),
+                type: 'error',
+            );
+
+            return;
+        }
+
+        $this->station->emergencyItems()->syncWithoutDetaching([
+            $file->id => [
+                'position' => 1 + (int) $this->station->emergencyItems()->max('station_emergency_items.position'),
+            ],
+        ]);
+
+        $this->emergencySearch = '';
+
+        app(LiquidsoapCommandService::class)->syncEmergency($this->station);
+    }
+
+    public function removeEmergencyFile(int $mediaFileId): void
+    {
+        $this->station->emergencyItems()->detach($mediaFileId);
+
+        app(LiquidsoapCommandService::class)->syncEmergency($this->station);
+    }
+
+    public function formatBytes(int $bytes): string
+    {
+        return number_format($bytes / 1024 / 1024, 1).' MB';
+    }
+
     public function addMember(): void
     {
         $this->validate([
@@ -253,8 +311,23 @@ class Edit extends Component
 
     public function render()
     {
+        $emergencyFiles = $this->station->emergencyItems()->get();
+
         return view('livewire.station.edit', [
             'members' => $this->station->members()->orderByPivot('role')->get(),
+            'emergencyFiles' => $emergencyFiles,
+            'emergencyCandidates' => $this->station->poolMediaFiles()
+                ->when($this->emergencySearch !== '', fn ($query) => $query
+                    ->where(fn ($q) => $q->where('title', 'like', '%'.$this->emergencySearch.'%')
+                        ->orWhere('artist', 'like', '%'.$this->emergencySearch.'%')))
+                ->whereNotIn('id', $emergencyFiles->pluck('id'))
+                ->orderBy('title')
+                ->limit(10)
+                ->get(),
+            'emergencyBytes' => EmergencyLoop::totalBytes($this->station),
+            'emergencyMaxFiles' => EmergencyLoop::maxFiles(),
+            'emergencyMaxBytes' => EmergencyLoop::maxBytes(),
+            'emergencySyncedAt' => $this->station->liquidsoapState?->emergency_synced_at,
             'stereoToolPresetGroups' => StereoToolPresetLibrary::grouped($this->station),
             'stereoToolUploads' => $this->station->stereoToolPresets()->orderBy('name')->get(),
             'stereoToolLicenceUrl' => StereoToolTerms::licenceUrl(),

@@ -105,6 +105,9 @@ For the legacy driver: `PORTAINER_ENDPOINT`, `PORTAINER_TOKEN`, `PORTAINER_ENVIR
 | `DELIVERY_URL_TTL_SECONDS` | `21600` | Lifetime of the signed media URLs. Generous on purpose: the prefetch cursor runs ahead, and a hard start can hold items back. Too short means silence on air. |
 | `LOUDNESS_NORMALIZATION` | `true` | Offline EBU R128 measurement at upload time |
 | `LOUDNESS_TARGET_LUFS` | `-14` | |
+| `EMERGENCY_MAX_FILES` | `10` | Files a station may hold in its emergency loop |
+| `EMERGENCY_MAX_BYTES` | `209715200` | Total size of those files. They live in the container's writable layer. 0 means no limit. |
+| `EMERGENCY_SYNC_INTERVAL` | `900` | How often the container refetches its emergency files. A change in the panel is pushed at once; this is the safety net. |
 
 ### 3.4 Control channel
 

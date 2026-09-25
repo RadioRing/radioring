@@ -108,6 +108,9 @@ Für den Legacy-Treiber: `PORTAINER_ENDPOINT`, `PORTAINER_TOKEN`, `PORTAINER_ENV
 | `DELIVERY_URL_TTL_SECONDS` | `21600` | Gültigkeit der signierten Medien-URLs. Bewusst großzügig: der Pull-Cursor läuft voraus, ein Hard-Start kann Items zurückhalten. Zu kurz bedeutet Stille auf Sendung. |
 | `LOUDNESS_NORMALIZATION` | `true` | Offline-Messung nach EBU R128 beim Upload |
 | `LOUDNESS_TARGET_LUFS` | `-14` | |
+| `EMERGENCY_MAX_FILES` | `10` | Dateien, die eine Station in ihrer Notfallschleife halten darf |
+| `EMERGENCY_MAX_BYTES` | `209715200` | Gesamtgröße dieser Dateien. Sie liegen im Writable Layer des Containers. 0 = ohne Grenze. |
+| `EMERGENCY_SYNC_INTERVAL` | `900` | Wie oft der Container seine Notfalldateien erneut holt. Eine Änderung im Panel wird sofort geschickt, das hier ist das Netz darunter. |
 
 ### 3.4 Befehlskanal
 

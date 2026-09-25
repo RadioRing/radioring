@@ -43,6 +43,15 @@ class LiquidsoapCommandService
     }
 
     /**
+     * Makes the container fetch the emergency manifest again. Cheaper than a restart,
+     * which would tear a hole in the stream.
+     */
+    public function syncEmergency(Station $station): bool
+    {
+        return $this->publish($station, 'sync_emergency');
+    }
+
+    /**
      * @param  array<string, mixed>  $extra  Zusätzliche Felder der Befehls-Nachricht.
      */
     protected function publish(Station $station, string $command, array $extra = []): bool

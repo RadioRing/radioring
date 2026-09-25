@@ -353,6 +353,28 @@ Under **Edit station**, available to the owner:
 > them access to the media library of your **account**, including material of your other
 > stations. Editors cannot delete media.
 
+### Emergency loop
+
+The station script plays a live takeover first, the programme second. If neither is
+available, during an update, a database outage or an hour whose rundown ran out, the station
+used to send silence. Pick a few files under **Edit station** and they play instead.
+
+- The files are copied into the station container and play from there, so the loop keeps
+  running even while RadioRing itself is unreachable.
+- They are picked at random and repeat as long as needed. Their measured loudness is
+  applied, so the loop is as loud as the programme.
+- As soon as the programme is available again it takes over, cutting the emergency file off
+  wherever it happens to be.
+- The dashboard shows **EMERGENCY LOOP** while it is on air, and the protocol records the
+  start and the return to the programme.
+- The number of files and their total size are capped: the container has to hold them.
+- Selecting or removing a file takes effect within a few seconds, without restarting the
+  stream. The card says when the container last fetched the set.
+- Nothing selected means the old behaviour: silence during a fault.
+
+Anything works as content: a jingle, a spoken announcement, a music bed. Two or three files
+are enough.
+
 ---
 
 ## 11. Administration

@@ -25,6 +25,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'last_pulled_at',
     'underrun_started_at',
     'underrun_logged_at',
+    'emergency_synced_at',
 ])]
 class LiquidsoapState extends Model
 {
@@ -59,6 +60,7 @@ class LiquidsoapState extends Model
             'last_pulled_at' => 'datetime',
             'underrun_started_at' => 'datetime',
             'underrun_logged_at' => 'datetime',
+            'emergency_synced_at' => 'datetime',
             'now_playing_duration_seconds' => 'integer',
             'live_active' => 'boolean',
             'live_started_at' => 'datetime',
@@ -115,6 +117,12 @@ class LiquidsoapState extends Model
         return $this->now_playing_started_at->copy()->addSeconds($assumedDuration);
     }
 
+    /** Is the emergency loop on air right now? */
+    public function onEmergency(): bool
+    {
+        return $this->now_playing_source_type === 'emergency' && ! $this->nowPlayingHasEnded();
+    }
+
     /**
      * Is the station in a confirmed programme underrun?
      *
@@ -141,11 +149,21 @@ class LiquidsoapState extends Model
      */
     public function underrunSeconds(): ?int
     {
-        if (! $this->underrun_started_at || $this->live_active || ! $this->nowPlayingHasEnded()) {
+        if (! $this->underrun_started_at || $this->live_active) {
             return null;
         }
 
-        $silenceSince = $this->nowPlayingEndsAt();
+        // The emergency loop reports a track like any other source, so without this its
+        // snapshot would look like the programme being back. It is not: the programme is
+        // still dry, and the gap is measured from the first dry pull, which is the only
+        // timestamp available here.
+        $onEmergency = $this->onEmergency();
+
+        if (! $onEmergency && ! $this->nowPlayingHasEnded()) {
+            return null;
+        }
+
+        $silenceSince = $onEmergency ? $this->underrun_started_at : $this->nowPlayingEndsAt();
 
         if ($silenceSince === null || $this->underrun_started_at->gt($silenceSince)) {
             $silenceSince = $this->underrun_started_at;

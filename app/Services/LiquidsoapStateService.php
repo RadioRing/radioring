@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\GeneratedPlaylist;
 use App\Models\GeneratedPlaylistItem;
 use App\Models\LiquidsoapState;
+use App\Models\MediaFile;
 use App\Models\Station;
 use App\Models\StationLog;
 use Carbon\CarbonInterface;
@@ -127,9 +128,13 @@ class LiquidsoapStateService
             'station_id' => $station->id,
             'event' => StationLog::EVENT_UNDERRUN,
             'generated_playlist_id' => $state->current_rundown_id,
-            'message' => __('Programme underrun: nothing left to play since :time, the station is sending silence.', [
-                'time' => $silenceSince->format('H:i:s'),
-            ]),
+            'message' => $station->emergencyItems()->exists()
+                ? __('Programme underrun: nothing left to play since :time, the emergency loop took over.', [
+                    'time' => $silenceSince->format('H:i:s'),
+                ])
+                : __('Programme underrun: nothing left to play since :time, the station is sending silence.', [
+                    'time' => $silenceSince->format('H:i:s'),
+                ]),
             'occurred_at' => $silenceSince,
         ]);
     }
@@ -162,6 +167,7 @@ class LiquidsoapStateService
 
             // Vorheriger Zustand (für die Übergangs-Erkennung live → playlist).
             $wasLive = (bool) $state->live_active;
+            $wasEmergency = $state->onEmergency();
 
             // Doppelmeldung DESSELBEN Tracks: Liquidsoap meldet denselben Track manchmal
             // erneut (z. B. beim Wieder-Anlaufen der Playlist nach einem Container-Neustart).
@@ -214,7 +220,7 @@ class LiquidsoapStateService
                 }
             }
 
-            return ['duplicate' => false, 'wasLive' => $wasLive];
+            return ['duplicate' => false, 'wasLive' => $wasLive, 'wasEmergency' => $wasEmergency];
         }, self::TRANSACTION_ATTEMPTS);
 
         // Doppelmeldung → kein Protokoll, kein Snapshot-Reset.
@@ -223,6 +229,15 @@ class LiquidsoapStateService
         }
 
         $wasLive = $result['wasLive'];
+
+        if ($result['wasEmergency'] && $item) {
+            StationLog::create([
+                'station_id' => $station->id,
+                'event' => StationLog::EVENT_EMERGENCY_STOPPED,
+                'message' => __('The programme is back, the emergency loop is off air.'),
+                'occurred_at' => now(),
+            ]);
+        }
 
         // Protokoll: Wechsel von Live zurück auf das reguläre Programm festhalten.
         if ($wasLive) {
@@ -321,6 +336,57 @@ class LiquidsoapStateService
             'artist' => $artist,
             'occurred_at' => now(),
         ]);
+    }
+
+    /**
+     * The emergency loop is on air: neither live nor the programme was available.
+     *
+     * Reported like any other track by on_metadata, but marked with radioring_source, which
+     * is what keeps it out of the live takeover branch. The underrun fields stay untouched:
+     * the programme is still dry, and the dashboard has to keep saying so.
+     */
+    public function setNowPlayingEmergency(Station $station, ?MediaFile $file, ?string $title, ?string $artist): void
+    {
+        $wasEmergency = DB::transaction(function () use ($station, $file, $title, $artist) {
+            $state = LiquidsoapState::firstOrCreate(['station_id' => $station->id]);
+
+            $wasEmergency = $state->onEmergency();
+
+            $state->update([
+                'now_playing_item_id' => null,
+                'now_playing_title' => $file?->title ?: ($title ?: __('Emergency loop')),
+                'now_playing_artist' => $file?->artist ?: $artist,
+                'now_playing_source_type' => 'emergency',
+                'now_playing_duration_seconds' => $file?->duration_seconds,
+                'now_playing_started_at' => now(),
+                'live_active' => false,
+                'live_title' => null,
+                'live_artist' => null,
+                'live_started_at' => null,
+            ]);
+
+            return $wasEmergency;
+        }, self::TRANSACTION_ATTEMPTS);
+
+        // Once per episode, not per track: a loop running all night would otherwise fill
+        // the protocol on its own.
+        if (! $wasEmergency) {
+            StationLog::create([
+                'station_id' => $station->id,
+                'event' => StationLog::EVENT_EMERGENCY_STARTED,
+                'message' => __('The emergency loop took over: neither the programme nor a live takeover was available.'),
+                'occurred_at' => now(),
+            ]);
+        }
+    }
+
+    /** Stamps the moment the container last fetched the emergency manifest. */
+    public function markEmergencySynced(Station $station): void
+    {
+        DB::transaction(function () use ($station) {
+            LiquidsoapState::firstOrCreate(['station_id' => $station->id])
+                ->update(['emergency_synced_at' => now()]);
+        }, self::TRANSACTION_ATTEMPTS);
     }
 
     /**

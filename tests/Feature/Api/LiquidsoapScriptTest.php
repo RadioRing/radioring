@@ -87,7 +87,7 @@ test('generator fades the programme out before a hard cut', function () {
         ->toContain('"flush_and_skip"');
 
     // The fallback takes the adjustable source, not the unadjusted one before it.
-    expect($script)->toContain('fallback(track_sensitive=false, [live, program, blank()])');
+    expect($script)->toContain('fallback(track_sensitive=false, [live, program, emergency, blank()])');
 });
 
 test('the request.dynamic source does not sit in the telnet namespace of flush_and_skip', function () {
@@ -193,7 +193,7 @@ test('generator adds loudness normalization by default', function () {
     expect($script)
         ->not->toContain('enable_autocue_metadata')
         ->toContain('normalized = amplify(1., override="liq_amplify", source)')
-        ->toContain('[live, program, blank()]');
+        ->toContain('[live, program, emergency, blank()]');
 });
 
 test('generator wires a per-element fade.in driven by the liq_fade_in annotation', function () {
@@ -206,7 +206,7 @@ test('generator wires a per-element fade.in driven by the liq_fade_in annotation
         ->toContain('faded = fade.in(track_sensitive=true, override_duration="liq_fade_in", duration=0., normalized)')
         // The fade sits BEFORE the adjustable programme volume that feeds the fallback.
         ->toContain('program = amplify({cut_gain()}, override="liq_hard_cut_gain", faded)')
-        ->toContain('[live, program, blank()]');
+        ->toContain('[live, program, emergency, blank()]');
 });
 
 test('loudness normalization does not overwrite the request.dynamic source', function () {

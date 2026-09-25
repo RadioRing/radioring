@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\GeneratedPlaylistItem;
+use App\Models\MediaFile;
 use App\Models\Station;
 use App\Services\LiquidsoapStateService;
+use App\Support\EmergencyLoop;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -14,6 +16,19 @@ class LiquidsoapNowPlayingController extends Controller
     public function __invoke(Request $request, string $slug, LiquidsoapStateService $stateService): JsonResponse
     {
         $station = Station::where('slug', $slug)->firstOrFail();
+
+        // Emergency loop first: its files carry no item id but do carry ID3 metadata, and
+        // would otherwise be taken for a live takeover.
+        if ($request->input('source') === 'emergency') {
+            $stateService->setNowPlayingEmergency(
+                $station,
+                $this->emergencyFile($station, (string) $request->input('filename', '')),
+                trim((string) $request->input('title', '')) ?: null,
+                trim((string) $request->input('artist', '')) ?: null,
+            );
+
+            return response()->json(['ok' => true, 'emergency' => true]);
+        }
 
         // Liquidsoap übergibt die annotierte Item-ID (zuverlässig) und den Dateinamen.
         $item = null;
@@ -95,6 +110,17 @@ class LiquidsoapNowPlayingController extends Controller
         $stateService->setNowPlaying($station, $item);
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * The media file a synced emergency file name was built from, or null when the name
+     * does not resolve (a file deleted meanwhile, a hand placed file in the folder).
+     */
+    private function emergencyFile(Station $station, string $filename): ?MediaFile
+    {
+        $id = EmergencyLoop::mediaIdFromName($filename);
+
+        return $id === null ? null : $station->poolMediaFiles()->find($id);
     }
 
     /**

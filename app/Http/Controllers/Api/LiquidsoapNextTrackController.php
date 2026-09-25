@@ -8,10 +8,10 @@ use App\Models\Station;
 use App\Models\StationLog;
 use App\Services\ExternalItemPreparer;
 use App\Services\LiquidsoapStateService;
+use App\Support\SignedDeliveryUrl;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\URL;
 
 class LiquidsoapNextTrackController extends Controller
 {
@@ -255,29 +255,11 @@ class LiquidsoapNextTrackController extends Controller
     }
 
     /**
-     * Baut eine signierte Auslieferungs-URL fuer Liquidsoap.
-     *
-     * Frueher haengte hier der api_token als Query-Parameter an. Der landet damit in
-     * jedem Proxy- und Access-Log, und wer ihn dort liest, kann als Bearer-Token auch
-     * /script abrufen - inklusive Icecast-Ausgangs- und Harbor-Passwort. Eine Signatur
-     * gilt dagegen nur fuer diese eine URL und laeuft ab.
-     *
-     * Bewusst RELATIV signiert: Laravel prueft eine absolute Signatur gegen den
-     * tatsaechlichen Request-Host. Die App ist aber je nach Aufbau unter APP_URL oder
-     * intern unter LIQUIDSOAP_API_URL erreichbar; eine host-gebundene Signatur wuerde
-     * dann fehlschlagen.
-     *
      * @param  array<string, mixed>  $parameters
      */
     private function signedDeliveryUrl(string $route, array $parameters): string
     {
-        $ttl = (int) config('radioring.delivery_url_ttl_seconds', 21600);
-
-        $relative = URL::temporarySignedRoute($route, now()->addSeconds($ttl), $parameters, absolute: false);
-
-        $base = rtrim((string) (config('radioring.liquidsoap_api_url') ?: config('app.url')), '/');
-
-        return $base.$relative;
+        return SignedDeliveryUrl::for($route, $parameters);
     }
 
     /**

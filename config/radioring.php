@@ -133,6 +133,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Emergency loop
+    |--------------------------------------------------------------------------
+    | Files a station falls back to while the programme branch is unavailable
+    | (deploy, database outage, a rundown that ran dry). They are copied into the
+    | station container over HTTP and play from there, so the loop survives an
+    | outage of this application. Capped because they land in the container's
+    | writable layer.
+    |
+    */
+    'emergency' => [
+        'directory' => env('EMERGENCY_DIRECTORY', '/app/liquidsoap/emergency'),
+        'max_files' => (int) env('EMERGENCY_MAX_FILES', 10),
+        'max_bytes' => (int) env('EMERGENCY_MAX_BYTES', 200 * 1024 * 1024),
+        'sync_interval_seconds' => (int) env('EMERGENCY_SYNC_INTERVAL', 900),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Rundown-Vorlauf: Horizont der Selbstheilung
     |--------------------------------------------------------------------------
     | Wie viele Stunden im Voraus geprueft wird, ob ein sendefaehiger Rundown

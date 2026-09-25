@@ -161,3 +161,22 @@ test('the alert threshold decides whether a gap is reported as an underrun', fun
         ->assertSee('UNDERRUN')
         ->assertSee('Programme underrun: the station is sending silence.');
 });
+
+test('the emergency loop is shown instead of ON AIR, and still as an underrun', function () {
+    config(['radioring.underrun_alert_seconds' => 30]);
+
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'now_playing_title' => 'Wir sind gleich zurueck',
+        'now_playing_source_type' => 'emergency',
+        'now_playing_duration_seconds' => 120,
+        'now_playing_started_at' => now()->subSeconds(10),
+        'underrun_started_at' => now()->subMinutes(5),
+    ]);
+
+    Livewire::test(Dashboard::class)
+        ->assertSee('EMERGENCY LOOP')
+        ->assertDontSee('ON AIR')
+        ->assertSee('Wir sind gleich zurueck')
+        ->assertSee('Programme underrun: the emergency loop is on air.');
+});

@@ -170,7 +170,11 @@
         <div class="alert alert-danger d-flex align-items-start gap-2 mb-4" role="alert">
             <i class="bi bi-exclamation-octagon-fill mt-1"></i>
             <div>
-                <div class="fw-semibold">{{ __('Programme underrun: the station is sending silence.') }}</div>
+                <div class="fw-semibold">
+                    {{ $onEmergency
+                        ? __('Programme underrun: the emergency loop is on air.')
+                        : __('Programme underrun: the station is sending silence.') }}
+                </div>
                 <div class="small mb-0">
                     {{ __('Nothing has been available to play for :duration. The rundown of this hour ran out early - check whether an element was shorter than planned.', ['duration' => gmdate('H:i:s', $underrunSeconds)]) }}
                 </div>
@@ -188,7 +192,12 @@
                 $isStarting = $containerStatus === 'starting';
             @endphp
             <div class="d-flex align-items-center gap-2">
-                @if($liveActive || $onAir)
+                @if($onEmergency)
+                    {{-- Before ON AIR on purpose: the loop IS on air, but not with the programme. --}}
+                    <span class="badge bg-danger d-flex align-items-center gap-1" style="font-size:.7rem">
+                        <i class="bi bi-life-preserver"></i>{{ __('EMERGENCY LOOP') }}
+                    </span>
+                @elseif($liveActive || $onAir)
                     <span class="badge bg-danger d-flex align-items-center gap-1" style="font-size:.7rem">
                         <span class="rounded-circle bg-white d-inline-block" style="width:6px;height:6px;animation:blink 1s step-end infinite"></span>
                         {{ $liveActive ? __('ON AIR - LIVE') : __('ON AIR') }}
@@ -265,6 +274,7 @@
                                 'weather'      => 'bi-cloud-sun',
                                 'news_weather' => 'bi-newspaper',
                                 'adbreak'      => 'bi-megaphone-fill',
+                                'emergency'    => 'bi-life-preserver',
                                 default        => 'bi-music-note-beamed',
                             };
                         @endphp

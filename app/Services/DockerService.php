@@ -443,6 +443,9 @@ class DockerService implements ContainerServiceInterface
             'SLUG='.$station->slug,
             'TOKEN='.$station->api_token,
             'SCRIPT_REFRESH=true',
+            // Emergency loop: the folder has to match the path the generated script plays.
+            'EMERGENCY_DIR='.config('radioring.emergency.directory'),
+            'EMERGENCY_SYNC_INTERVAL='.config('radioring.emergency.sync_interval_seconds'),
             'CONTAINER_NAME='.$this->containerName($station),
             // Redis-Command-Relay: Container subscribt auf diesen Kanal
             'CONTROL_CHANNEL='.config('radioring.control_channel'),

@@ -375,3 +375,25 @@ test('restart recreates the sidecar so a changed mount takes effect', function (
         && str_contains($request->url(), 'radioring-icecast-'));
     Http::assertSent(fn ($request) => str_contains($request->url(), 'name=radioring-icecast-'));
 });
+
+test('the station container is told where its emergency files belong', function () {
+    config([
+        'radioring.emergency.directory' => '/app/liquidsoap/emergency',
+        'radioring.emergency.sync_interval_seconds' => 600,
+    ]);
+
+    fakeSuccessfulDocker();
+
+    app(DockerService::class)->startStationContainer($this->station);
+
+    Http::assertSent(function ($request) {
+        if (! str_contains($request->url(), '/containers/create?name=radioring-')) {
+            return false;
+        }
+
+        $env = $request->data()['Env'] ?? [];
+
+        return in_array('EMERGENCY_DIR=/app/liquidsoap/emergency', $env, true)
+            && in_array('EMERGENCY_SYNC_INTERVAL=600', $env, true);
+    });
+});

@@ -66,6 +66,99 @@ fetch_stereo_tool_preset() {
   return 0
 }
 
+# ===================== Sync the emergency loop =====================
+# Must match config('radioring.emergency.directory'). The files play from here while the
+# programme branch is unavailable, so they stay put when the API cannot be reached.
+: "${EMERGENCY_DIR:=${LS_WORKDIR}/emergency}"
+: "${EMERGENCY_SYNC_INTERVAL:=900}"
+
+EMERGENCY_PLAYLIST="${EMERGENCY_DIR}/emergency.m3u"
+
+# Liquidsoap evaluates playlist() at startup, so the file has to exist before the first
+# start, even empty.
+init_emergency() {
+  mkdir -p "${EMERGENCY_DIR}"
+  [[ -f "$EMERGENCY_PLAYLIST" ]] || echo "# no emergency files" > "$EMERGENCY_PLAYLIST"
+}
+
+# Manifest fields per line: name, url, gain. A file is named {media_id}-{updated_at}, so a
+# name already present is up to date and a replaced file arrives under a new name.
+emergency_manifest_rows() {
+  jq -r '.files[] | [.name, .url, (.amplify // "")] | @tsv' "$1"
+}
+
+sync_emergency() {
+  local manifest http_code name url amplify base wanted=""
+  manifest=$(mktemp)
+
+  http_code=$(curl -s -o "$manifest" -w "%{http_code}" \
+    -H "Authorization: Bearer ${TOKEN}" \
+    "${API_URL}/api/liquidsoap/${SLUG}/emergency")
+
+  # Unreachable API: keep what is there. This is the moment the loop is needed.
+  if [[ "$http_code" != "200" ]]; then
+    echo "Emergency loop not synced (http=${http_code}), keeping the existing files."
+    rm -f "$manifest"
+    return 0
+  fi
+
+  init_emergency
+
+  while IFS=$'\t' read -r name url amplify; do
+    [[ -n "$name" ]] || continue
+    wanted+="${name}"$'\n'
+
+    [[ -s "${EMERGENCY_DIR}/${name}" ]] && continue
+
+    echo "Emergency loop: downloading ${name} ..."
+    if curl -sf -o "${EMERGENCY_DIR}/${name}.tmp" "$url"; then
+      mv "${EMERGENCY_DIR}/${name}.tmp" "${EMERGENCY_DIR}/${name}"
+    else
+      echo "Emergency loop: download of ${name} failed, skipped."
+      rm -f "${EMERGENCY_DIR}/${name}.tmp"
+    fi
+  done < <(emergency_manifest_rows "$manifest")
+
+  # Drop what is no longer selected, so an unselected file stops playing.
+  for base in "${EMERGENCY_DIR}"/*; do
+    [[ -f "$base" ]] || continue
+    base="${base##*/}"
+    [[ "$base" == "emergency.m3u" ]] && continue
+    if ! printf '%s' "$wanted" | grep -qxF "$base"; then
+      echo "Emergency loop: removing ${base}."
+      rm -f "${EMERGENCY_DIR}/${base}"
+    fi
+  done
+
+  # Written through .tmp: Liquidsoap re-reads the playlist after every round and must never
+  # see a half written one. Each line carries the offline measured gain.
+  : > "${EMERGENCY_PLAYLIST}.tmp"
+
+  while IFS=$'\t' read -r name url amplify; do
+    [[ -s "${EMERGENCY_DIR}/${name}" ]] || continue
+    if [[ -n "$amplify" ]]; then
+      echo "annotate:liq_amplify=\"${amplify}\":${EMERGENCY_DIR}/${name}" >> "${EMERGENCY_PLAYLIST}.tmp"
+    else
+      echo "${EMERGENCY_DIR}/${name}" >> "${EMERGENCY_PLAYLIST}.tmp"
+    fi
+  done < <(emergency_manifest_rows "$manifest")
+
+  [[ -s "${EMERGENCY_PLAYLIST}.tmp" ]] || echo "# no emergency files" > "${EMERGENCY_PLAYLIST}.tmp"
+
+  mv "${EMERGENCY_PLAYLIST}.tmp" "$EMERGENCY_PLAYLIST"
+  rm -f "$manifest"
+  echo "Emergency loop synced ($(grep -cv '^#' "$EMERGENCY_PLAYLIST" || true) file(s))."
+}
+
+# Safety net for a selection changed while the container runs, in case the sync_emergency
+# command never reached it.
+emergency_loop() {
+  while true; do
+    sleep "$EMERGENCY_SYNC_INTERVAL"
+    sync_emergency || true
+  done
+}
+
 if [[ "$SCRIPT_REFRESH" == "true" || ! -f "$SCRIPT_PATH" ]]; then
   for attempt in {1..5}; do
     if fetch_script; then break; fi
@@ -118,6 +211,9 @@ supervise_liquidsoap() {
     # Before the first start too: the script references the path, so the file has to exist
     # when Liquidsoap evaluates the stereotool operator.
     fetch_stereo_tool_preset
+
+    init_emergency
+    sync_emergency || true
 
     reset_cursor
 
@@ -185,6 +281,9 @@ control_loop() {
         echo "skip: Schnitt in ${lead}s"
         printf 'radioring.flush_and_skip %s\nquit\n' "$lead" | nc -w 1 127.0.0.1 1234 || echo "skip: telnet nicht erreichbar"
         ;;
+      sync_emergency)
+        sync_emergency || echo "sync_emergency: failed"
+        ;;
       restart)
         echo "restart → beende Liquidsoap (Supervisor startet es neu)"
         pid=$(cat "$LS_PIDFILE" 2>/dev/null || true)
@@ -200,6 +299,8 @@ control_loop() {
     esac
   done
 }
+
+emergency_loop &
 
 if [[ -n "${REDIS_HOST:-}" && -n "${CONTROL_CHANNEL:-}" && -n "${CONTAINER_NAME:-}" ]]; then
   control_loop &

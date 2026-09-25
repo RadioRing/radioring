@@ -244,6 +244,7 @@ class Dashboard extends Component
             'listeners' => $listeners,
             'liveStream' => $station?->liveStreamCredentials(),
             'liveActive' => (bool) ($state?->live_active),
+            'onEmergency' => (bool) ($state?->onEmergency()),
             'liveTitle' => $state?->live_title,
             'liveArtist' => $state?->live_artist,
             'liveStartedAt' => $state?->live_started_at,

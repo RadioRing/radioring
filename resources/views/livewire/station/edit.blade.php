@@ -177,6 +177,84 @@
         <div class="col-12 col-xl-6 col-xxl-4">
             <div class="card">
                 <div class="card-body">
+                    <h6 class="fw-semibold">
+                        <i class="bi bi-life-preserver me-1 text-primary"></i>{{ __('Emergency loop') }}
+                    </h6>
+                    <p class="text-muted-sm">
+                        {{ __('These files play whenever neither a live takeover nor the programme is available: during an update, a database outage or a rundown that ran out. They are held inside the station container, so they keep playing even while RadioRing itself is unreachable.') }}
+                    </p>
+
+                    @if($emergencyFiles->isEmpty())
+                        <div class="alert alert-warning py-2 text-muted-sm mb-3">
+                            <i class="bi bi-exclamation-triangle me-1"></i>{{ __('Nothing selected: this station sends silence during a fault.') }}
+                        </div>
+                    @endif
+
+                    @if($emergencyFiles->isNotEmpty())
+                        <ul class="list-group list-group-flush mb-3">
+                            @foreach($emergencyFiles as $file)
+                                <li class="list-group-item d-flex align-items-center justify-content-between px-0" wire:key="emergency-{{ $file->id }}">
+                                    <div class="overflow-hidden">
+                                        <div class="fw-medium text-truncate">{{ $file->title }}</div>
+                                        <div class="text-muted-sm">
+                                            {{ $file->artist ?: __('Unknown artist') }}
+                                            @if($file->durationFormatted())
+                                                &middot; {{ $file->durationFormatted() }}
+                                            @endif
+                                        </div>
+                                    </div>
+                                    <button type="button" class="btn btn-outline-danger btn-sm"
+                                            wire:click="removeEmergencyFile({{ $file->id }})">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </li>
+                            @endforeach
+                        </ul>
+                    @endif
+
+                    <div class="text-muted-sm mb-3">
+                        {{ __(':used of :max files, :size', [
+                            'used' => $emergencyFiles->count(),
+                            'max' => $emergencyMaxFiles,
+                            'size' => $this->formatBytes($emergencyBytes),
+                        ]) }}
+                        @if($emergencyMaxBytes > 0)
+                            / {{ $this->formatBytes($emergencyMaxBytes) }}
+                        @endif
+                        @if($emergencySyncedAt)
+                            <br>{{ __('Container last fetched them :time.', ['time' => $emergencySyncedAt->diffForHumans()]) }}
+                        @else
+                            <br>{{ __('The container has not fetched them yet.') }}
+                        @endif
+                    </div>
+
+                    <label for="emergencySearch" class="form-label fw-medium">{{ __('Add from the media library') }}</label>
+                    <input id="emergencySearch" type="search" wire:model.live.debounce.300ms="emergencySearch"
+                           class="form-control form-control-sm mb-2" placeholder="{{ __('Search title or artist') }}">
+
+                    <ul class="list-group list-group-flush">
+                        @forelse($emergencyCandidates as $candidate)
+                            <li class="list-group-item d-flex align-items-center justify-content-between px-0" wire:key="candidate-{{ $candidate->id }}">
+                                <div class="overflow-hidden">
+                                    <div class="text-truncate">{{ $candidate->title }}</div>
+                                    <div class="text-muted-sm">{{ $candidate->artist }}</div>
+                                </div>
+                                <button type="button" class="btn btn-outline-primary btn-sm"
+                                        wire:click="addEmergencyFile({{ $candidate->id }})">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
+                            </li>
+                        @empty
+                            <li class="list-group-item px-0 text-muted-sm">{{ __('No file found.') }}</li>
+                        @endforelse
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-6 col-xxl-4">
+            <div class="card">
+                <div class="card-body">
                     <h6 class="fw-semibold">{{ __('Team / Zugriff') }}</h6>
                     <p class="text-muted-sm">{{ __('Erteile anderen registrierten Nutzern Zugriff, um die Station gemeinsam zu verwalten.') }}</p>
                     <p class="text-muted-sm">{{ __('Editors build and air shows. Owners can do that too, plus delete media and manage the station and its team. Only the founder can delete the station.') }}</p>

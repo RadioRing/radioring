@@ -43,6 +43,12 @@ class StationLog extends Model
     /** An external element could not be prepared in time and was skipped on air. */
     public const EVENT_EXTERNAL_FAILED = 'external_failed';
 
+    /** The emergency loop took over because neither live nor the programme was available. */
+    public const EVENT_EMERGENCY_STARTED = 'emergency_started';
+
+    /** The programme came back and took over from the emergency loop. */
+    public const EVENT_EMERGENCY_STOPPED = 'emergency_stopped';
+
     protected function casts(): array
     {
         return [

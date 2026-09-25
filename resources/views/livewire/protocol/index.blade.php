@@ -22,6 +22,7 @@
                 <option value="rundown">{{ __('Rundown generiert') }}</option>
                 <option value="underrun">{{ __('Underrun') }}</option>
                 <option value="external_failed">{{ __('Externes Element fehlt') }}</option>
+                <option value="emergency">{{ __('Emergency loop') }}</option>
             </select>
         </div>
         <div class="col-12 col-sm">
@@ -99,6 +100,16 @@
                                     @case(\App\Models\StationLog::EVENT_EXTERNAL_FAILED)
                                         <span class="badge text-bg-danger-subtle text-danger">
                                             <i class="bi bi-cloud-slash me-1"></i>{{ __('Externes Element fehlt') }}
+                                        </span>
+                                        @break
+                                    @case(\App\Models\StationLog::EVENT_EMERGENCY_STARTED)
+                                        <span class="badge text-bg-danger-subtle text-danger">
+                                            <i class="bi bi-life-preserver me-1"></i>{{ __('Emergency loop') }}
+                                        </span>
+                                        @break
+                                    @case(\App\Models\StationLog::EVENT_EMERGENCY_STOPPED)
+                                        <span class="badge text-bg-secondary-subtle text-secondary">
+                                            <i class="bi bi-life-preserver me-1"></i>{{ __('Programme is back') }}
                                         </span>
                                         @break
                                 @endswitch

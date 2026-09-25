@@ -397,6 +397,29 @@ Fehlersuche („Was lief gestern um 14 Uhr?").
 > erhaelt damit auch Zugriff auf die Medienbibliothek deines **Kontos**, also auch auf
 > Material deiner anderen Stationen. Loeschen kann er nicht.
 
+### Notfallschleife
+
+Das Stationsskript spielt zuerst eine Live-Übernahme, dann das Programm. Ist keines von
+beiden verfügbar, etwa bei einem Update, einem Datenbankausfall oder einer Stunde, deren
+Rundown zu früh endet, sendete die Station bisher Stille. Wähle unter **Station bearbeiten**
+einige Dateien aus, dann laufen die stattdessen.
+
+- Die Dateien liegen im Stationscontainer und spielen von dort, die Schleife läuft also
+  auch weiter, wenn RadioRing selbst nicht erreichbar ist.
+- Sie werden zufällig gewählt und wiederholen sich, so lange es nötig ist. Die gemessene
+  Lautheit wird angewendet, die Schleife ist damit so laut wie das Programm.
+- Sobald das Programm wieder verfügbar ist, übernimmt es und schneidet die Notfalldatei an
+  der Stelle ab, an der sie gerade steht.
+- Das Dashboard zeigt **NOTFALLSCHLEIFE**, solange sie auf Sendung ist, und das Protokoll
+  hält Beginn und Rückkehr zum Programm fest.
+- Anzahl und Gesamtgröße der Dateien sind begrenzt: der Container muss sie halten.
+- Eine geänderte Auswahl greift innerhalb weniger Sekunden, ohne Neustart des Streams. Die
+  Karte zeigt, wann der Container den Satz zuletzt geholt hat.
+- Ohne Auswahl bleibt es beim alten Verhalten: Stille bei einer Störung.
+
+Als Inhalt taugt alles: ein Jingle, eine gesprochene Ansage, ein Musikbett. Zwei oder drei
+Dateien genügen.
+
 ---
 
 ## 11. Administration

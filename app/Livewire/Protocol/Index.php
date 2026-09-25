@@ -72,6 +72,7 @@ class Index extends Component
             'rundown' => $query->where('event', StationLog::EVENT_RUNDOWN_GENERATED),
             'underrun' => $query->where('event', StationLog::EVENT_UNDERRUN),
             'external_failed' => $query->where('event', StationLog::EVENT_EXTERNAL_FAILED),
+            'emergency' => $query->whereIn('event', [StationLog::EVENT_EMERGENCY_STARTED, StationLog::EVENT_EMERGENCY_STOPPED]),
             default => null,
         };
     }

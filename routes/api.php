@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\LiquidsoapConnectController;
+use App\Http\Controllers\Api\LiquidsoapEmergencyController;
 use App\Http\Controllers\Api\LiquidsoapLiveController;
 use App\Http\Controllers\Api\LiquidsoapNextTrackController;
 use App\Http\Controllers\Api\LiquidsoapNowPlayingController;
@@ -32,6 +33,9 @@ Route::middleware(LiquidsoapTokenAuth::class)
 
         Route::get('/stereo-tool/preset', LiquidsoapStereoToolPresetController::class)
             ->name('liquidsoap.stereo-tool-preset');
+
+        Route::get('/emergency', LiquidsoapEmergencyController::class)
+            ->name('liquidsoap.emergency');
     });
 
 // Mediendatei-Auslieferung – Auth via ?token= Query-Parameter, adressiert per Medien-ID
