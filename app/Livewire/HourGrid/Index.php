@@ -215,7 +215,7 @@ class Index extends Component
     public function render()
     {
         /** @var Collection<int, HourGridSlot> $slots */
-        $slots = $this->station->hourGridSlots()->with('playlist')->get();
+        $slots = $this->station->hourGridSlots()->with('playlist.firstItem')->get();
 
         // $grid[weekday][hour] => HourGridSlot|null
         $grid = [];
@@ -253,7 +253,7 @@ class Index extends Component
 
         return view('livewire.hour-grid.index', [
             'grid' => $grid,
-            'playlists' => $this->station->playlists()->schedulable()->orderBy('name')->get(),
+            'playlists' => $this->station->playlists()->schedulable()->with('firstItem')->orderBy('name')->get(),
             'rundowns' => $rundowns,
             'weekdays' => ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'],
             'weekDates' => $weekDates,

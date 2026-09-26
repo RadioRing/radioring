@@ -6,6 +6,7 @@ use App\Models\Playlist;
 use App\Models\PlaylistItem;
 use App\Support\PlaylistElements\ElementDraft;
 use App\Support\PlaylistElements\ElementTypes;
+use App\Support\PlaylistElements\FixedTimes;
 use App\Support\PlaylistElements\PlaylistPalette;
 use App\Support\PlaylistElements\PlaylistRuntime;
 use Illuminate\Support\Collection;
@@ -34,9 +35,6 @@ class Manager extends Component
 
     #[Validate('required|in:sequential,random')]
     public string $playbackMode = 'sequential';
-
-    #[Validate('required|in:soft,hard')]
-    public string $startMode = 'soft';
 
     public bool $showSettings = false;
 
@@ -78,6 +76,9 @@ class Manager extends Component
 
     public string $editRelativeOffset = '';
 
+    /** Mode of the marker being edited: soft or hard. */
+    public string $editFixedMode = 'soft';
+
     /** @var array<int|string> */
     public array $editFillTagIds = [];
 
@@ -91,13 +92,11 @@ class Manager extends Component
         $this->playlist = $playlist;
         $this->name = $playlist->name;
         $this->playbackMode = $playlist->playback_mode;
-        $this->startMode = $playlist->start_mode ?? 'soft';
     }
 
     public function saveSettings(): void
     {
-        // Containers are never scheduled on their own: playback and start mode belong to
-        // the playlist that embeds them, so only the name is editable here.
+        // Containers inherit the playback mode, only the name is editable.
         if ($this->playlist->isContainer()) {
             $this->validate(['name' => 'required|string|min:2|max:80']);
             $this->playlist->update(['name' => $this->name]);
@@ -109,13 +108,11 @@ class Manager extends Component
         $this->validate([
             'name' => 'required|string|min:2|max:80',
             'playbackMode' => 'required|in:sequential,random',
-            'startMode' => 'required|in:soft,hard',
         ]);
 
         $this->playlist->update([
             'name' => $this->name,
             'playback_mode' => $this->playbackMode,
-            'start_mode' => $this->startMode,
         ]);
 
         $this->dispatch('notify', message: __('Einstellungen gespeichert.'), type: 'success');
@@ -233,9 +230,25 @@ class Manager extends Component
 
         foreach ($keys as $key) {
             [$kind, $id] = array_pad(explode(':', $key, 2), 2, '');
+            $isMarker = $kind === PlaylistPalette::TAB_SPECIAL && $id === 'marker';
+
+            // Containers ignore fixed times, so markers are refused there.
+            if ($isMarker && $this->playlist->isContainer()) {
+                $this->dispatch('notify', type: 'warning', message: __('Fixed times only work in a playlist, not inside a container.'));
+
+                continue;
+            }
 
             $element = ElementTypes::forPaletteEntry($kind, $id);
-            $added += $element->create($this->playlist, $this->draftFor($kind, $id), $position + $added);
+            $created = $element->create($this->playlist, $this->draftFor($kind, $id), $position + $added);
+
+            // Open the new marker for editing, it starts at 00:00.
+            if ($isMarker) {
+                $marker = $this->playlist->items()->where('type', 'marker')->latest('id')->first();
+                $this->startEditingItem($marker->id);
+            }
+
+            $added += $created;
         }
 
         return $added;
@@ -258,6 +271,10 @@ class Manager extends Component
 
     private function announceAdded(int $added): void
     {
+        if ($added === 0) {
+            return;
+        }
+
         $this->dispatch('notify', type: 'success', message: trans_choice(
             '{1}Element hinzugefügt.|[2,*]:count Elemente hinzugefügt.',
             $added,
@@ -274,6 +291,7 @@ class Manager extends Component
         $this->editRelativeOffset = $item->relative_offset_seconds !== null
             ? $this->formatOffset($item->relative_offset_seconds)
             : '';
+        $this->editFixedMode = $item->fixed_mode === 'hard' ? 'hard' : 'soft';
         $this->editFillTagIds = $item->fill_tags
             ? array_map('strval', $item->fill_tags)
             : [];
@@ -305,9 +323,23 @@ class Manager extends Component
             $item->update([
                 'fill_tags' => $fillTagIds ?: null,
             ]);
-        } else {
+        } elseif ($item->isMarker()) {
+            $this->validate([
+                'editRelativeOffset' => ['required', 'regex:/^\d{1,4}(:\d{1,2})?$/'],
+                'editFixedMode' => 'required|in:soft,hard',
+            ]);
+
+            $offset = $this->parseOffset($this->editRelativeOffset);
+
+            if ($offset === null || $offset >= FixedTimes::HOUR_SECONDS) {
+                $this->addError('editRelativeOffset', __('The fixed time has to lie within the hour, from 00:00 to 59:59.'));
+
+                return;
+            }
+
             $item->update([
-                'relative_offset_seconds' => $this->parseOffset($this->editRelativeOffset),
+                'relative_offset_seconds' => $offset,
+                'fixed_mode' => $this->editFixedMode,
             ]);
         }
 
@@ -506,7 +538,7 @@ class Manager extends Component
 
         return view('livewire.playlist.manager', [
             'items' => $items,
-            'runtime' => PlaylistRuntime::for($items),
+            'runtime' => PlaylistRuntime::for($items, $this->playlist->station, $this->playlist->isContainer()),
             'paletteEntries' => $entries->take($this->paletteLimit),
             'hasMoreEntries' => $entries->count() > $this->paletteLimit,
             'stationTags' => $this->playlist->station->tags()->orderBy('name')->get(),

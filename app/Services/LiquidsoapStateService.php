@@ -11,6 +11,7 @@ use App\Models\StationLog;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class LiquidsoapStateService
 {
@@ -25,6 +26,8 @@ class LiquidsoapStateService
     /**
      * Gibt das nächste zu spielende Item für eine Station zurück.
      * Inkrementiert die Position atomar und wechselt den Rundown bei Bedarf.
+     *
+     * Drops fill music past a due fixed time and holds back hard fixed items until their time.
      *
      * @return GeneratedPlaylistItem|null null = kein Rundown → Silence
      */
@@ -50,47 +53,168 @@ class LiquidsoapStateService
             // Item an aktueller Position holen
             $item = $rundown->items()->where('position', $state->current_item_position)->first();
 
+            if ($item) {
+                $item = $this->skipFillPastFixedTime($station, $state, $rundown, $item);
+            }
+
             if (! $item) {
-                // Position erschöpft → nächsten Rundown suchen
+                // Rundown exhausted or its remaining fill skipped: advance to the next one.
                 $rundown = $this->advanceToNextRundown($station, $state, $rundown);
 
-                if (! $rundown) {
-                    $this->recordUnderrun($station, $state);
+                $item = $rundown?->items()->where('position', $state->current_item_position)->first();
 
-                    return null;
+                if ($item) {
+                    $item = $this->skipFillPastFixedTime($station, $state, $rundown, $item);
                 }
-
-                // Entry position comes from advanceToNextRundown: 0 for a regular hour
-                // change, the wall-clock aligned position when catching up on a backlog.
-                $startPosition = $state->current_item_position;
-
-                $item = $rundown->items()->where('position', $startPosition)->first();
 
                 if (! $item) {
                     $this->recordUnderrun($station, $state);
 
                     return null;
                 }
-
-                $state->update([
-                    'current_rundown_id' => $rundown->id,
-                    'current_item_position' => $startPosition + 1,
-                    'last_pulled_at' => now(),
-                    ...$this->underrunCleared($state),
-                ]);
-            } else {
-                $state->update([
-                    // current_rundown_id immer mitschreiben – sonst kann der
-                    // Now-Playing-Callback den Track nicht zuordnen (bleibt null).
-                    'current_rundown_id' => $rundown->id,
-                    'current_item_position' => $state->current_item_position + 1,
-                    'last_pulled_at' => now(),
-                    ...$this->underrunCleared($state),
-                ]);
             }
+
+            // Never queue a hard fixed item early, the cut would flush it.
+            if ($item->isHardFixed() && $item->fixed_at->isFuture()) {
+                $state->update([
+                    'current_rundown_id' => $rundown->id,
+                    'current_item_position' => $item->position,
+                ]);
+                $this->recordUnderrun($station, $state);
+
+                return null;
+            }
+
+            $state->update([
+                // Always store the rundown so the now-playing callback can match the track.
+                'current_rundown_id' => $rundown->id,
+                'current_item_position' => $item->position + 1,
+                'last_pulled_at' => now(),
+                ...$this->underrunCleared($state),
+            ]);
 
             return $item;
         }, self::TRANSACTION_ATTEMPTS);
+    }
+
+    /**
+     * Skips the rest of a fill block when its next track would start after the next fixed time.
+     *
+     * Corrects drift against the plan. Only fill tracks are skipped; the fixed time may also
+     * be the first item of the next hour.
+     *
+     * @return GeneratedPlaylistItem|null item to hand out, null when the rundown is used up
+     */
+    private function skipFillPastFixedTime(Station $station, LiquidsoapState $state, GeneratedPlaylist $rundown, GeneratedPlaylistItem $item): ?GeneratedPlaylistItem
+    {
+        if ($item->source_type !== 'resolved_fill') {
+            return $item;
+        }
+
+        $following = $rundown->items()->where('position', '>', $item->position)->get();
+        $fixed = $following->first(fn (GeneratedPlaylistItem $i): bool => $i->fixed_at !== null);
+
+        if ($fixed) {
+            $between = $following->filter(fn (GeneratedPlaylistItem $i): bool => $i->position < $fixed->position);
+        } else {
+            $fixed = $this->openingFixedItemAfter($station, $rundown);
+
+            if (! $fixed) {
+                return $item;
+            }
+
+            $between = $following;
+        }
+
+        // Non-fill items in between always play.
+        $stillToPlay = $between->where('source_type', '!=', 'resolved_fill')->sum('duration_seconds');
+        $latestStart = $fixed->fixed_at->copy()->subSeconds($stillToPlay);
+
+        if ($this->expectedStartOf($state, $rundown, $item)->lt($latestStart)) {
+            return $item;
+        }
+
+        // Continue with the first non-fill item after the block.
+        $next = $between->first(fn (GeneratedPlaylistItem $i): bool => $i->source_type !== 'resolved_fill');
+
+        if (! $next && $fixed->generated_playlist_id === $rundown->id) {
+            $next = $fixed;
+        }
+
+        $skippedIds = $between
+            ->filter(fn (GeneratedPlaylistItem $i): bool => $i->source_type === 'resolved_fill' && ($next === null || $i->position < $next->position))
+            ->push($item)
+            ->modelKeys();
+
+        $newlySkipped = GeneratedPlaylistItem::whereKey($skippedIds)->whereNull('skipped_at')->update(['skipped_at' => now()]);
+
+        if ($newlySkipped > 0) {
+            Log::info("Station {$station->slug}: fixed time {$fixed->fixed_at->format('H:i:s')} is due, skipped {$newlySkipped} fill track(s) of rundown #{$rundown->id}.");
+        }
+
+        return $next;
+    }
+
+    /** First item of the following rundown, if it has a fixed time. */
+    private function openingFixedItemAfter(Station $station, GeneratedPlaylist $rundown): ?GeneratedPlaylistItem
+    {
+        $next = GeneratedPlaylist::where('station_id', $station->id)
+            ->where('status', 'ready')
+            ->where(function ($query) use ($rundown) {
+                $query->where('broadcast_date', '>', $rundown->broadcast_date)
+                    ->orWhere(function ($q) use ($rundown) {
+                        $q->where('broadcast_date', $rundown->broadcast_date)
+                            ->where('broadcast_hour', '>', $rundown->broadcast_hour);
+                    });
+            })
+            ->orderBy('broadcast_date')
+            ->orderBy('broadcast_hour')
+            ->with('firstItem')
+            ->first();
+
+        $first = $next?->firstItem;
+
+        return $first?->fixed_at !== null ? $first : null;
+    }
+
+    /**
+     * Expected airtime of the item: end of the track on air plus the queued items (prefetch).
+     * Falls back to now without a usable on-air snapshot.
+     */
+    private function expectedStartOf(LiquidsoapState $state, GeneratedPlaylist $rundown, GeneratedPlaylistItem $item): CarbonInterface
+    {
+        $onAir = $state->nowPlayingItem;
+        $endsAt = $state->nowPlayingEndsAt();
+
+        if (! $onAir || ! $endsAt || $state->nowPlayingHasEnded()) {
+            return now();
+        }
+
+        $endsAt = $endsAt->max(now());
+
+        if ($onAir->generated_playlist_id === $rundown->id) {
+            if ($onAir->position >= $item->position) {
+                return now();
+            }
+
+            $queued = $rundown->items()
+                ->where('position', '>', $onAir->position)
+                ->where('position', '<', $item->position)
+                ->whereNull('skipped_at')
+                ->sum('duration_seconds');
+        } else {
+            // Previous hour still on air: its remaining items are queued first.
+            $queued = GeneratedPlaylistItem::where('generated_playlist_id', $onAir->generated_playlist_id)
+                ->where('position', '>', $onAir->position)
+                ->whereNull('skipped_at')
+                ->sum('duration_seconds')
+                + $rundown->items()
+                    ->where('position', '<', $item->position)
+                    ->whereNull('skipped_at')
+                    ->sum('duration_seconds');
+        }
+
+        return $endsAt->copy()->addSeconds((int) $queued);
     }
 
     /**
@@ -528,88 +652,60 @@ class LiquidsoapStateService
     }
 
     /**
-     * The hard-start rundown of the NEXT hour, if its start is close enough to be
-     * announced to the container now.
+     * Next hard fixed item within the announce window, unless already announced.
      *
-     * The cut has to land ON the full hour, so the programme has to be fading out BEFORE
-     * it: a fade started at 15:00:00 pushes the news past the hour by its own duration.
-     * The container therefore gets the cut announced with a lead time and schedules it
-     * itself - it knows the wall clock and times the ramp far more precisely than a
-     * once-a-minute command ever could.
-     *
-     * Deliberately NOT annotated onto the track: an annotation is written when the item
-     * is pulled, and with prefetch=3 the cursor runs minutes ahead of what is on air, so
-     * at that point nobody knows when the track will actually start.
+     * The container gets the cut with a lead time and times the fade itself, so the cut
+     * lands exactly on the fixed time.
      */
-    public function upcomingHardStart(Station $station): ?GeneratedPlaylist
+    public function upcomingHardStart(Station $station): ?GeneratedPlaylistItem
     {
-        $horizon = now()->addSeconds(self::HARD_START_ANNOUNCE_SECONDS);
+        $candidate = $this->hardFixedItemsBetween($station, now(), now()->addSeconds(self::HARD_START_ANNOUNCE_SECONDS))
+            ->first(fn (GeneratedPlaylistItem $item): bool => $item->fixed_at->isFuture());
 
-        $candidate = GeneratedPlaylist::where('station_id', $station->id)
-            ->where('status', 'ready')
-            ->where('broadcast_date', $horizon->copy()->startOfDay())
-            ->where('broadcast_hour', $horizon->hour)
-            ->with('playlist')
-            ->first();
-
-        if (! $candidate || ! $this->isHardStart($candidate)) {
-            return null;
-        }
-
-        // Already past its hour: that is the business of pendingHardStart, which cuts
-        // right away instead of announcing a cut that lies in the past.
-        if (now()->gte($this->startOf($candidate))) {
+        if (! $candidate) {
             return null;
         }
 
         $state = LiquidsoapState::where('station_id', $station->id)->first();
 
-        if ($state?->hard_start_committed_rundown_id === $candidate->id) {
+        if ($state?->committed_hard_time?->equalTo($candidate->fixed_at)) {
             return null;
         }
 
         return $candidate;
     }
 
-    /**
-     * Seconds from now until the rundown's full hour, for the container's lead time.
-     */
-    public function secondsUntilStart(GeneratedPlaylist $rundown): float
+    /** Seconds until the item's hard fixed time. */
+    public function secondsUntilStart(GeneratedPlaylistItem $item): float
     {
-        return max(0.0, now()->floatDiffInSeconds($this->startOf($rundown), absolute: false));
+        return max(0.0, now()->floatDiffInSeconds($item->fixed_at, absolute: false));
     }
 
     /**
-     * Notes an announced hard start WITHOUT moving the pull cursor.
+     * Records an announced hard start without moving the cursor.
      *
-     * The cursor must stay where it is until the cut: moved a minute early, the prefetch
-     * would pull the first items of the hard rundown, and the set_queue([]) of the cut
-     * would then throw exactly those away - the news would be skipped. It does not have to
-     * be moved either, because the pull right after the cut runs into the hard-start branch
-     * of resolveCurrentRundown, which puts the cursor on position 0 by itself.
+     * Moving it early would queue the item and the cut would flush it; resolveCurrentRundown
+     * jumps to it after the cut.
      */
-    public function announceHardStart(Station $station, GeneratedPlaylist $hard): void
+    public function announceHardStart(Station $station, GeneratedPlaylistItem $hard): void
     {
         DB::transaction(function () use ($station, $hard) {
             LiquidsoapState::updateOrCreate(
                 ['station_id' => $station->id],
-                ['hard_start_committed_rundown_id' => $hard->id],
+                ['committed_hard_time' => $hard->fixed_at],
             );
         }, self::TRANSACTION_ATTEMPTS);
     }
 
     /**
-     * Liefert den Hard-Start-Rundown der aktuellen Stunde, FALLS der Pull-Cursor
-     * noch nicht auf ihm steht – sonst null. Für den sample-genauen Stunden-Cut.
-     *
-     * Fallback für den Fall, dass die Ankündigung ausgefallen ist (Scheduler-Aussetzer,
-     * erst nach der vollen Stunde generierter Rundown): dann wird sofort geschnitten.
+     * Due hard fixed item the airplay has not reached yet, for an immediate cut when the
+     * announcement was missed.
      */
-    public function pendingHardStart(Station $station): ?GeneratedPlaylist
+    public function pendingHardStart(Station $station): ?GeneratedPlaylistItem
     {
-        $hard = $this->findHardRundownForNow($station);
+        $hard = $this->dueHardItem($station);
 
-        if (! $hard || ! $this->hardStartWindowOpen($hard)) {
+        if (! $hard) {
             return null;
         }
 
@@ -618,25 +714,21 @@ class LiquidsoapStateService
             ->first();
 
         // Make sure cut only happens once.
-        if ($state?->hard_start_committed_rundown_id === $hard->id) {
+        if ($state?->committed_hard_time?->equalTo($hard->fixed_at)) {
             return null;
         }
 
-        // Entscheidend am ECHTEN Airplay (now_playing), NICHT am Pull-Cursor
-        // (current_rundown_id): Der Cursor eilt durch prefetch=3 bis zu drei Tracks
-        // voraus und steht zur vollen Stunde oft schon im Hard-Rundown, während
-        // hörbar noch der Überhang der Vorstunde läuft. Würde man den Cursor prüfen,
-        // bliebe der Cut aus und die Vorstunde liefe einfach weiter.
-        //
-        // A hard rundown that is on air but started BEFORE its full hour (an early start,
-        // because the previous hour ran dry, say) counts as not started: the cut to
-        // position 0 still happens at the full hour. Without this check a too early
-        // broadcast would run on and never be corrected.
-        $isOnAir = $state?->nowPlayingItem?->generated_playlist_id === $hard->id;
+        // Judge by airplay, not the cursor (prefetch runs ahead). An item that started
+        // before its fixed time counts as not started and is cut to again.
+        $onAir = $state?->nowPlayingItem;
+
+        $isOnAir = $onAir !== null
+            && $onAir->generated_playlist_id === $hard->generated_playlist_id
+            && $onAir->position >= $hard->position;
 
         $startedEarly = $isOnAir
             && $state->now_playing_started_at
-            && $state->now_playing_started_at->lt($this->startOf($hard));
+            && $state->now_playing_started_at->lt($hard->fixed_at);
 
         if ($isOnAir && ! $startedEarly) {
             return null;
@@ -645,19 +737,16 @@ class LiquidsoapStateService
         return $hard;
     }
 
-    /**
-     * Setzt den Pull-Cursor auf den Hard-Rundown (Position 0). Der anschließende
-     * skip-Befehl lässt Liquidsoap sofort /next ziehen → Track 0 des Hard-Rundowns.
-     */
-    public function commitHardStart(Station $station, GeneratedPlaylist $hard): void
+    /** Moves the cursor to the hard item; the following skip makes Liquidsoap pull it. */
+    public function commitHardStart(Station $station, GeneratedPlaylistItem $hard): void
     {
         DB::transaction(function () use ($station, $hard) {
             LiquidsoapState::updateOrCreate(
                 ['station_id' => $station->id],
                 [
-                    'current_rundown_id' => $hard->id,
-                    'current_item_position' => 0,
-                    'hard_start_committed_rundown_id' => $hard->id,
+                    'current_rundown_id' => $hard->generated_playlist_id,
+                    'current_item_position' => $hard->position,
+                    'committed_hard_time' => $hard->fixed_at,
                 ],
             );
         }, self::TRANSACTION_ATTEMPTS);
@@ -868,28 +957,18 @@ class LiquidsoapStateService
             $current = GeneratedPlaylist::find($state->current_rundown_id);
 
             if ($current && $current->status !== 'played') {
-                // Hard-Start respektieren: Wenn für die JETZIGE Wanduhr-Stunde ein
-                // anderer, fertiger Rundown mit start_mode=hard bereitsteht, wird
-                // der Überhang am nächsten Track-Übergang abgeschnitten und auf den
-                // neuen Rundown gewechselt. (soft / leere Stunde → weiterlaufen)
-                //
-                // ONLY within the window around the full hour: without that gate the cursor
-                // jumped to position 0 of the hard rundown at ANY minute as soon as the
-                // programme ran behind - which put the news on air at 12:57. Outside the
-                // window advanceToNextRundown catches up on the wall clock instead.
-                $hardNow = $this->findHardRundownForNow($station);
+                // Jump to a due hard fixed item the cursor has not reached yet. Only within
+                // the enforcement window, otherwise late news would start at any minute.
+                $hard = $this->dueHardItem($station);
 
-                if ($hardNow && $hardNow->id !== $current->id && $this->hardStartWindowOpen($hardNow)) {
-                    // Nur den Pull-Cursor umsetzen. 'played' wird NICHT hier gesetzt,
-                    // sondern erst wenn now_playing tatsächlich auf den neuen Rundown
-                    // wechselt (siehe setNowPlaying) – sonst läuft der Status dem Audio
-                    // durch das Prefetching voraus.
+                if ($hard && $this->cursorIsBefore($state, $current, $hard)) {
+                    // Cursor only; 'played' follows the airplay in setNowPlaying.
                     $state->update([
-                        'current_rundown_id' => $hardNow->id,
-                        'current_item_position' => 0,
+                        'current_rundown_id' => $hard->generated_playlist_id,
+                        'current_item_position' => $hard->position,
                     ]);
 
-                    return $hardNow;
+                    return $hard->generatedPlaylist;
                 }
 
                 return $current;
@@ -936,7 +1015,7 @@ class LiquidsoapStateService
             })
             ->orderBy('broadcast_date')
             ->orderBy('broadcast_hour')
-            ->with('playlist')
+            ->with('firstItem')
             ->limit(self::ADVANCE_LOOKAHEAD)
             ->get();
 
@@ -1002,58 +1081,84 @@ class LiquidsoapStateService
      * Darf der angegebene Rundown laut Wanduhr jetzt schon angefahren werden?
      *
      * Schützt vor dem Vorziehen künftiger Rundowns über eine Programm-Lücke hinweg.
-     * Soft-Starts dürfen mit kleinem Prefetch-Vorlauf beginnen; Hard-Starts erst ab
-     * der vollen Stunde (der sample-genaue Cut wird separat über EnforceHardStarts
-     * erzwungen).
+     * Soft starts get a short prefetch lead; an hour that starts hard is entered on the hour.
      */
     private function mayStartRundownNow(GeneratedPlaylist $rundown): bool
     {
-        $lead = $this->isHardStart($rundown) ? 0 : self::SOFT_ADVANCE_LEAD_SECONDS;
+        $lead = $rundown->startsHard() ? 0 : self::SOFT_ADVANCE_LEAD_SECONDS;
 
         return now()->gte($this->startOf($rundown)->subSeconds($lead));
     }
 
     /**
-     * Time window after the full hour in which a hard start is still enforced.
-     *
-     * Wide enough for the overhang of a single track from the previous hour (the cut only
-     * takes effect at the next track transition) and for one missed run of
-     * EnforceHardStarts. After that the hour counts as running: a hard rundown is NOT
-     * started from the top in the middle of its own hour any more - that is what put the
-     * news on air at :57. From there advanceToNextRundown catches up on the wall clock.
+     * Window after a hard fixed time in which it is still enforced: one track overhang plus a
+     * missed EnforceHardStarts run. Later the fixed time counts as missed.
      */
     private const HARD_START_WINDOW_SECONDS = 600;
 
     /**
-     * How far ahead of its full hour a hard start is announced to the container.
-     *
-     * Has to cover one cadence of radioring:enforce-hard-starts (60 s) plus the drift of
-     * the run itself, and has to stay below two cadences so exactly one run announces it.
+     * Announce lead for a hard start: more than one enforce-hard-starts cadence (60 s), less
+     * than two, so exactly one run announces it.
      */
     private const HARD_START_ANNOUNCE_SECONDS = 90;
 
-    /**
-     * Has the full hour of the hard rundown just been reached (and not long ago)?
-     */
-    private function hardStartWindowOpen(GeneratedPlaylist $rundown): bool
+    /** Latest hard fixed item inside the enforcement window. */
+    private function dueHardItem(Station $station): ?GeneratedPlaylistItem
     {
-        $start = $this->startOf($rundown);
-
-        return now()->gte($start) && now()->lt($start->copy()->addSeconds(self::HARD_START_WINDOW_SECONDS));
+        return $this->hardFixedItemsBetween($station, now()->subSeconds(self::HARD_START_WINDOW_SECONDS), now())->last();
     }
 
     /**
-     * Planned start of a rundown (broadcast date plus its full hour).
+     * Hard fixed items between two moments, in time order. Limited to the touched hours, as
+     * this runs on every pull.
+     *
+     * @return Collection<int, GeneratedPlaylistItem>
      */
+    private function hardFixedItemsBetween(Station $station, CarbonInterface $from, CarbonInterface $to): Collection
+    {
+        $hours = [];
+
+        for ($hour = $from->copy()->startOfHour(); $hour->lte($to); $hour = $hour->copy()->addHour()) {
+            $hours[] = $hour;
+        }
+
+        $rundownIds = GeneratedPlaylist::where('station_id', $station->id)
+            ->where('status', 'ready')
+            ->where(function ($query) use ($hours) {
+                foreach ($hours as $hour) {
+                    $query->orWhere(fn ($q) => $q
+                        ->where('broadcast_date', $hour->copy()->startOfDay())
+                        ->where('broadcast_hour', $hour->hour));
+                }
+            })
+            ->pluck('id');
+
+        if ($rundownIds->isEmpty()) {
+            return collect();
+        }
+
+        return GeneratedPlaylistItem::whereIn('generated_playlist_id', $rundownIds)
+            ->where('fixed_mode', 'hard')
+            ->whereBetween('fixed_at', [$from, $to])
+            ->orderBy('fixed_at')
+            ->with('generatedPlaylist')
+            ->get();
+    }
+
+    /** Is the cursor still in front of the item (earlier hour or earlier position)? */
+    private function cursorIsBefore(LiquidsoapState $state, GeneratedPlaylist $current, GeneratedPlaylistItem $item): bool
+    {
+        if ($current->id === $item->generated_playlist_id) {
+            return $state->current_item_position < $item->position;
+        }
+
+        return $this->startOf($current)->lt($this->startOf($item->generatedPlaylist));
+    }
+
+    /** Planned start of a rundown. */
     private function startOf(GeneratedPlaylist $rundown): CarbonInterface
     {
         return $rundown->broadcast_date->copy()->setTime($rundown->broadcast_hour, 0, 0);
-    }
-
-    private function isHardStart(GeneratedPlaylist $rundown): bool
-    {
-        return $rundown->start_mode === 'hard'
-            || $rundown->playlist?->start_mode === 'hard';
     }
 
     /**
@@ -1066,30 +1171,5 @@ class LiquidsoapStateService
             ->where('broadcast_date', today())
             ->where('broadcast_hour', now()->hour)
             ->first();
-    }
-
-    /**
-     * Findet einen fertigen Hard-Start-Rundown für die aktuelle Stunde.
-     *
-     * Hard gilt, wenn entweder der Rundown-Snapshot ODER die aktuelle Playlist
-     * auf 'hard' steht – so wirkt das Umschalten sofort, auch ohne Neu-Generieren.
-     */
-    private function findHardRundownForNow(Station $station): ?GeneratedPlaylist
-    {
-        $candidate = GeneratedPlaylist::where('station_id', $station->id)
-            ->where('status', 'ready')
-            ->where('broadcast_date', today())
-            ->where('broadcast_hour', now()->hour)
-            ->with('playlist')
-            ->first();
-
-        if (! $candidate) {
-            return null;
-        }
-
-        $isHard = $candidate->start_mode === 'hard'
-            || $candidate->playlist?->start_mode === 'hard';
-
-        return $isHard ? $candidate : null;
     }
 }

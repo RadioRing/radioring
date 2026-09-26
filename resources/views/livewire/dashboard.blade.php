@@ -389,12 +389,12 @@
                         $hour = (int) $entry->item->generatedPlaylist?->broadcast_hour;
                     @endphp
 
-                    {{-- Stundentrenner / Hard-Start-Markierung --}}
-                    @if($entry->isHardBoundary || $hour !== $lastHour)
+                    {{-- Hour divider, flagged when the hour starts hard --}}
+                    @if($hour !== $lastHour)
                         <div class="list-group-item bg-light d-flex align-items-center gap-2 py-1 px-3 sticky-top"
                              wire:key="hour-{{ $item->generated_playlist_id }}">
                             <span class="font-monospace fw-semibold small">{{ sprintf('%02d:00', $hour) }}</span>
-                            @if($entry->isHardBoundary)
+                            @if($entry->isHardBoundary && $item->position === 0)
                                 <span class="badge bg-danger" style="font-size:.6rem">
                                     <i class="bi bi-lightning-charge-fill me-1"></i>{{ __('Harter Start') }}
                                 </span>
@@ -461,6 +461,14 @@
                         <span class="text-truncate flex-grow-1 small {{ $entry->isPlaying ? 'fw-semibold' : '' }}">
                             {{ $item->title }}@if($item->mediaFile?->artist)<span class="text-muted"> &ndash; {{ $item->mediaFile->artist }}</span>@endif
                         </span>
+
+                        {{-- Fixed time badge: red hard, yellow soft --}}
+                        @if($item->fixed_at)
+                            <span class="badge {{ $item->isHardFixed() ? 'bg-danger' : 'bg-warning text-dark' }} text-nowrap" style="font-size:.6rem"
+                                  title="{{ $item->isHardFixed() ? __('Hard fixed time') : __('Soft fixed time') }}">
+                                <i class="bi bi-stopwatch me-1"></i>{{ $item->fixed_at->format('H:i:s') }}
+                            </span>
+                        @endif
 
                         {{-- Vorbereitungszustand externer Elemente --}}
                         @php $preparation = $item->preparationState(); @endphp

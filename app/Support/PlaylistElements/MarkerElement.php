@@ -5,9 +5,9 @@ namespace App\Support\PlaylistElements;
 use App\Models\Playlist;
 
 /**
- * A media file picked from the library.
+ * Fixed time marker for the next element, added as 00:00 soft (see FixedTimes).
  */
-class LibraryElement implements PlaylistElementType
+class MarkerElement implements PlaylistElementType
 {
     public function rules(): array
     {
@@ -16,13 +16,12 @@ class LibraryElement implements PlaylistElementType
 
     public function create(Playlist $playlist, ElementDraft $draft, int $position): int
     {
-        $mediaFile = $playlist->station->mediaFiles()->findOrFail($draft->mediaFileId);
-
         $playlist->items()->create([
             'position' => $position,
-            'type' => $mediaFile->type,
-            'title' => $mediaFile->title,
-            'media_file_id' => $mediaFile->id,
+            'type' => 'marker',
+            'title' => 'Fixzeit',
+            'relative_offset_seconds' => 0,
+            'fixed_mode' => 'soft',
         ]);
 
         return 1;

@@ -42,13 +42,6 @@
                                 <option value="random">{{ __('Zufällig') }}</option>
                             </select>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">{{ __('Start zur vollen Stunde') }}</label>
-                            <select wire:model="newStartMode" class="form-select">
-                                <option value="soft">{{ __('Weich – Überhang darf auslaufen') }}</option>
-                                <option value="hard">{{ __('Hart – schneidet zur vollen Stunde') }}</option>
-                            </select>
-                        </div>
                     @endif
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn btn-primary btn-sm">{{ __('Erstellen') }}</button>
@@ -81,7 +74,7 @@
                                 </span>
                                 <span>·</span>
                                 <span>{{ $playlist->items_count }} {{ __('Tracks') }}</span>
-                                @if($playlist->start_mode === 'hard')
+                                @if($playlist->startsHard())
                                     <span>·</span>
                                     <span class="text-danger"><i class="bi bi-clock-fill me-1"></i>{{ __('Harter Start') }}</span>
                                 @endif

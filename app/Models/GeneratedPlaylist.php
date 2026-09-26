@@ -8,8 +8,9 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['station_id', 'hour_grid_slot_id', 'playlist_id', 'broadcast_date', 'broadcast_hour', 'status', 'generated_at', 'start_mode'])]
+#[Fillable(['station_id', 'hour_grid_slot_id', 'playlist_id', 'broadcast_date', 'broadcast_hour', 'status', 'generated_at'])]
 class GeneratedPlaylist extends Model
 {
     /** @use HasFactory<GeneratedPlaylistFactory> */
@@ -41,6 +42,18 @@ class GeneratedPlaylist extends Model
     public function items(): HasMany
     {
         return $this->hasMany(GeneratedPlaylistItem::class)->orderBy('position');
+    }
+
+    /** First item of the hour. */
+    public function firstItem(): HasOne
+    {
+        return $this->hasOne(GeneratedPlaylistItem::class)->ofMany('position', 'min');
+    }
+
+    /** Does the hour open with a hard fixed time? */
+    public function startsHard(): bool
+    {
+        return $this->firstItem?->isHardFixed() ?? false;
     }
 
     public function isPlayed(): bool

@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Storage;
 
-#[Fillable(['generated_playlist_id', 'media_file_id', 'media_file_path', 'external_source_id', 'position', 'title', 'duration_seconds', 'absolute_broadcast_at', 'source_type', 'prepared_path', 'prepared_at', 'prepare_attempts', 'prepare_failed_at', 'loudness_lufs', 'loudness_true_peak'])]
+#[Fillable(['generated_playlist_id', 'media_file_id', 'media_file_path', 'external_source_id', 'position', 'title', 'duration_seconds', 'absolute_broadcast_at', 'fixed_at', 'fixed_mode', 'skipped_at', 'source_type', 'prepared_path', 'prepared_at', 'prepare_attempts', 'prepare_failed_at', 'loudness_lufs', 'loudness_true_peak'])]
 class GeneratedPlaylistItem extends Model
 {
     /** @use HasFactory<GeneratedPlaylistItemFactory> */
@@ -19,6 +19,8 @@ class GeneratedPlaylistItem extends Model
     {
         return [
             'absolute_broadcast_at' => 'datetime',
+            'fixed_at' => 'datetime',
+            'skipped_at' => 'datetime',
             'prepared_at' => 'datetime',
             'prepare_failed_at' => 'datetime',
             'loudness_lufs' => 'float',
@@ -107,6 +109,12 @@ class GeneratedPlaylistItem extends Model
         }
 
         return $this->prepare_failed_at !== null ? 'failed' : 'pending';
+    }
+
+    /** Is this item pinned to a hard fixed time? */
+    public function isHardFixed(): bool
+    {
+        return $this->fixed_at !== null && $this->fixed_mode === 'hard';
     }
 
     public function durationFormatted(): ?string

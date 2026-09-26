@@ -3,17 +3,19 @@
 namespace App\Services;
 
 use App\Models\GeneratedPlaylist;
+use App\Models\GeneratedPlaylistItem;
 use App\Models\LiquidsoapState;
 use App\Models\Station;
 use App\Support\ProjectedPlaylistItem;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
 /**
  * Baut aus den Stunden-Rundowns eine durchgehende, projizierte Tages-Playlist
  * für die Anzeige (mAirList-Stil): eine einzige Liste ab dem aktuell laufenden
  * Track bis zum Tagesende, mit dynamisch vorwärts gerechneten Sendezeiten und
- * "–"-Markierung für Items, die ein Hard-Start der Folgestunde abschneidet.
+ * "–" for items cut by a hard fixed time or fill skipped for a fixed time.
  *
  * Reine Lese-/Projektionsschicht – verändert weder State noch Rundowns.
  */
@@ -45,20 +47,34 @@ class PlaylistProjectionService
             }
         }
 
-        $rundowns = $this->upcomingRundowns($station, $anchorRundown);
+        // Flatten the hours into one list, without what already played.
+        $entries = [];
+
+        foreach ($this->upcomingRundowns($station, $anchorRundown) as $rundown) {
+            $items = $rundown->items;
+
+            if ($rundown->id === $anchorRundown->id && $nowPlayingItem) {
+                $items = $items->where('position', '>=', $nowPlayingItem->position);
+            }
+
+            foreach ($items as $item) {
+                // Set the inverse relation to avoid N+1 in the view.
+                $item->setRelation('generatedPlaylist', $rundown);
+                $entries[] = $item;
+            }
+        }
 
         $projected = [];
         $cursor = $anchorTime;
 
-        foreach ($rundowns as $rundown) {
-            $isAnchor = $rundown->id === $anchorRundown->id;
-            $isHardBoundary = ! $isAnchor && $this->isHardStart($rundown);
+        foreach ($entries as $index => $item) {
+            $isPlaying = $nowPlayingItem !== null && $item->id === $nowPlayingItem->id;
+            $isHardBoundary = ! $isPlaying && $item->isHardFixed();
 
             if ($isHardBoundary) {
-                $hardTime = $this->fixedStartFor($rundown);
+                $hardTime = CarbonImmutable::parse($item->fixed_at);
 
-                // Bereits projizierte, noch ungespielte Items, die erst zum/nach dem
-                // Hard-Cut beginnen würden, werden nie gesendet → "–".
+                // Items that would start at or after the cut are never sent.
                 foreach ($projected as &$entry) {
                     if (! $entry['is_playing'] && ! $entry['is_skipped']
                         && $entry['start'] !== null && $entry['start']->gte($hardTime)) {
@@ -71,29 +87,31 @@ class PlaylistProjectionService
                 $cursor = $hardTime;
             }
 
-            // Im Anker-Rundown bereits gespielte Items (vor now_playing) ausblenden.
-            $items = $rundown->items;
-            if ($isAnchor && $nowPlayingItem) {
-                $items = $items->where('position', '>=', $nowPlayingItem->position)->values();
-            }
+            $start = $isPlaying ? $anchorTime : $cursor;
 
-            foreach ($items as $index => $item) {
-                // Inverse Relation setzen, damit die View ohne N+1 auf Stunde/Rundown zugreift.
-                $item->setRelation('generatedPlaylist', $rundown);
-
-                $isPlaying = $nowPlayingItem !== null && $item->id === $nowPlayingItem->id;
-                $start = $isPlaying ? $anchorTime : $cursor;
-
+            // Fill skipped for a fixed time gets no airtime.
+            if (! $isPlaying && ! $isHardBoundary
+                && ($item->skipped_at !== null || $this->runsIntoFixedTime($entries, $index, $start))) {
                 $projected[] = [
                     'item' => $item,
-                    'start' => $start,
-                    'is_playing' => $isPlaying,
-                    'is_skipped' => false,
-                    'is_hard_boundary' => $isHardBoundary && $index === 0,
+                    'start' => null,
+                    'is_playing' => false,
+                    'is_skipped' => true,
+                    'is_hard_boundary' => false,
                 ];
 
-                $cursor = $start->addSeconds((int) ($item->duration_seconds ?? 0));
+                continue;
             }
+
+            $projected[] = [
+                'item' => $item,
+                'start' => $start,
+                'is_playing' => $isPlaying,
+                'is_skipped' => false,
+                'is_hard_boundary' => $isHardBoundary,
+            ];
+
+            $cursor = $start->addSeconds((int) ($item->duration_seconds ?? 0));
         }
 
         return collect($projected)->map(fn (array $e) => new ProjectedPlaylistItem(
@@ -103,6 +121,46 @@ class PlaylistProjectionService
             isSkipped: $e['is_skipped'],
             isHardBoundary: $e['is_hard_boundary'],
         ));
+    }
+
+    /**
+     * Would this fill track start after the next fixed time? Mirrors
+     * LiquidsoapStateService::skipFillPastFixedTime.
+     *
+     * @param  list<GeneratedPlaylistItem>  $entries
+     */
+    private function runsIntoFixedTime(array $entries, int $index, CarbonInterface $start): bool
+    {
+        $item = $entries[$index];
+
+        if ($item->source_type !== 'resolved_fill') {
+            return false;
+        }
+
+        $stillToPlay = 0;
+
+        for ($i = $index + 1; $i < count($entries); $i++) {
+            $next = $entries[$i];
+            $sameHour = $next->generated_playlist_id === $item->generated_playlist_id;
+
+            if (! $sameHour && $next->position !== 0) {
+                return false;
+            }
+
+            if ($next->fixed_at !== null) {
+                return $start->gte($next->fixed_at->copy()->subSeconds($stillToPlay));
+            }
+
+            if (! $sameHour) {
+                return false;
+            }
+
+            if ($next->source_type !== 'resolved_fill') {
+                $stillToPlay += (int) ($next->duration_seconds ?? 0);
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -117,7 +175,7 @@ class PlaylistProjectionService
             ->whereDate('broadcast_date', $anchorRundown->broadcast_date->toDateString())
             ->where('broadcast_hour', '>=', $anchorRundown->broadcast_hour)
             ->orderBy('broadcast_hour')
-            ->with(['items.mediaFile', 'items.externalSource', 'playlist'])
+            ->with(['items.mediaFile', 'items.externalSource'])
             ->get();
     }
 
@@ -127,19 +185,7 @@ class PlaylistProjectionService
             ->where('status', 'ready')
             ->whereDate('broadcast_date', today())
             ->where('broadcast_hour', now()->hour)
-            ->with(['items.mediaFile', 'items.externalSource', 'playlist'])
+            ->with(['items.mediaFile', 'items.externalSource'])
             ->first();
-    }
-
-    private function isHardStart(GeneratedPlaylist $rundown): bool
-    {
-        return $rundown->start_mode === 'hard'
-            || $rundown->playlist?->start_mode === 'hard';
-    }
-
-    private function fixedStartFor(GeneratedPlaylist $rundown): CarbonImmutable
-    {
-        return CarbonImmutable::parse($rundown->broadcast_date->toDateString())
-            ->setTime($rundown->broadcast_hour, 0, 0);
     }
 }

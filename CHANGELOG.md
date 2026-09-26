@@ -23,6 +23,18 @@ to stand on its own.
   is on air, the protocol records the start and the return to the programme, and a changed
   selection reaches the container within seconds without restarting the stream. Stations that
   select nothing keep sending silence.
+- **Fixed times inside the hour, soft or hard.** A new *Fixed time* element pins the
+  element behind it to a point in the hour. Soft (yellow):
+  once the time is reached no further fill music starts, the running track plays out and the
+  element follows. Hard (red): the programme is faded out and cut, and the element starts on
+  the second. This makes shows possible where ad breaks come at :15, :30 and :45 with voice
+  tracks right after them and music in between, without setting a fill length by hand. The
+  editor, the dashboard and the rundown view show fixed times in their colour, and the editor
+  warns when the programme in front runs too long or leaves a gap before a hard cut.
+- **Fill music ends on time.** A fill in front of a fixed time (or the full hour) plans only
+  up to it and picks its last one or two tracks so the fill ends as close to the time as the
+  rotation rules allow. If the hour still drifts while on air, fill tracks that would start
+  after a due fixed time are skipped.
 
 ### Fixed
 - Rundowns that were missing the next morning.
@@ -31,6 +43,15 @@ to stand on its own.
 
 ### Changed
 - The random item element now picks the item first that has not been played recently.
+- **The hard start on the hour is now a fixed time element.** The *start on the hour* setting
+  of a playlist is gone: a hard fixed time at 00:00 at the top of the playlist does the same,
+  and the hour grid still marks such playlists. Timestamps on single elements became soft
+  fixed time elements in front of them. Both are converted automatically on update.
+- **A fill with nothing behind it runs up to the full hour.** Before, it added up to an hour
+  of music counted from its own position, so the hour almost always overran.
+- **Start times in the playlist editor no longer stop after a fill or a container.** Fixed
+  times carry the chain on, and random elements count with the average length of their pool,
+  marked with "~".
 
 ### Upgrade
 
@@ -43,6 +64,12 @@ timeout takes effect when the container restarts.
 
 The station containers are rebuilt on update and then fetch their emergency files by
 themselves. Nothing has to be copied by hand.
+
+Playlists with a hard start and elements with a timestamp are converted to fixed time
+elements by the migration. Rundowns that are already generated keep their hard start; the
+converted soft fixed times and the new fill planning apply once an hour is generated again.
+Changes to fixed time elements, like any other change to a playlist, only reach rundowns that
+are generated afterwards.
 
 If your `.env` sets `REDIS_QUEUE_RETRY_AFTER` (or `DB_QUEUE_RETRY_AFTER`) by hand, raise it
 to at least 360. It has to stay above the worker timeout, otherwise the queue hands the same

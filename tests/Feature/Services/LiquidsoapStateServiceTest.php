@@ -144,7 +144,6 @@ test('pullNextItem does not pull a future rundown early across a schedule gap', 
         'broadcast_date' => today(),
         'broadcast_hour' => now()->hour,
         'status' => 'ready',
-        'start_mode' => 'soft',
     ]);
 
     GeneratedPlaylistItem::factory()->create([
@@ -161,7 +160,6 @@ test('pullNextItem does not pull a future rundown early across a schedule gap', 
         'broadcast_date' => today(),
         'broadcast_hour' => (now()->hour + 3) % 24,
         'status' => 'ready',
-        'start_mode' => 'soft',
     ]);
 
     GeneratedPlaylistItem::factory()->create([
@@ -195,7 +193,6 @@ test('pullNextItem advances to the next rundown once its hour has arrived', func
         'broadcast_date' => today(),
         'broadcast_hour' => max(0, now()->hour - 2),
         'status' => 'ready',
-        'start_mode' => 'soft',
     ]);
 
     GeneratedPlaylistItem::factory()->create([
@@ -212,7 +209,6 @@ test('pullNextItem advances to the next rundown once its hour has arrived', func
         'broadcast_date' => today(),
         'broadcast_hour' => now()->hour,
         'status' => 'ready',
-        'start_mode' => 'soft',
     ]);
 
     $nextItem = GeneratedPlaylistItem::factory()->create([
@@ -295,7 +291,6 @@ test('pullNextItem opens an underrun and logs it once the gap exceeds the thresh
         'broadcast_date' => today(),
         'broadcast_hour' => now()->hour,
         'status' => 'ready',
-        'start_mode' => 'soft',
     ]);
 
     LiquidsoapState::create([
@@ -343,7 +338,6 @@ test('pullNextItem closes the underrun as soon as an item is available again', f
         'broadcast_date' => today(),
         'broadcast_hour' => now()->hour,
         'status' => 'ready',
-        'start_mode' => 'soft',
     ]);
 
     $item = GeneratedPlaylistItem::factory()->create([
@@ -375,7 +369,6 @@ test('an announced hard start still serves the running hour until the cut', func
         'broadcast_date' => today(),
         'broadcast_hour' => 12,
         'status' => 'ready',
-        'start_mode' => 'soft',
     ]);
 
     $runningItem = GeneratedPlaylistItem::factory()->create([
@@ -391,7 +384,6 @@ test('an announced hard start still serves the running hour until the cut', func
         'broadcast_date' => today(),
         'broadcast_hour' => 13,
         'status' => 'ready',
-        'start_mode' => 'hard',
     ]);
 
     $news = GeneratedPlaylistItem::factory()->create([
@@ -400,6 +392,8 @@ test('an announced hard start still serves the running hour until the cut', func
         'position' => 0,
         'source_type' => 'news_weather',
         'title' => 'Nachrichten',
+        'fixed_at' => today()->setTime(13, 0, 0),
+        'fixed_mode' => 'hard',
     ]);
 
     LiquidsoapState::create([
@@ -409,14 +403,13 @@ test('an announced hard start still serves the running hour until the cut', func
     ]);
 
     $this->travelTo(today()->setTime(12, 59, 0));
-    $this->service->announceHardStart($this->station, $hard);
+    $this->service->announceHardStart($this->station, $news);
 
     // Vor dem Schnitt liefert der Pull weiter die laufende Stunde - der Prefetch darf die
     // Nachrichten nicht vorziehen, sonst wirft das set_queue([]) des Cuts sie weg.
     expect($this->service->pullNextItem($this->station)->id)->toBe($runningItem->id);
 
-    // Nach dem Schnitt landet der erste Pull auf Position 0 des Hard-Rundowns, ohne dass
-    // jemand den Cursor umgesetzt hat: das erledigt der Hard-Start-Zweig beim Aufloesen.
+    // After the cut: resolveCurrentRundown jumps to the hard item.
     $this->travelTo(today()->setTime(13, 0, 1));
     expect($this->service->pullNextItem($this->station)->id)->toBe($news->id);
 });
@@ -427,7 +420,14 @@ test('upcomingHardStart announces only within its lead window', function () {
         'broadcast_date' => today(),
         'broadcast_hour' => 13,
         'status' => 'ready',
-        'start_mode' => 'hard',
+    ]);
+    $news = GeneratedPlaylistItem::factory()->create([
+        'generated_playlist_id' => $hard->id,
+        'position' => 0,
+        'source_type' => 'news_weather',
+        'title' => 'Nachrichten',
+        'fixed_at' => today()->setTime(13, 0, 0),
+        'fixed_mode' => 'hard',
     ]);
 
     // Zu frueh: der Lauf um 12:58 sieht die Stunde noch nicht.
@@ -436,8 +436,8 @@ test('upcomingHardStart announces only within its lead window', function () {
 
     // Im Fenster: 60 Sekunden Vorlauf.
     $this->travelTo(today()->setTime(12, 59, 0));
-    expect($this->service->upcomingHardStart($this->station)?->id)->toBe($hard->id);
-    expect($this->service->secondsUntilStart($hard))->toBe(60.0);
+    expect($this->service->upcomingHardStart($this->station)?->id)->toBe($news->id);
+    expect($this->service->secondsUntilStart($news))->toBe(60.0);
 
     // Ab der vollen Stunde uebernimmt pendingHardStart und schneidet sofort.
     $this->travelTo(today()->setTime(13, 0, 0));
@@ -454,7 +454,6 @@ test('a dry pull raises no underrun while a track is still audibly running', fun
         'broadcast_date' => today(),
         'broadcast_hour' => now()->hour,
         'status' => 'ready',
-        'start_mode' => 'soft',
     ]);
 
     $state = LiquidsoapState::create([
@@ -503,7 +502,6 @@ test('a track going on air closes an open underrun episode', function () {
         'broadcast_date' => today(),
         'broadcast_hour' => now()->hour,
         'status' => 'ready',
-        'start_mode' => 'soft',
     ]);
 
     $item = GeneratedPlaylistItem::factory()->create([

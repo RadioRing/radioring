@@ -10,7 +10,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 #[Signature('radioring:enforce-hard-starts')]
-#[Description('Forces the switch to hard-start rundowns on the hour (sample accurate, via skip)')]
+#[Description('Forces the cut to elements with a hard fixed time (sample accurate, via skip)')]
 class EnforceHardStarts extends Command
 {
     public function handle(LiquidsoapStateService $state, LiquidsoapCommandService $commands): int
@@ -19,18 +19,16 @@ class EnforceHardStarts extends Command
         $stations = Station::whereHas('stream', fn ($q) => $q->where('status', 'running'))->get();
 
         foreach ($stations as $station) {
-            // Preferred path: announce the cut before the full hour so the container can
-            // fade the running track out into it instead of after it.
+            // Announce ahead so the container fades out into the fixed time.
             if ($upcoming = $state->upcomingHardStart($station)) {
                 $lead = $state->secondsUntilStart($upcoming);
-
                 $state->announceHardStart($station, $upcoming);
                 $commands->skip($station, $lead);
 
-                $this->info(__('Hard start announced: station #:station, rundown #:rundown at :hour, cut in :lead s', [
+                $this->info(__('Hard start announced: station #:station, item #:item at :time, cut in :lead s', [
                     'station' => $station->id,
-                    'rundown' => $upcoming->id,
-                    'hour' => sprintf('%02d:00', $upcoming->broadcast_hour),
+                    'item' => $upcoming->id,
+                    'time' => $upcoming->fixed_at->format('H:i:s'),
                     'lead' => round($lead),
                 ]));
 
@@ -43,15 +41,14 @@ class EnforceHardStarts extends Command
                 continue;
             }
 
-            // Cursor auf den Hard-Rundown setzen, dann sofort skippen → Liquidsoap
-            // zieht /next und bekommt Track 0 des Hard-Rundowns.
+            // Missed announcement: move the cursor to the hard item and cut now.
             $state->commitHardStart($station, $hard);
             $commands->skip($station);
 
-            $this->info(__('Hard start forced: station #:station, rundown #:rundown at :hour', [
+            $this->info(__('Hard start forced: station #:station, item #:item at :time', [
                 'station' => $station->id,
-                'rundown' => $hard->id,
-                'hour' => sprintf('%02d:00', $hard->broadcast_hour),
+                'item' => $hard->id,
+                'time' => $hard->fixed_at->format('H:i:s'),
             ]));
         }
 

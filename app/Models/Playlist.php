@@ -10,8 +10,9 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['station_id', 'name', 'kind', 'playback_mode', 'start_mode'])]
+#[Fillable(['station_id', 'name', 'kind', 'playback_mode'])]
 class Playlist extends Model
 {
     /** @use HasFactory<PlaylistFactory> */
@@ -56,6 +57,20 @@ class Playlist extends Model
     public function items(): HasMany
     {
         return $this->hasMany(PlaylistItem::class)->orderBy('position');
+    }
+
+    /** First element of the playlist. */
+    public function firstItem(): HasOne
+    {
+        return $this->hasOne(PlaylistItem::class)->ofMany('position', 'min');
+    }
+
+    /** Does the playlist open with a hard 00:00 marker (hard start on the hour)? */
+    public function startsHard(): bool
+    {
+        $first = $this->firstItem;
+
+        return $first !== null && $first->isHardMarker() && (int) $first->relative_offset_seconds === 0;
     }
 
     /** Items in other playlists that embed this container. */

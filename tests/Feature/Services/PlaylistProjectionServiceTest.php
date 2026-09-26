@@ -18,7 +18,7 @@ beforeEach(function () {
 });
 
 /**
- * Erzeugt einen Rundown mit Items à $duration Sekunden.
+ * Erzeugt einen Rundown mit Items à $duration Sekunden. 'hard' pins the first item hard.
  *
  * @return array{0: GeneratedPlaylist, 1: Collection}
  */
@@ -28,7 +28,6 @@ function makeRundown(Station $station, int $hour, string $startMode, int $count,
         'station_id' => $station->id,
         'broadcast_date' => '2026-05-12',
         'broadcast_hour' => $hour,
-        'start_mode' => $startMode,
         'status' => 'ready',
         'generated_at' => now(),
     ]);
@@ -38,6 +37,8 @@ function makeRundown(Station $station, int $hour, string $startMode, int $count,
         'title' => sprintf('H%02d-Track%d', $hour, $pos),
         'duration_seconds' => $duration,
         'source_type' => 'template_item',
+        'fixed_at' => $pos === 0 && $startMode === 'hard' ? Carbon::parse('2026-05-12')->setTime($hour, 0, 0) : null,
+        'fixed_mode' => $pos === 0 && $startMode === 'hard' ? 'hard' : null,
     ]));
 
     return [$rundown, $items];
@@ -153,4 +154,34 @@ test('falls back to the current hour rundown when nothing is playing', function 
     expect($playlist)->toHaveCount(2)
         ->and($playlist->every(fn ($p) => ! $p->isPlaying))->toBeTrue()
         ->and($playlist[0]->projectedStart->format('H:i:s'))->toBe('10:30:00');
+});
+
+test('fill music that would start after a soft fixed time is shown as skipped', function () {
+    [$rundown, $items] = makeRundown($this->station, 10, 'soft', 1, duration: 120);
+
+    foreach (range(1, 3) as $pos) {
+        $rundown->items()->create([
+            'position' => $pos, 'title' => "Fill {$pos}", 'duration_seconds' => 300, 'source_type' => 'resolved_fill',
+        ]);
+    }
+    $adbreak = $rundown->items()->create([
+        'position' => 4, 'title' => 'START_AD_BREAK', 'source_type' => 'adbreak', 'fixed_at' => '2026-05-12 10:40:00',
+    ]);
+
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'current_rundown_id' => $rundown->id,
+        'now_playing_item_id' => $items[0]->id,
+        'now_playing_started_at' => Carbon::parse('2026-05-12 10:30:00'),
+    ]);
+
+    $playlist = $this->service->project($this->station)->values();
+
+    // Fill 1 at 10:32, fill 2 at 10:37, fill 3 would start 10:42 (after 10:40).
+    expect($playlist[1]->isSkipped)->toBeFalse()
+        ->and($playlist[2]->isSkipped)->toBeFalse()
+        ->and($playlist[3]->isSkipped)->toBeTrue()
+        ->and($playlist[3]->projectedStart)->toBeNull()
+        ->and($playlist[4]->item->id)->toBe($adbreak->id)
+        ->and($playlist[4]->projectedStart->format('H:i:s'))->toBe('10:42:00');
 });

@@ -70,43 +70,59 @@ test('logs a rundown-generated event to the station protocol', function () {
         ->and($log->message)->not->toBeNull();
 });
 
-test('freezes the playlist start_mode into the generated rundown', function () {
+test('a hard 00:00 marker makes the hour start hard', function () {
+    $slot = makeSlot($this->station, hour: 10);
+    $file = $this->station->mediaFiles()->create([
+        'title' => 'News', 'type' => 'jingle', 'file_path' => 'tenants/test/media/news.mp3', 'duration_seconds' => 120,
+    ]);
+    $slot->playlist->items()->create(['position' => 0, 'type' => 'marker', 'title' => 'Fixzeit', 'relative_offset_seconds' => 0, 'fixed_mode' => 'hard']);
+    $slot->playlist->items()->create(['position' => 1, 'type' => 'jingle', 'title' => 'News', 'media_file_id' => $file->id]);
+
+    $rundown = $this->service->generate($this->station, $slot, $this->broadcastDate);
+    $first = $rundown->items->first();
+
+    // The marker is not played, its time goes to the news.
+    expect($rundown->items)->toHaveCount(1)
+        ->and($first->title)->toBe('News')
+        ->and($first->isHardFixed())->toBeTrue()
+        ->and($first->fixed_at->format('H:i:s'))->toBe('10:00:00')
+        ->and($rundown->startsHard())->toBeTrue();
+});
+
+test('an hour without a marker does not start hard', function () {
     $slot = makeSlot($this->station);
-    $slot->playlist->update(['start_mode' => 'hard']);
+    $file = $this->station->mediaFiles()->create([
+        'title' => 'Song', 'type' => 'music', 'file_path' => 'tenants/test/media/song.mp3', 'duration_seconds' => 200,
+    ]);
+    $slot->playlist->items()->create(['position' => 0, 'type' => 'music', 'title' => 'Song', 'media_file_id' => $file->id]);
 
     $rundown = $this->service->generate($this->station, $slot, $this->broadcastDate);
 
-    expect($rundown->start_mode)->toBe('hard');
+    expect($rundown->startsHard())->toBeFalse()
+        ->and($rundown->items->first()->fixed_at)->toBeNull();
 });
 
-test('defaults the rundown start_mode to soft when the playlist is soft', function () {
-    $slot = makeSlot($this->station);
-
-    $rundown = $this->service->generate($this->station, $slot, $this->broadcastDate);
-
-    expect($rundown->start_mode)->toBe('soft');
-});
-
-test('resolves relative offset to absolute broadcast time', function () {
+test('keeps the soft fixed time and plays sequentially when nothing fills up to it', function () {
     $slot = makeSlot($this->station, hour: 10);
     $file = $this->station->mediaFiles()->create([
         'title' => 'Jingle',
         'type' => 'jingle',
         'file_path' => 'tenants/test/media/jingle.mp3',
     ]);
+    $slot->playlist->items()->create(['position' => 0, 'type' => 'marker', 'title' => 'Fixzeit', 'relative_offset_seconds' => 900, 'fixed_mode' => 'soft']);
     $slot->playlist->items()->create([
-        'position' => 0,
+        'position' => 1,
         'type' => 'jingle',
         'title' => 'Jingle',
         'media_file_id' => $file->id,
-        'relative_offset_seconds' => 900, // 15 min
     ]);
 
     $rundown = $this->service->generate($this->station, $slot, $this->broadcastDate);
 
+    // No fill in front: the element plays sequentially, fixed_at stays nominal.
     $item = $rundown->items->first();
-    expect($item->absolute_broadcast_at)->not->toBeNull()
-        ->and($item->absolute_broadcast_at->format('H:i'))->toBe('10:15');
+    expect($item->fixed_at->format('H:i'))->toBe('10:15')
+        ->and($item->absolute_broadcast_at->format('H:i'))->toBe('10:00');
 });
 
 test('resolves fill item with random tracks', function () {

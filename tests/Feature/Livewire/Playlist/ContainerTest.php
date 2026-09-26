@@ -136,11 +136,11 @@ test('only the name is editable on a container', function () {
 
     Livewire::test(Manager::class, ['playlist' => $container])
         ->set('name', 'Renamed block')
-        ->set('startMode', 'hard')
+        ->set('playbackMode', 'random')
         ->call('saveSettings');
 
     expect($container->fresh()->name)->toBe('Renamed block')
-        ->and($container->fresh()->start_mode)->not->toBe('hard');
+        ->and($container->fresh()->playback_mode)->toBe('sequential');
 });
 
 test('rundown generation expands the container in place', function () {

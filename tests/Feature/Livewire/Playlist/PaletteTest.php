@@ -66,7 +66,7 @@ test('the palette shows containers, external sources and special elements per ta
         ->assertViewHas('paletteEntries', fn ($entries) => $entries->first()->title === 'Syndication');
 
     $component->call('switchTab', 'special')
-        ->assertViewHas('paletteEntries', fn ($entries) => $entries->pluck('id')->all() === ['fill', 'random', 'adbreak']);
+        ->assertViewHas('paletteEntries', fn ($entries) => $entries->pluck('id')->all() === ['fill', 'random', 'adbreak', 'marker']);
 });
 
 test('picks keep their order across the tabs', function () {

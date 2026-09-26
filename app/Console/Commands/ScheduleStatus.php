@@ -48,7 +48,7 @@ class ScheduleStatus extends Command
         $rundowns = GeneratedPlaylist::where('station_id', $station->id)
             ->where('broadcast_date', today())
             ->withCount('items')
-            ->with('playlist')
+            ->with('firstItem')
             ->orderBy('broadcast_hour')
             ->get();
 
@@ -59,11 +59,11 @@ class ScheduleStatus extends Command
             $rows = $rundowns->map(fn (GeneratedPlaylist $r) => [
                 sprintf('%02d:00', $r->broadcast_hour),
                 $r->status,
-                $r->start_mode.($r->playlist && $r->playlist->start_mode !== $r->start_mode ? ' (Playlist: '.$r->playlist->start_mode.'!)' : ''),
+                $r->startsHard() ? 'hard' : 'soft',
                 $r->items_count,
                 $r->id === $state?->current_rundown_id ? __('active') : '',
             ])->all();
-            $this->table([__('Hour'), __('Status'), 'start_mode', __('Tracks'), ''], $rows);
+            $this->table([__('Hour'), __('Status'), __('Start'), __('Tracks'), ''], $rows);
         }
         $this->newLine();
 

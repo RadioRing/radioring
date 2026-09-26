@@ -142,6 +142,15 @@ class PlaylistPalette
                 badgeClass: 'bg-danger',
                 icon: 'bi-megaphone',
             ),
+            new PaletteEntry(
+                kind: self::TAB_SPECIAL,
+                id: 'marker',
+                title: __('Fixed time'),
+                subtitle: __('Pins the next element to a time in the hour, soft or hard'),
+                badge: __('Fixed time'),
+                badgeClass: 'bg-warning text-dark',
+                icon: 'bi-stopwatch',
+            ),
         ]);
 
         if ($search === '') {

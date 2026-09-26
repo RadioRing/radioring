@@ -22,9 +22,9 @@ function hardSetup(Station $station): GeneratedPlaylist
 
     $hard = GeneratedPlaylist::factory()->create([
         'station_id' => $station->id, 'broadcast_date' => today(), 'broadcast_hour' => 12,
-        'status' => 'ready', 'start_mode' => 'hard',
+        'status' => 'ready',
     ]);
-    GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $hard->id, 'media_file_id' => $file->id, 'position' => 0, 'source_type' => 'template_item', 'title' => 'B0']);
+    GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $hard->id, 'media_file_id' => $file->id, 'position' => 0, 'source_type' => 'template_item', 'title' => 'B0', 'fixed_at' => today()->setTime(12, 0, 0), 'fixed_mode' => 'hard']);
 
     return $hard;
 }
@@ -82,7 +82,7 @@ test('enforces the cut even when the pull cursor already raced into the hard run
     // Vorstunde, deren Track durch den Prefetch-Puffer hörbar noch läuft (Überhang).
     $prev = GeneratedPlaylist::factory()->create([
         'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 11,
-        'status' => 'ready', 'start_mode' => 'soft',
+        'status' => 'ready',
     ]);
     $prevFile = MediaFile::factory()->create(['tenant_id' => $this->station->tenant_id, 'type' => 'music', 'file_path' => "tenants/{$this->station->tenant_id}/media/a.mp3", 'title' => 'A']);
     $prevItem = GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $prev->id, 'media_file_id' => $prevFile->id, 'position' => 0, 'source_type' => 'template_item', 'title' => 'A0']);
@@ -128,7 +128,7 @@ test('does not cut the same hard rundown twice when now_playing was cleared', fu
 
     $state = LiquidsoapState::where('station_id', $this->station->id)->first();
     expect($state->current_item_position)->toBe(7)
-        ->and($state->hard_start_committed_rundown_id)->toBe($hard->id);
+        ->and($state->committed_hard_time->format('H:i:s'))->toBe('12:00:00');
 });
 
 test('cuts a hard rundown that already started before its full hour', function () {
@@ -179,14 +179,14 @@ test('cuts again for the next hour despite an earlier commit', function () {
         'station_id' => $this->station->id,
         'current_rundown_id' => $previous->id,
         'current_item_position' => 4,
-        'hard_start_committed_rundown_id' => $previous->id,
+        'committed_hard_time' => today()->setTime(12, 0, 0),
     ]);
 
     $next = GeneratedPlaylist::factory()->create([
         'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 13,
-        'status' => 'ready', 'start_mode' => 'hard',
+        'status' => 'ready',
     ]);
-    GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $next->id, 'position' => 0, 'source_type' => 'news_weather', 'title' => 'Nachrichten + Wetter']);
+    GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $next->id, 'position' => 0, 'source_type' => 'news_weather', 'title' => 'Nachrichten + Wetter', 'fixed_at' => today()->setTime(13, 0, 0), 'fixed_mode' => 'hard']);
 
     $this->travelTo(today()->setHour(13)->setMinute(0));
 
@@ -198,7 +198,7 @@ test('cuts again for the next hour despite an earlier commit', function () {
     $state = LiquidsoapState::where('station_id', $this->station->id)->first();
     expect($state->current_rundown_id)->toBe($next->id)
         ->and($state->current_item_position)->toBe(0)
-        ->and($state->hard_start_committed_rundown_id)->toBe($next->id);
+        ->and($state->committed_hard_time->format('H:i:s'))->toBe('13:00:00');
 });
 
 test('announces the next hard start before its full hour and leaves the cursor alone', function () {
@@ -206,14 +206,14 @@ test('announces the next hard start before its full hour and leaves the cursor a
 
     $running = GeneratedPlaylist::factory()->create([
         'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 12,
-        'status' => 'ready', 'start_mode' => 'soft',
+        'status' => 'ready',
     ]);
 
     $hard = GeneratedPlaylist::factory()->create([
         'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 13,
-        'status' => 'ready', 'start_mode' => 'hard',
+        'status' => 'ready',
     ]);
-    GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $hard->id, 'position' => 0, 'source_type' => 'news_weather', 'title' => 'Nachrichten']);
+    GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $hard->id, 'position' => 0, 'source_type' => 'news_weather', 'title' => 'Nachrichten', 'fixed_at' => today()->setTime(13, 0, 0), 'fixed_mode' => 'hard']);
 
     LiquidsoapState::create([
         'station_id' => $this->station->id,
@@ -233,7 +233,7 @@ test('announces the next hard start before its full hour and leaves the cursor a
 
     // Der Cursor darf NICHT mitwandern: sonst zoege der Prefetch die Nachrichten noch vor
     // dem Schnitt, und das set_queue([]) des Cuts wuerfe genau sie weg.
-    expect($state->hard_start_committed_rundown_id)->toBe($hard->id)
+    expect($state->committed_hard_time->format('H:i:s'))->toBe('13:00:00')
         ->and($state->current_rundown_id)->toBe($running->id)
         ->and($state->current_item_position)->toBe(5);
 });
@@ -243,9 +243,9 @@ test('announces a hard start only once', function () {
 
     $hard = GeneratedPlaylist::factory()->create([
         'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 13,
-        'status' => 'ready', 'start_mode' => 'hard',
+        'status' => 'ready',
     ]);
-    GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $hard->id, 'position' => 0, 'source_type' => 'news_weather', 'title' => 'Nachrichten']);
+    GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $hard->id, 'position' => 0, 'source_type' => 'news_weather', 'title' => 'Nachrichten', 'fixed_at' => today()->setTime(13, 0, 0), 'fixed_mode' => 'hard']);
 
     LiquidsoapState::create(['station_id' => $this->station->id, 'current_item_position' => 5]);
 
@@ -266,7 +266,7 @@ test('does not announce a soft start', function () {
 
     $soft = GeneratedPlaylist::factory()->create([
         'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 13,
-        'status' => 'ready', 'start_mode' => 'soft',
+        'status' => 'ready',
     ]);
     GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $soft->id, 'position' => 0, 'source_type' => 'template_item', 'title' => 'S0']);
 

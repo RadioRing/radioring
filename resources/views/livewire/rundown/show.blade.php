@@ -186,14 +186,24 @@
 
                                 {{-- Info --}}
                                 <div class="flex-grow-1 overflow-hidden">
-                                    <div class="text-truncate fw-medium small {{ $isPlaying ? 'fw-semibold' : '' }}">
+                                    <div class="text-truncate fw-medium small {{ $isPlaying ? 'fw-semibold' : '' }} {{ $item->skipped_at ? 'text-decoration-line-through text-muted' : '' }}">
                                         {{ $item->title }}
                                     </div>
-                                    @if($item->durationFormatted())
-                                        <div class="text-muted" style="font-size:.75rem">
-                                            <i class="bi bi-clock me-1"></i>{{ $item->durationFormatted() }}
-                                        </div>
-                                    @endif
+                                    <div class="text-muted d-flex flex-wrap gap-2" style="font-size:.75rem">
+                                        @if($item->durationFormatted())
+                                            <span><i class="bi bi-clock me-1"></i>{{ $item->durationFormatted() }}</span>
+                                        @endif
+                                        @if($item->fixed_at)
+                                            <span class="badge {{ $item->isHardFixed() ? 'bg-danger' : 'bg-warning text-dark' }}">
+                                                <i class="bi bi-stopwatch me-1"></i>{{ $item->isHardFixed()
+                                                    ? __('Hard fixed time :time', ['time' => $item->fixed_at->format('H:i:s')])
+                                                    : __('Soft fixed time :time', ['time' => $item->fixed_at->format('H:i:s')]) }}
+                                            </span>
+                                        @endif
+                                        @if($item->skipped_at)
+                                            <span class="fst-italic">{{ __('Skipped for the fixed time') }}</span>
+                                        @endif
+                                    </div>
                                 </div>
 
                                 @if(! $rundown->isPlayed() && ! $isLocked)

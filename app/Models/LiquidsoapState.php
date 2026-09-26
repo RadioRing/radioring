@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'station_id',
     'current_rundown_id',
     'current_item_position',
-    'hard_start_committed_rundown_id',
+    'committed_hard_time',
     'now_playing_item_id',
     'now_playing_title',
     'now_playing_artist',
@@ -57,6 +57,7 @@ class LiquidsoapState extends Model
     {
         return [
             'now_playing_started_at' => 'datetime',
+            'committed_hard_time' => 'datetime',
             'last_pulled_at' => 'datetime',
             'underrun_started_at' => 'datetime',
             'underrun_logged_at' => 'datetime',

@@ -29,7 +29,7 @@
                 <div class="d-flex align-items-center justify-content-between gap-2 text-muted-sm">
                     <span>{{ __('Runtime') }}</span>
                     <span class="fw-medium {{ $playlist->isContainer() || $runtime->fitsInHour() ? '' : 'text-danger' }}">
-                        {{ $runtime::format($runtime->total()) }}@if(! $playlist->isContainer()) / 60:00 @endif
+                        @if($runtime->totalIsApproximate())~@endif{{ $runtime::format($runtime->total()) }}@if(! $playlist->isContainer()) / 60:00 @endif
                     </span>
                 </div>
                 @unless($playlist->isContainer())
@@ -75,7 +75,7 @@
                             <div class="col-12 col-md-8">
                                 <div class="alert alert-info py-2 px-3 small mb-0">
                                     <i class="bi bi-box-seam me-1"></i>
-                                    {{ __('This block is played wherever a playlist embeds it. Playback and start mode come from that playlist.') }}
+                                    {{ __('This block is played wherever a playlist embeds it. Playback mode and fixed times come from that playlist.') }}
                                 </div>
                             </div>
                         @else
@@ -84,13 +84,6 @@
                                 <select wire:model="playbackMode" class="form-select form-select-sm">
                                     <option value="sequential">{{ __('Sequentiell') }}</option>
                                     <option value="random">{{ __('Zufällig') }}</option>
-                                </select>
-                            </div>
-                            <div class="col-12 col-md-4">
-                                <label class="form-label form-label-sm">{{ __('Start zur vollen Stunde') }}</label>
-                                <select wire:model="startMode" class="form-select form-select-sm">
-                                    <option value="soft">{{ __('Weich – Überhang der Vorstunde darf auslaufen') }}</option>
-                                    <option value="hard">{{ __('Hart – schneidet zur vollen Stunde') }}</option>
                                 </select>
                             </div>
                         @endif
@@ -378,8 +371,20 @@
                          })
                      ">
                     @forelse($items as $item)
+                        @php
+                            // Marker row yellow (soft) or red (hard), the pinned element gets a matching stripe.
+                            $isMarker = $item->isMarker();
+                            $markerTone = $isMarker && ! $playlist->isContainer() ? ($item->isHardMarker() ? 'danger' : 'warning') : null;
+                            $previous = $loop->index > 0 ? $items[$loop->index - 1] : null;
+                            $pinnedTone = $previous?->isMarker() && ! $isMarker && ! $playlist->isContainer()
+                                ? ($previous->isHardMarker() ? 'danger' : 'warning')
+                                : null;
+                        @endphp
                         <div wire:key="item-{{ $item->id }}" data-item-id="{{ $item->id }}">
-                            <div class="list-group-item d-flex align-items-center gap-2 gap-md-3 py-2">
+                            <div class="list-group-item d-flex align-items-center gap-2 gap-md-3 py-2
+                                        {{ $markerTone ? 'list-group-item-'.$markerTone : '' }}
+                                        {{ $isMarker && $playlist->isContainer() ? 'opacity-50' : '' }}"
+                                 @if($pinnedTone) style="box-shadow: inset 4px 0 0 var(--bs-{{ $pinnedTone }})" @endif>
 
                                 {{-- Auswahl für die Sammelaktionen --}}
                                 <input class="form-check-input mt-0 flex-shrink-0" type="checkbox"
@@ -392,7 +397,7 @@
                                 {{-- Startzeit ab Playlist-Beginn --}}
                                 <span class="text-muted font-monospace d-none d-sm-inline text-nowrap" style="font-size:.72rem;min-width:44px">
                                     @if($runtime->offset($item) !== null)
-                                        {{ $runtime::format($runtime->offset($item)) }}
+                                        @if($runtime->offsetIsApproximate($item))~@endif{{ $runtime::format($runtime->offset($item)) }}
                                     @else
                                         <span class="opacity-50">--:--</span>
                                     @endif
@@ -410,6 +415,7 @@
                                         'container'    => 'bg-secondary',
                                         'adbreak'      => 'bg-danger',
                                         'news', 'weather', 'news_weather' => 'bg-info text-dark',
+                                        'marker'       => $item->isHardMarker() ? 'bg-danger' : 'bg-warning text-dark',
                                         default        => 'bg-secondary',
                                     };
                                     $badgeLabel = match($item->type) {
@@ -424,6 +430,7 @@
                                         'news'         => __('News'),
                                         'weather'      => __('Wetter'),
                                         'news_weather' => __('News+Wetter'),
+                                        'marker'       => __('Fixed time'),
                                         default        => $item->type,
                                     };
                                 @endphp
@@ -433,9 +440,40 @@
 
                                 {{-- Titel + Info --}}
                                 <div class="flex-grow-1 overflow-hidden">
-                                    <div class="text-truncate fw-medium small">@if (isset($item->id))#{{ $item->id }}: @endif{{ $item->title }}</div>
+                                    @if($isMarker)
+                                        <div class="text-truncate fw-semibold small">
+                                            <i class="bi bi-stopwatch me-1"></i>{{ $item->isHardMarker()
+                                                ? __('Hard fixed time :time', ['time' => $this->formatOffset((int) $item->relative_offset_seconds)])
+                                                : __('Soft fixed time :time', ['time' => $this->formatOffset((int) $item->relative_offset_seconds)]) }}
+                                        </div>
+                                    @else
+                                        <div class="text-truncate fw-medium small">@if (isset($item->id))#{{ $item->id }}: @endif{{ $item->title }}</div>
+                                    @endif
                                     <div class="text-muted d-flex flex-wrap gap-2" style="font-size:.75rem">
-                                        @if($item->type === 'adbreak')
+                                        @if($isMarker)
+                                            @php $deviation = $runtime->markerDeviation($item); @endphp
+                                            @if($playlist->isContainer())
+                                                <span class="fst-italic">{{ __('Ignored inside a container.') }}</span>
+                                            @elseif($deviation !== null && abs($deviation) >= 5)
+                                                @php $by = $this->formatOffset(abs($deviation)); @endphp
+                                                <span class="{{ $item->isHardMarker() ? 'text-danger' : '' }}">
+                                                    <i class="bi bi-exclamation-triangle me-1"></i>
+                                                    @if($item->isHardMarker())
+                                                        {{ $deviation > 0
+                                                            ? __('The programme in front runs :time too long and is cut.', ['time' => $by])
+                                                            : __('Silence of :time before the cut: add a fill in front.', ['time' => $by]) }}
+                                                    @else
+                                                        {{ $deviation > 0
+                                                            ? __('Reached about :time late.', ['time' => $by])
+                                                            : __('Reached :time early, the element comes early.', ['time' => $by]) }}
+                                                    @endif
+                                                </span>
+                                            @else
+                                                <span class="fst-italic">{{ $item->isHardMarker()
+                                                    ? __('Cuts the programme and starts the next element on the second.')
+                                                    : __('No fill music starts after this time, the next element follows the running track.') }}</span>
+                                            @endif
+                                        @elseif($item->type === 'adbreak')
                                             <span class="fst-italic"><i class="bi bi-megaphone me-1"></i>{{ __('laut.fm START_AD_BREAK') }}</span>
                                         @elseif(in_array($item->type, ['news', 'weather', 'news_weather']))
                                             <span class="fst-italic"><i class="bi bi-newspaper me-1"></i>{{ __('laut.fm RadioAdmin') }}</span>
@@ -446,9 +484,6 @@
                                             @endif
                                         @elseif($item->type === 'external')
                                             <span class="fst-italic"><i class="bi bi-rss me-1"></i>{{ $item->externalSource?->name ?? __('externe Quelle') }}</span>
-                                            @if($item->relative_offset_seconds !== null)
-                                                <span class="text-warning-emphasis"><i class="bi bi-stopwatch me-1"></i>{{ $this->formatOffset($item->relative_offset_seconds) }}</span>
-                                            @endif
                                         @elseif($item->type === 'fill')
                                             @if($item->fill_tags && count($item->fill_tags) > 0)
                                                 @php $tagNames = $stationTags->whereIn('id', $item->fill_tags)->pluck('name'); @endphp
@@ -458,6 +493,11 @@
                                             @endif
                                             @if($item->fill_max_duration_seconds)
                                                 <span><i class="bi bi-hourglass-split me-1"></i>max. {{ $this->formatOffset($item->fill_max_duration_seconds) }}</span>
+                                            @endif
+                                            @if($runtime->fillTarget($item) !== null)
+                                                <span><i class="bi bi-stopwatch me-1"></i>{{ $runtime->fillTarget($item) >= \App\Support\PlaylistElements\FixedTimes::HOUR_SECONDS
+                                                    ? __('until the full hour')
+                                                    : __('until the fixed time :time', ['time' => $this->formatOffset($runtime->fillTarget($item))]) }}</span>
                                             @endif
                                         @elseif($item->type === 'random')
                                             <span class="fst-italic"><i class="bi bi-shuffle me-1"></i>{{ __('zufällig je Rundown') }}</span>
@@ -475,11 +515,6 @@
                                                     <i class="bi bi-link-45deg me-1"></i>{{ $item->url }}
                                                 </span>
                                             @endif
-                                            @if($item->relative_offset_seconds !== null)
-                                                <span class="text-warning-emphasis">
-                                                    <i class="bi bi-stopwatch me-1"></i>{{ $this->formatOffset($item->relative_offset_seconds) }}
-                                                </span>
-                                            @endif
                                         @endif
                                     </div>
                                 </div>
@@ -487,12 +522,12 @@
                                 {{-- Länge --}}
                                 <span class="text-muted d-none d-md-inline text-nowrap" style="font-size:.75rem">
                                     @if($runtime->duration($item))
-                                        <i class="bi bi-clock me-1"></i>{{ $runtime::format($runtime->duration($item)) }}
+                                        <i class="bi bi-clock me-1"></i>@if($runtime->durationIsApproximate($item))~@endif{{ $runtime::format($runtime->duration($item)) }}
                                     @endif
                                 </span>
 
-                                {{-- Bearbeiten (nicht bei adbreak/news/weather/container – nichts zu konfigurieren) --}}
-                                @if(! in_array($item->type, ['adbreak', 'news', 'weather', 'news_weather', 'container']))
+                                {{-- Only fill, random and markers have settings --}}
+                                @if(in_array($item->type, ['fill', 'random', 'marker']))
                                     <button class="btn btn-sm btn-outline-secondary"
                                             wire:click="startEditingItem({{ $item->id }})"
                                             title="{{ __('Bearbeiten') }}">
@@ -575,17 +610,35 @@
                                                 </div>
                                             @endif
                                         </div>
-                                    @else
-                                        <p class="small fw-medium mb-2">{{ __('Element bearbeiten') }}: <span class="fw-normal">{{ $item->title }}</span></p>
-                                        <div class="mb-3" style="max-width:180px">
-                                            <label class="form-label form-label-sm">
-                                                <i class="bi bi-stopwatch me-1"></i>{{ __('Zeitstempel (MM:SS)') }}
-                                            </label>
-                                            <input type="text" wire:model="editRelativeOffset"
-                                                   class="form-control form-control-sm"
-                                                   placeholder="{{ __('leer = kein Zeitstempel') }}">
-                                            <div class="form-text">{{ __('Zeitpunkt ab Playlist-Start, z.B. 15:00') }}</div>
+                                    @elseif($isMarker)
+                                        <p class="small fw-medium mb-2">{{ __('Edit fixed time') }}</p>
+                                        <div class="row g-3 mb-3">
+                                            <div class="col-12 col-sm-4" style="max-width:180px">
+                                                <label class="form-label form-label-sm">
+                                                    <i class="bi bi-stopwatch me-1"></i>{{ __('Time in the hour (MM:SS)') }}
+                                                </label>
+                                                <input type="text" wire:model="editRelativeOffset"
+                                                       class="form-control form-control-sm @error('editRelativeOffset') is-invalid @enderror"
+                                                       placeholder="15:00">
+                                                @error('editRelativeOffset') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                                            </div>
+                                            <div class="col-12 col-sm-8">
+                                                <label class="form-label form-label-sm">{{ __('Mode') }}</label>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="radio" value="soft" wire:model="editFixedMode" id="fixed-soft-{{ $item->id }}">
+                                                    <label class="form-check-label small" for="fixed-soft-{{ $item->id }}">
+                                                        <span class="badge bg-warning text-dark me-1">{{ __('Soft') }}</span>{{ __('No further fill music starts, the running track plays out.') }}
+                                                    </label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="radio" value="hard" wire:model="editFixedMode" id="fixed-hard-{{ $item->id }}">
+                                                    <label class="form-check-label small" for="fixed-hard-{{ $item->id }}">
+                                                        <span class="badge bg-danger me-1">{{ __('Hard') }}</span>{{ __('The programme is cut, the next element starts on the second.') }}
+                                                    </label>
+                                                </div>
+                                            </div>
                                         </div>
+                                        <div class="form-text mb-3">{{ __('A hard 00:00 at the top of the playlist is the hard start on the hour.') }}</div>
                                     @endif
                                     <div class="d-flex gap-2">
                                         <button class="btn btn-sm btn-primary" wire:click="saveItem">

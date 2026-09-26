@@ -57,7 +57,6 @@ class UploadElement implements PlaylistElementType
             'type' => $this->type,
             'title' => $draft->title,
             'media_file_id' => $mediaFile->id,
-            'relative_offset_seconds' => $draft->relativeOffsetSeconds,
         ]);
 
         return 1;

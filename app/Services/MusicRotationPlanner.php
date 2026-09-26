@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\FillFit;
 use App\Models\MediaFile;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -55,14 +56,20 @@ class MusicRotationPlanner
         return max(self::WINDOW_SECONDS, $this->titleCooldownSeconds);
     }
 
+    /** Candidates sampled for backtiming the last tracks (60 give ~3500 pairs). */
+    private const FINISH_CANDIDATES = 60;
+
     /**
      * Plant die Reihenfolge der Fill-Tracks.
+     *
+     * Closest and Reach backtime the last one or two tracks to the budget; the rotation
+     * rules still take precedence.
      *
      * @param  Collection<int, MediaFile>  $pool  verfügbare Musiktitel (Kandidaten)
      * @param  list<array{id?: ?int, artist: ?string, album: ?string, at: Carbon}>  $history  bereits gesendete/platzierte Tracks im Vorfeld, aufsteigend nach Zeit sortiert
      * @return list<MediaFile> gewählte Tracks in Sendereihenfolge
      */
-    public function plan(Collection $pool, array $history, Carbon $startAt, int $maxDuration): array
+    public function plan(Collection $pool, array $history, Carbon $startAt, int $maxDuration, FillFit $fit = FillFit::Cross): array
     {
         $remaining = $pool->values()->all();
 
@@ -77,27 +84,115 @@ class MusicRotationPlanner
         $cursor = $startAt->copy();
         $filled = 0;
         $chosen = [];
+        $longest = (int) $pool->max('duration_seconds');
+
+        $place = function (MediaFile $track) use (&$timeline, &$chosen, &$cursor, &$filled): void {
+            $timeline[] = $this->timelineEntry($track, $cursor);
+            $chosen[] = $track;
+            $cursor = $cursor->copy()->addSeconds($track->duration_seconds ?? 0);
+            $filled += $track->duration_seconds ?? 0;
+        };
 
         while ($filled < $maxDuration && $remaining !== []) {
+            $left = $maxDuration - $filled;
+
+            // Two tracks can close the gap: fit the end.
+            if ($fit !== FillFit::Cross && $left <= 2 * $longest) {
+                $finish = $this->finish($remaining, $timeline, $cursor, $left, $fit);
+
+                if ($finish !== null) {
+                    foreach ($finish as $track) {
+                        $place($track);
+                    }
+
+                    break;
+                }
+            }
+
             $index = $this->chooseIndex($remaining, $timeline, $cursor);
             $track = $remaining[$index];
             array_splice($remaining, $index, 1);
 
-            $duration = $track->duration_seconds ?? 0;
-
-            $timeline[] = [
-                'id' => $track->id,
-                'artist' => $this->normalize($track->artist),
-                'album' => $this->normalize($track->album),
-                'at' => $cursor->copy(),
-            ];
-
-            $chosen[] = $track;
-            $cursor = $cursor->copy()->addSeconds($duration);
-            $filled += $duration;
+            $place($track);
         }
 
         return $chosen;
+    }
+
+    /**
+     * Best zero, one or two tracks to close the last $left seconds, or null if Reach cannot
+     * be met. Only candidates with the lowest available penalty are considered.
+     *
+     * @param  list<MediaFile>  $remaining
+     * @param  list<array{id: ?int, artist: ?string, album: ?string, at: Carbon}>  $timeline
+     * @return list<MediaFile>|null tracks in broadcast order
+     */
+    private function finish(array $remaining, array $timeline, Carbon $at, int $left, FillFit $fit): ?array
+    {
+        $penalties = array_map(fn (MediaFile $track): int => $this->penalty($track, $timeline, $at), $remaining);
+        $lowest = min($penalties);
+
+        $candidates = array_keys($penalties, $lowest, true);
+        shuffle($candidates);
+        $candidates = array_map(fn (int $i): MediaFile => $remaining[$i], array_slice($candidates, 0, self::FINISH_CANDIDATES));
+
+        $deviation = fn (int $total): ?int => match ($fit) {
+            FillFit::Reach => $total >= $left ? $total - $left : null,
+            default => abs($total - $left),
+        };
+
+        $best = null;
+        $bestDeviation = PHP_INT_MAX;
+
+        // Stopping now is an option for a soft fixed time.
+        if ($fit === FillFit::Closest) {
+            $best = [];
+            $bestDeviation = $left;
+        }
+
+        foreach ($candidates as $first) {
+            $firstLength = $first->duration_seconds ?? 0;
+            $single = $deviation($firstLength);
+
+            if ($single !== null && $single < $bestDeviation) {
+                $best = [$first];
+                $bestDeviation = $single;
+            }
+
+            $afterFirst = [...$timeline, $this->timelineEntry($first, $at)];
+            $secondAt = $at->copy()->addSeconds($firstLength);
+
+            foreach ($candidates as $second) {
+                if ($second === $first) {
+                    continue;
+                }
+
+                $pair = $deviation($firstLength + ($second->duration_seconds ?? 0));
+
+                // Check the penalty only for pairs that improve the fit.
+                if ($pair === null || $pair >= $bestDeviation || $this->penalty($second, $afterFirst, $secondAt) > $lowest) {
+                    continue;
+                }
+
+                $best = [$first, $second];
+                $bestDeviation = $pair;
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * @return array{id: ?int, artist: ?string, album: ?string, at: Carbon}
+     */
+    private function timelineEntry(MediaFile $track, Carbon $at): array
+    {
+        return [
+            'id' => $track->id,
+            'artist' => $this->normalize($track->artist),
+            'album' => $this->normalize($track->album),
+            'at' => $at->copy(),
+        ];
     }
 
     /**

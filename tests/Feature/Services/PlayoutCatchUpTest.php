@@ -17,7 +17,7 @@ beforeEach(function () {
 });
 
 /**
- * Rundown mit fortlaufenden Items; jedes Item bekommt seine geplante Sendezeit.
+ * Rundown mit fortlaufenden Items; jedes Item bekommt seine geplante Sendezeit. 'hard' pins the first item hard.
  */
 function catchUpRundown(Station $station, int $hour, string $startMode, int $count, int $duration = 1200): GeneratedPlaylist
 {
@@ -26,7 +26,6 @@ function catchUpRundown(Station $station, int $hour, string $startMode, int $cou
         'broadcast_date' => today(),
         'broadcast_hour' => $hour,
         'status' => 'ready',
-        'start_mode' => $startMode,
     ]);
 
     $at = today()->setTime($hour, 0, 0);
@@ -46,6 +45,8 @@ function catchUpRundown(Station $station, int $hour, string $startMode, int $cou
             'title' => sprintf('H%02d-%d', $hour, $position),
             'duration_seconds' => $duration,
             'absolute_broadcast_at' => $at->copy()->addSeconds($position * $duration),
+            'fixed_at' => $position === 0 && $startMode === 'hard' ? $at : null,
+            'fixed_mode' => $position === 0 && $startMode === 'hard' ? 'hard' : null,
         ]);
     }
 

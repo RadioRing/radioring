@@ -87,3 +87,25 @@ test('playing position is detected even when the pull cursor raced into the next
         ->assertViewHas('playingPosition', 2)
         ->assertViewHas('lockedBelowPosition', -1);
 });
+
+test('fixed times and skipped fill music are shown in the rundown', function () {
+    $rundown = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id,
+        'broadcast_date' => today(),
+        'broadcast_hour' => 10,
+        'status' => 'ready',
+    ]);
+
+    GeneratedPlaylistItem::factory()->create([
+        'generated_playlist_id' => $rundown->id, 'position' => 0, 'source_type' => 'resolved_fill',
+        'title' => 'Dropped song', 'duration_seconds' => 200, 'skipped_at' => now(),
+    ]);
+    GeneratedPlaylistItem::factory()->create([
+        'generated_playlist_id' => $rundown->id, 'position' => 1, 'source_type' => 'news_weather',
+        'title' => 'News', 'fixed_at' => today()->setTime(10, 30, 0), 'fixed_mode' => 'hard',
+    ]);
+
+    Livewire::test(Show::class, ['date' => today()->toDateString(), 'hour' => 10])
+        ->assertSee('Hard fixed time 10:30:00')
+        ->assertSee('Skipped for the fixed time');
+});

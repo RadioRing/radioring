@@ -27,7 +27,7 @@ function onAirItem(Station $station): GeneratedPlaylistItem
 
     $rundown = GeneratedPlaylist::factory()->create([
         'station_id' => $station->id, 'broadcast_date' => today(), 'broadcast_hour' => 12,
-        'status' => 'ready', 'start_mode' => 'soft',
+        'status' => 'ready',
     ]);
 
     return GeneratedPlaylistItem::factory()->create([

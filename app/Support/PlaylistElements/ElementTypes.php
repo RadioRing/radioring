@@ -16,6 +16,7 @@ class ElementTypes
     {
         return match ($type) {
             'adbreak' => new AdBreakElement,
+            'marker' => new MarkerElement,
             'random' => new RandomElement,
             'fill' => new FillElement,
             'url' => new UrlElement,
@@ -31,7 +32,7 @@ class ElementTypes
     /**
      * Resolves a palette entry to its element type.
      *
-     * The special tab carries the type itself as its id (fill, random, adbreak), the
+     * The special tab carries the type itself as its id (fill, random, adbreak, marker), the
      * other tabs carry a database id.
      */
     public static function forPaletteEntry(string $kind, string $id): PlaylistElementType

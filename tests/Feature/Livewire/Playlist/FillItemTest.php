@@ -87,42 +87,28 @@ test('foreign tag ids are rejected in fill item', function () {
     expect($item->fresh()->fill_tags)->toBeEmpty();
 });
 
-test('user can set a relative offset in mm:ss format', function () {
-    $file = $this->station->mediaFiles()->create([
-        'title' => 'Stunden-Jingle',
-        'type' => 'jingle',
-        'file_path' => 'tenants/test/media/jingle.mp3',
-    ]);
-
+test('a marker time can be given in mm:ss', function () {
     $component = Livewire::test(Manager::class, ['playlist' => $this->playlist])
-        ->call('insertEntry', 'media:'.$file->id);
+        ->call('insertEntry', 'special:marker');
 
-    $item = $this->playlist->items()->first();
+    $marker = $this->playlist->items()->first();
 
-    $component->call('startEditingItem', $item->id)
-        ->set('editRelativeOffset', '15:00')
+    $component->set('editRelativeOffset', '15:00')
         ->call('saveItem');
 
-    expect($item->fresh()->relative_offset_seconds)->toBe(900);
+    expect($marker->fresh()->relative_offset_seconds)->toBe(900);
 });
 
-test('relative offset in pure seconds is also accepted', function () {
-    $file = $this->station->mediaFiles()->create([
-        'title' => 'Jingle',
-        'type' => 'jingle',
-        'file_path' => 'tenants/test/media/jingle.mp3',
-    ]);
-
+test('a marker time in pure seconds is also accepted', function () {
     $component = Livewire::test(Manager::class, ['playlist' => $this->playlist])
-        ->call('insertEntry', 'media:'.$file->id);
+        ->call('insertEntry', 'special:marker');
 
-    $item = $this->playlist->items()->first();
+    $marker = $this->playlist->items()->first();
 
-    $component->call('startEditingItem', $item->id)
-        ->set('editRelativeOffset', '300')
+    $component->set('editRelativeOffset', '300')
         ->call('saveItem');
 
-    expect($item->fresh()->relative_offset_seconds)->toBe(300);
+    expect($marker->fresh()->relative_offset_seconds)->toBe(300);
 });
 
 test('an element from the palette starts without a timestamp', function () {

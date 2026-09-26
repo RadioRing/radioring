@@ -27,7 +27,6 @@ class UrlElement implements PlaylistElementType
             'title' => $draft->title,
             'url' => $draft->url,
             'duration_seconds' => $draft->durationSeconds,
-            'relative_offset_seconds' => $draft->relativeOffsetSeconds,
         ]);
 
         return 1;

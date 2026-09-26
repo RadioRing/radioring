@@ -192,7 +192,7 @@
                 <select wire:model="editingPlaylistId" class="form-select form-select-sm" style="max-width:220px">
                     <option value="">{{ __('– Kein Programm –') }}</option>
                     @foreach($playlists as $pl)
-                        <option value="{{ $pl->id }}">{{ $pl->name }}{{ $pl->start_mode === 'hard' ? ' ⏰' : '' }}</option>
+                        <option value="{{ $pl->id }}">{{ $pl->name }}{{ $pl->startsHard() ? ' ⏰' : '' }}</option>
                     @endforeach
                 </select>
                 <span class="text-muted small">
@@ -238,8 +238,8 @@
                                 }"
                                 style="cursor:pointer; min-width:90px">
 
-                                <div class="px-2 py-1 h-100 w-100 {{ $slot && $slot->playlist->start_mode === 'hard' ? 'hour-grid-hard' : '' }}"
-                                     @if($slot) title="{{ $slot->playlist->start_mode === 'hard' ? __('Hard start on the hour') : __('Soft start: the running track finishes first') }}" @endif
+                                <div class="px-2 py-1 h-100 w-100 {{ $slot && $slot->playlist->startsHard() ? 'hour-grid-hard' : '' }}"
+                                     @if($slot) title="{{ $slot->playlist->startsHard() ? __('Hard start on the hour') : __('Soft start: the running track finishes first') }}" @endif
                                      @click="bulkMode ? toggleCell({{ $day }}, {{ $hour }}) : $wire.editSlot({{ $day }}, {{ $hour }})"
                                      :class="{ 'bg-warning bg-opacity-25': isSelected({{ $day }}, {{ $hour }}) }">
 

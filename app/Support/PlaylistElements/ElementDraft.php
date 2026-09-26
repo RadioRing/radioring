@@ -26,7 +26,6 @@ class ElementDraft
         public readonly ?int $containerId = null,
         public readonly array $tagIds = [],
         public readonly ?int $fillMaxDurationSeconds = null,
-        public readonly ?int $relativeOffsetSeconds = null,
         public readonly ?TemporaryUploadedFile $upload = null,
     ) {}
 }

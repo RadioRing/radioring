@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['playlist_id', 'media_file_id', 'external_source_id', 'container_playlist_id', 'position', 'type', 'title', 'file_path', 'url', 'duration_seconds', 'relative_offset_seconds', 'fill_tags', 'fill_max_duration_seconds'])]
+#[Fillable(['playlist_id', 'media_file_id', 'external_source_id', 'container_playlist_id', 'position', 'type', 'title', 'file_path', 'url', 'duration_seconds', 'relative_offset_seconds', 'fixed_mode', 'fill_tags', 'fill_max_duration_seconds'])]
 class PlaylistItem extends Model
 {
     /** @use HasFactory<PlaylistItemFactory> */
@@ -40,6 +40,17 @@ class PlaylistItem extends Model
     public function containerPlaylist(): BelongsTo
     {
         return $this->belongsTo(Playlist::class, 'container_playlist_id');
+    }
+
+    /** Is this a fixed time marker? */
+    public function isMarker(): bool
+    {
+        return $this->type === 'marker';
+    }
+
+    public function isHardMarker(): bool
+    {
+        return $this->isMarker() && $this->fixed_mode === 'hard';
     }
 
     /** Dateiname, bevorzugt aus verknüpfter MediaFile, sonst direkter file_path. */

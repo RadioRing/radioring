@@ -18,10 +18,11 @@ beforeEach(function () {
 
 test('duplicating a playlist copies it with all its items', function () {
     $playlist = $this->station->playlists()->create([
-        'name' => 'Morning Show', 'playback_mode' => 'random', 'start_mode' => 'hard',
+        'name' => 'Morning Show', 'playback_mode' => 'random',
     ]);
-    $playlist->items()->create(['position' => 0, 'type' => 'fill', 'title' => 'Auffüllen', 'fill_tags' => [1, 2]]);
-    $playlist->items()->create(['position' => 1, 'type' => 'adbreak', 'title' => 'Werbung']);
+    $playlist->items()->create(['position' => 0, 'type' => 'marker', 'title' => 'Fixzeit', 'relative_offset_seconds' => 0, 'fixed_mode' => 'hard']);
+    $playlist->items()->create(['position' => 1, 'type' => 'fill', 'title' => 'Auffüllen', 'fill_tags' => [1, 2]]);
+    $playlist->items()->create(['position' => 2, 'type' => 'adbreak', 'title' => 'Werbung']);
 
     Livewire::test(Index::class)
         ->call('duplicate', $playlist->id)
@@ -32,22 +33,23 @@ test('duplicating a playlist copies it with all its items', function () {
     expect($copy)->not->toBeNull()
         ->and($copy->id)->not->toBe($playlist->id)
         ->and($copy->playback_mode)->toBe('random')
-        ->and($copy->start_mode)->toBe('hard')
-        ->and($copy->items()->count())->toBe(2);
+        ->and($copy->startsHard())->toBeTrue()
+        ->and($copy->items()->count())->toBe(3);
 
     $items = $copy->items()->orderBy('position')->get();
-    expect($items[0]->type)->toBe('fill')
-        ->and($items[0]->fill_tags)->toBe([1, 2])
-        ->and($items[1]->type)->toBe('adbreak');
+    expect($items[0]->isHardMarker())->toBeTrue()
+        ->and($items[1]->type)->toBe('fill')
+        ->and($items[1]->fill_tags)->toBe([1, 2])
+        ->and($items[2]->type)->toBe('adbreak');
 
     // Original bleibt unverändert.
-    expect($playlist->items()->count())->toBe(2);
+    expect($playlist->items()->count())->toBe(3);
 });
 
 test('duplicating only touches playlists of the current station', function () {
     $foreign = Station::factory()->create();
     $playlist = $foreign->playlists()->create([
-        'name' => 'Fremd', 'playback_mode' => 'sequential', 'start_mode' => 'soft',
+        'name' => 'Fremd', 'playback_mode' => 'sequential',
     ]);
 
     expect(fn () => Livewire::test(Index::class)->call('duplicate', $playlist->id))

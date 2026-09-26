@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\FillFit;
 use App\Exceptions\RundownAlreadyPlayedException;
 use App\Models\GeneratedPlaylist;
 use App\Models\GeneratedPlaylistItem;
@@ -11,6 +12,9 @@ use App\Models\MediaFile;
 use App\Models\PlaylistItem;
 use App\Models\Station;
 use App\Models\StationLog;
+use App\Support\PlaylistElements\Deadline;
+use App\Support\PlaylistElements\ElementLengths;
+use App\Support\PlaylistElements\FixedTimes;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +22,9 @@ use Illuminate\Support\Facades\Log;
 
 class RundownGeneratorService
 {
+    /** Element lengths for the fixed time lookahead. */
+    private ElementLengths $lengths;
+
     public function __construct(private readonly MusicRotationPlanner $rotationPlanner) {}
 
     /**
@@ -63,7 +70,6 @@ class RundownGeneratorService
                 $rundown->update([
                     'hour_grid_slot_id' => $slot->id,
                     'playlist_id' => $slot->playlist_id,
-                    'start_mode' => $slot->playlist->start_mode ?? 'soft',
                     'status' => 'draft',
                     'generated_at' => null,
                 ]);
@@ -72,7 +78,6 @@ class RundownGeneratorService
                     'station_id' => $station->id,
                     'hour_grid_slot_id' => $slot->id,
                     'playlist_id' => $slot->playlist_id,
-                    'start_mode' => $slot->playlist->start_mode ?? 'soft',
                     'broadcast_date' => $date,
                     'broadcast_hour' => $slot->hour,
                     'status' => 'draft',
@@ -138,11 +143,12 @@ class RundownGeneratorService
     {
         $template = $slot->playlist->load('items.mediaFile', 'items.externalSource');
 
+        $this->lengths = new ElementLengths($station);
         $cursor = $broadcastStart->copy();
         /** @var list<array{id: ?int, artist: ?string, album: ?string, at: Carbon}> $timeline */
         $timeline = $this->historyTimeline($station, $rundown, $broadcastStart);
 
-        $this->resolveTemplateItems($station, $template->items, $rundown, $broadcastStart, 0, $cursor, $timeline);
+        $this->resolveTemplateItems($station, $template->items, $rundown, $broadcastStart, 0, $cursor, $timeline, parentDeadline: FixedTimes::endOfHour());
     }
 
     /**
@@ -151,25 +157,44 @@ class RundownGeneratorService
      * Runs for the playlist itself and, recursively, for every container embedded in it.
      * Containers are flattened here: the generated rundown only ever holds concrete items.
      *
+     * Markers produce no item; their fixed time goes to the next generated item. Fills plan
+     * up to the next deadline (see FixedTimes); $parentDeadline is where the list must end.
+     *
      * @param  iterable<int, PlaylistItem>  $items
      * @param  list<array{id: ?int, artist: ?string, album: ?string, at: Carbon}>  $timeline
      * @return int next free position
      */
-    private function resolveTemplateItems(Station $station, iterable $items, GeneratedPlaylist $rundown, Carbon $broadcastStart, int $position, Carbon &$cursor, array &$timeline, bool $insideContainer = false): int
+    private function resolveTemplateItems(Station $station, iterable $items, GeneratedPlaylist $rundown, Carbon $broadcastStart, int $position, Carbon &$cursor, array &$timeline, bool $insideContainer = false, ?Deadline $parentDeadline = null): int
     {
-        foreach ($items as $item) {
-            // A fixed timestamp pins an item to a point in the hour, which contradicts a
-            // block that is meant to be reusable anywhere: ignore it inside containers.
-            $relativeOffset = $insideContainer ? null : $item->relative_offset_seconds;
+        $deadlines = FixedTimes::deadlines($items, $this->lengths, $insideContainer, $parentDeadline);
+        $pendingMarker = null;
+
+        foreach ($items as $key => $item) {
+            if ($item->type === 'marker') {
+                if (FixedTimes::isMarker($item, $insideContainer)) {
+                    $pendingMarker = $item;
+
+                    // Hard: the next item starts exactly at the fixed time.
+                    if ($item->fixed_mode === 'hard') {
+                        $cursor = $broadcastStart->copy()->addSeconds((int) $item->relative_offset_seconds);
+                    }
+                }
+
+                continue;
+            }
+
+            $firstPosition = $position;
+            $deadline = $deadlines[$key] ?? null;
 
             if ($item->type === 'container') {
-                $position = $this->resolveContainerItem($station, $item, $rundown, $broadcastStart, $position, $cursor, $timeline, $insideContainer);
+                $position = $this->resolveContainerItem($station, $item, $rundown, $broadcastStart, $position, $cursor, $timeline, $insideContainer, $deadline);
+                $pendingMarker = $this->applyMarker($rundown, $pendingMarker, $broadcastStart, $firstPosition, $position);
 
                 continue;
             }
 
             if ($item->type === 'fill') {
-                $position = $this->resolveFillItem($station, $item, $rundown, $position, $cursor, $timeline);
+                $position = $this->resolveFillItem($station, $item, $rundown, $broadcastStart, $position, $cursor, $timeline, $deadline);
             } elseif ($item->type === 'random') {
                 $position = $this->resolveRandomItem($station, $item, $rundown, $position, $cursor, $timeline);
             } elseif ($item->type === 'adbreak') {
@@ -200,29 +225,18 @@ class RundownGeneratorService
                     ?? $item->duration_seconds
                     ?? (int) config('radioring.news_duration_seconds', 300);
 
-                $absoluteAt = $relativeOffset !== null
-                    ? $broadcastStart->copy()->addSeconds($relativeOffset)
-                    : null;
-
                 $rundown->items()->create([
                     'position' => $position++,
                     'external_source_id' => $item->external_source_id,
                     'title' => $item->title,
                     'duration_seconds' => $duration,
                     'source_type' => 'external',
-                    'absolute_broadcast_at' => $absoluteAt,
                 ]);
 
-                $at = $absoluteAt ?? $cursor->copy();
-                $timeline[] = ['id' => null, 'artist' => null, 'album' => null, 'at' => $at];
-                $cursor = $at->copy()->addSeconds($duration);
+                $timeline[] = ['id' => null, 'artist' => null, 'album' => null, 'at' => $cursor->copy()];
+                $cursor = $cursor->copy()->addSeconds($duration);
             } else {
                 $duration = $item->duration_seconds ?? $item->mediaFile?->duration_seconds;
-
-                // Turn a relative offset into absolute time right away.
-                $absoluteAt = $relativeOffset !== null
-                    ? $broadcastStart->copy()->addSeconds($relativeOffset)
-                    : null;
 
                 $rundown->items()->create([
                     'position' => $position++,
@@ -235,21 +249,40 @@ class RundownGeneratorService
                     'title' => $item->title,
                     'duration_seconds' => $duration,
                     'source_type' => 'template_item',
-                    'absolute_broadcast_at' => $absoluteAt,
                 ]);
 
-                $at = $absoluteAt ?? $cursor->copy();
                 $timeline[] = [
                     'id' => $item->media_file_id,
                     'artist' => $item->mediaFile?->artist,
                     'album' => $item->mediaFile?->album,
-                    'at' => $at,
+                    'at' => $cursor->copy(),
                 ];
-                $cursor = $at->copy()->addSeconds($duration ?? 0);
+                $cursor = $cursor->copy()->addSeconds($duration ?? 0);
             }
+
+            $pendingMarker = $this->applyMarker($rundown, $pendingMarker, $broadcastStart, $firstPosition, $position);
         }
 
         return $position;
+    }
+
+    /**
+     * Applies the pending marker to the first item generated since $firstPosition.
+     *
+     * @return PlaylistItem|null marker still pending when nothing was generated
+     */
+    private function applyMarker(GeneratedPlaylist $rundown, ?PlaylistItem $marker, Carbon $broadcastStart, int $firstPosition, int $nextPosition): ?PlaylistItem
+    {
+        if ($marker === null || $nextPosition === $firstPosition) {
+            return $marker;
+        }
+
+        $rundown->items()->where('position', $firstPosition)->update([
+            'fixed_at' => $broadcastStart->copy()->addSeconds((int) $marker->relative_offset_seconds),
+            'fixed_mode' => $marker->fixed_mode === 'hard' ? 'hard' : 'soft',
+        ]);
+
+        return null;
     }
 
     /**
@@ -260,7 +293,7 @@ class RundownGeneratorService
      * @param  list<array{id: ?int, artist: ?string, album: ?string, at: Carbon}>  $timeline
      * @return int next free position
      */
-    private function resolveContainerItem(Station $station, PlaylistItem $item, GeneratedPlaylist $rundown, Carbon $broadcastStart, int $position, Carbon &$cursor, array &$timeline, bool $insideContainer): int
+    private function resolveContainerItem(Station $station, PlaylistItem $item, GeneratedPlaylist $rundown, Carbon $broadcastStart, int $position, Carbon &$cursor, array &$timeline, bool $insideContainer, ?Deadline $deadline): int
     {
         if ($insideContainer) {
             return $position;
@@ -276,7 +309,7 @@ class RundownGeneratorService
 
         $container->load('items.mediaFile', 'items.externalSource');
 
-        return $this->resolveTemplateItems($station, $container->items, $rundown, $broadcastStart, $position, $cursor, $timeline, insideContainer: true);
+        return $this->resolveTemplateItems($station, $container->items, $rundown, $broadcastStart, $position, $cursor, $timeline, insideContainer: true, parentDeadline: $deadline);
     }
 
     /**
@@ -312,19 +345,19 @@ class RundownGeneratorService
 
     /**
      * Works out the absolute airtime of every item from the accumulated durations.
+     * Sequential, except that a hard fixed item starts exactly at its fixed time.
      */
     private function calculateAbsoluteTimes(GeneratedPlaylist $rundown, Carbon $broadcastStart): void
     {
         $cursor = $broadcastStart->copy();
 
-        $rundown->items()->orderBy('position')->get()->each(function ($item) use (&$cursor) {
-            if ($item->absolute_broadcast_at !== null) {
-                // The relative offset was resolved in resolveItems; move the cursor.
-                $cursor = $item->absolute_broadcast_at->copy()->addSeconds($item->duration_seconds ?? 0);
-            } else {
-                $item->update(['absolute_broadcast_at' => $cursor->copy()]);
-                $cursor->addSeconds($item->duration_seconds ?? 0);
+        $rundown->items()->orderBy('position')->get()->each(function (GeneratedPlaylistItem $item) use (&$cursor) {
+            if ($item->isHardFixed()) {
+                $cursor = $item->fixed_at->copy();
             }
+
+            $item->update(['absolute_broadcast_at' => $cursor->copy()]);
+            $cursor->addSeconds($item->duration_seconds ?? 0);
         });
     }
 
@@ -332,12 +365,31 @@ class RundownGeneratorService
      * Resolves a fill element: picks rotation-compliant tracks from the library and
      * inserts them, moving cursor and timeline on for the items that follow.
      *
+     * With a deadline the budget is the time left until it and the end is backtimed
+     * (Closest for soft, Reach for hard or end of hour). A shorter own maximum still wins.
+     *
      * @param  list<array{id: ?int, artist: ?string, album: ?string, at: Carbon}>  $timeline
      * @return int next free position after the inserted tracks
      */
-    private function resolveFillItem(Station $station, PlaylistItem $item, GeneratedPlaylist $rundown, int $position, Carbon &$cursor, array &$timeline): int
+    private function resolveFillItem(Station $station, PlaylistItem $item, GeneratedPlaylist $rundown, Carbon $broadcastStart, int $position, Carbon &$cursor, array &$timeline, ?Deadline $deadline): int
     {
-        $maxDuration = $item->fill_max_duration_seconds ?? 3600;
+        $maxDuration = $item->fill_max_duration_seconds;
+        $fit = FillFit::Cross;
+
+        if ($deadline !== null) {
+            $untilDeadline = max(0, (int) $cursor->diffInSeconds($broadcastStart->copy()->addSeconds($deadline->at), false));
+
+            if ($maxDuration === null || $untilDeadline <= $maxDuration) {
+                $maxDuration = $untilDeadline;
+                $fit = $deadline->mustReach ? FillFit::Reach : FillFit::Closest;
+            }
+        }
+
+        $maxDuration ??= 3600;
+
+        if ($maxDuration === 0) {
+            return $position;
+        }
 
         // Airtime windows are checked at the start of the block: the cursor moves on
         // during it, but a candidate once picked stays allowed.
@@ -354,7 +406,7 @@ class RundownGeneratorService
             $tracks = $station->poolMediaFiles()->where('type', 'music')->airableAt($cursor)->get();
         }
 
-        $chosen = $this->rotationPlanner->plan($tracks, $timeline, $cursor, $maxDuration);
+        $chosen = $this->rotationPlanner->plan($tracks, $timeline, $cursor, $maxDuration, $fit);
 
         foreach ($chosen as $track) {
             $rundown->items()->create([

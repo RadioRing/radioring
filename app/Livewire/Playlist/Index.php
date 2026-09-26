@@ -28,9 +28,6 @@ class Index extends Component
     #[Validate('required|in:sequential,random')]
     public string $newPlaybackMode = 'sequential';
 
-    #[Validate('required|in:soft,hard')]
-    public string $newStartMode = 'soft';
-
     public function mount(): void
     {
         $this->station = auth()->user()->currentStation()
@@ -57,19 +54,16 @@ class Index extends Component
             'newName' => 'required|string|min:2|max:80',
             'newKind' => 'required|in:playlist,container',
             'newPlaybackMode' => 'required|in:sequential,random',
-            'newStartMode' => 'required|in:soft,hard',
         ]);
 
-        // A container is never scheduled on its own, so playback and start mode of the
-        // embedding playlist apply: keep the defaults out of the operator's way.
+        // Containers inherit the playback mode of the embedding playlist.
         $this->station->playlists()->create([
             'name' => $this->newName,
             'kind' => $this->newKind,
             'playback_mode' => $isContainer ? 'sequential' : $this->newPlaybackMode,
-            'start_mode' => $isContainer ? 'soft' : $this->newStartMode,
         ]);
 
-        $this->reset('newName', 'newPlaybackMode', 'newStartMode', 'newKind', 'showCreateForm');
+        $this->reset('newName', 'newPlaybackMode', 'newKind', 'showCreateForm');
         $this->dispatch('notify', message: $isContainer
             ? __('Container created.')
             : __('Playlist erstellt.'), type: 'success');
@@ -115,7 +109,7 @@ class Index extends Component
     public function render()
     {
         return view('livewire.playlist.index', [
-            'playlists' => $this->station->playlists()->schedulable()->withCount('items')->latest()->get(),
+            'playlists' => $this->station->playlists()->schedulable()->with('firstItem')->withCount('items')->latest()->get(),
             'containers' => $this->station->playlists()->containers()
                 ->withCount(['items', 'embeddingItems'])->latest()->get(),
         ])->layout('layouts.app');

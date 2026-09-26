@@ -544,7 +544,6 @@ test('hard-start rundown cuts overhang and takes over at the hour', function () 
         'broadcast_date' => today(),
         'broadcast_hour' => 11,
         'status' => 'ready',
-        'start_mode' => 'soft',
     ]);
     GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $overhang->id, 'media_file_id' => $fileA->id, 'position' => 0, 'source_type' => 'template_item', 'title' => 'A0']);
     GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $overhang->id, 'media_file_id' => $fileA->id, 'position' => 1, 'source_type' => 'template_item', 'title' => 'A1']);
@@ -555,9 +554,8 @@ test('hard-start rundown cuts overhang and takes over at the hour', function () 
         'broadcast_date' => today(),
         'broadcast_hour' => 12,
         'status' => 'ready',
-        'start_mode' => 'hard',
     ]);
-    GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $hard->id, 'media_file_id' => $fileB->id, 'position' => 0, 'source_type' => 'template_item', 'title' => 'B0']);
+    GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $hard->id, 'media_file_id' => $fileB->id, 'position' => 0, 'source_type' => 'template_item', 'title' => 'B0', 'fixed_at' => today()->setTime(12, 0, 0), 'fixed_mode' => 'hard']);
 
     // State spielt noch den Überhang
     LiquidsoapState::create([
@@ -588,13 +586,13 @@ test('now-playing marks earlier rundowns as played (airplay-driven)', function (
 
     $earlier = GeneratedPlaylist::factory()->create([
         'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 11,
-        'status' => 'ready', 'start_mode' => 'soft',
+        'status' => 'ready',
     ]);
     GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $earlier->id, 'media_file_id' => $fileA->id, 'position' => 0, 'source_type' => 'template_item', 'title' => 'A0']);
 
     $current = GeneratedPlaylist::factory()->create([
         'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 12,
-        'status' => 'ready', 'start_mode' => 'soft',
+        'status' => 'ready',
     ]);
     $itemB = GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $current->id, 'media_file_id' => $fileB->id, 'position' => 0, 'source_type' => 'template_item', 'title' => 'B0']);
 
@@ -614,39 +612,32 @@ test('now-playing marks earlier rundowns as played (airplay-driven)', function (
     expect(LiquidsoapState::where('station_id', $this->station->id)->first()->now_playing_item_id)->toBe($itemB->id);
 });
 
-test('hard-start works via the live playlist even if the rundown snapshot is soft', function () {
+test('a hard fixed time in the middle of the hour cuts what is still in front of it', function () {
     Storage::fake('local');
-    $this->travelTo(today()->setHour(12)->setMinute(5));
+    $this->travelTo(today()->setTime(12, 30, 5));
 
     $fileA = MediaFile::factory()->create(['tenant_id' => $this->station->tenant_id, 'file_path' => "tenants/{$this->station->tenant_id}/media/a.mp3", 'type' => 'music', 'title' => 'A']);
     $fileB = MediaFile::factory()->create(['tenant_id' => $this->station->tenant_id, 'file_path' => "tenants/{$this->station->tenant_id}/media/b.mp3", 'type' => 'music', 'title' => 'B']);
 
-    $overhang = GeneratedPlaylist::factory()->create([
-        'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 11,
-        'status' => 'ready', 'start_mode' => 'soft',
-    ]);
-    GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $overhang->id, 'media_file_id' => $fileA->id, 'position' => 0, 'source_type' => 'template_item', 'title' => 'A0']);
-    GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $overhang->id, 'media_file_id' => $fileA->id, 'position' => 1, 'source_type' => 'template_item', 'title' => 'A1']);
-
-    // Playlist ist HART, aber der generierte Rundown-Snapshot steht noch auf soft
-    $playlist = $this->station->playlists()->create(['name' => 'P', 'playback_mode' => 'sequential', 'start_mode' => 'hard']);
-
-    $hard = GeneratedPlaylist::factory()->create([
+    $rundown = GeneratedPlaylist::factory()->create([
         'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 12,
-        'status' => 'ready', 'start_mode' => 'soft', 'playlist_id' => $playlist->id,
+        'status' => 'ready',
     ]);
-    GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $hard->id, 'media_file_id' => $fileB->id, 'position' => 0, 'source_type' => 'template_item', 'title' => 'B0']);
+    GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $rundown->id, 'media_file_id' => $fileA->id, 'position' => 0, 'source_type' => 'template_item', 'title' => 'A0']);
+    GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $rundown->id, 'media_file_id' => $fileA->id, 'position' => 1, 'source_type' => 'template_item', 'title' => 'A1']);
+    GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $rundown->id, 'media_file_id' => $fileB->id, 'position' => 2, 'source_type' => 'template_item', 'title' => 'B2', 'fixed_at' => today()->setTime(12, 30, 0), 'fixed_mode' => 'hard']);
 
+    // Running late: A1 is still unpulled when the fixed time is due.
     LiquidsoapState::create([
         'station_id' => $this->station->id,
-        'current_rundown_id' => $overhang->id,
+        'current_rundown_id' => $rundown->id,
         'current_item_position' => 1,
     ]);
 
     $response = $this->withToken($this->token)->get("/api/liquidsoap/{$this->station->slug}/next");
 
     expect($response->getContent())->toContain('/media/'.$this->station->slug.'/'.$fileB->id);
-    expect(LiquidsoapState::where('station_id', $this->station->id)->first()->current_rundown_id)->toBe($hard->id);
+    expect(LiquidsoapState::where('station_id', $this->station->id)->first()->current_item_position)->toBe(3);
 });
 
 test('soft-start rundown lets the overhang finish first', function () {
@@ -658,7 +649,7 @@ test('soft-start rundown lets the overhang finish first', function () {
 
     $overhang = GeneratedPlaylist::factory()->create([
         'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 11,
-        'status' => 'ready', 'start_mode' => 'soft',
+        'status' => 'ready',
     ]);
     GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $overhang->id, 'media_file_id' => $fileA->id, 'position' => 0, 'source_type' => 'template_item', 'title' => 'A0']);
     GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $overhang->id, 'media_file_id' => $fileA->id, 'position' => 1, 'source_type' => 'template_item', 'title' => 'A1']);
@@ -666,7 +657,7 @@ test('soft-start rundown lets the overhang finish first', function () {
     // Folgestunde ist SOFT
     $soft = GeneratedPlaylist::factory()->create([
         'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 12,
-        'status' => 'ready', 'start_mode' => 'soft',
+        'status' => 'ready',
     ]);
     GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $soft->id, 'media_file_id' => $fileB->id, 'position' => 0, 'source_type' => 'template_item', 'title' => 'B0']);
 
@@ -1037,7 +1028,7 @@ test('now-playing ignores a metadata event without item, filename and title', fu
 
     $rundown = GeneratedPlaylist::factory()->create([
         'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 12,
-        'status' => 'ready', 'start_mode' => 'soft',
+        'status' => 'ready',
     ]);
     $item = GeneratedPlaylistItem::factory()->create(['generated_playlist_id' => $rundown->id, 'media_file_id' => $file->id, 'position' => 0, 'source_type' => 'template_item', 'title' => 'Nachrichten + Wetter']);
 
@@ -1067,7 +1058,7 @@ test('now-playing keeps the player alive when the item was deleted by a regenera
 
     $rundown = GeneratedPlaylist::factory()->create([
         'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 12,
-        'status' => 'ready', 'start_mode' => 'soft',
+        'status' => 'ready',
     ]);
     $item = GeneratedPlaylistItem::factory()->create([
         'generated_playlist_id' => $rundown->id, 'position' => 0, 'source_type' => 'template_item', 'title' => 'Alt',
@@ -1108,7 +1099,7 @@ test('now-playing keeps the existing snapshot when a deleted item reports no met
 
     $rundown = GeneratedPlaylist::factory()->create([
         'station_id' => $this->station->id, 'broadcast_date' => today(), 'broadcast_hour' => 12,
-        'status' => 'ready', 'start_mode' => 'soft',
+        'status' => 'ready',
     ]);
     $item = GeneratedPlaylistItem::factory()->create([
         'generated_playlist_id' => $rundown->id, 'position' => 0, 'source_type' => 'news_weather', 'title' => 'Nachrichten + Wetter',
