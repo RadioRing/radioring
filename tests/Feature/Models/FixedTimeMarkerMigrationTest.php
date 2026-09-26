@@ -163,26 +163,18 @@ test('rolling back turns the markers into the old settings again', function () {
     $this->migration->up();
 });
 
-test('a run interrupted halfway can be resumed without doubling markers', function () {
-    $converted = legacyPlaylist(startMode: 'hard');
-    legacyItem($converted, 0, 'news_weather');
-    $pending = legacyPlaylist();
-    legacyItem($pending, 0, 'adbreak', 900);
+test('a run aborted after its first schema changes can be resumed', function () {
+    $playlistId = legacyPlaylist(startMode: 'hard');
+    legacyItem($playlistId, 0, 'adbreak', 900);
 
-    // State after an aborted first run: new column added, first playlist already converted.
+    // State after an aborted run on MySQL: DDL kept, data conversion rolled back.
     Schema::table('playlist_items', fn ($table) => $table->string('fixed_mode', 8)->nullable());
-    DB::table('playlist_items')->where('playlist_id', $converted)->update(['position' => 1]);
-    DB::table('playlist_items')->insert([
-        'playlist_id' => $converted, 'position' => 0, 'type' => 'marker', 'title' => 'Fixzeit',
-        'relative_offset_seconds' => 0, 'fixed_mode' => 'hard', 'created_at' => $this->now, 'updated_at' => $this->now,
-    ]);
+    Schema::table('liquidsoap_states', fn ($table) => $table->dateTime('committed_hard_time')->nullable());
 
     $this->migration->up();
 
-    expect(itemsOf($converted))->toBe([
+    expect(itemsOf($playlistId))->toBe([
         ['type' => 'marker', 'offset' => 0, 'mode' => 'hard'],
-        ['type' => 'news_weather', 'offset' => null, 'mode' => null],
-    ])->and(itemsOf($pending))->toBe([
         ['type' => 'marker', 'offset' => 900, 'mode' => 'soft'],
         ['type' => 'adbreak', 'offset' => null, 'mode' => null],
     ]);

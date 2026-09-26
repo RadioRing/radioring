@@ -18,8 +18,16 @@ use Illuminate\Support\Facades\Schema;
  */
 return new class extends Migration
 {
+    /** @var list<string> element types before markers */
+    private const TYPES = ['music', 'jingle', 'url', 'fill', 'adbreak', 'news', 'weather', 'news_weather', 'external', 'random', 'container'];
+
     public function up(): void
     {
+        // playlist_items.type is an enum on MySQL.
+        Schema::table('playlist_items', function (Blueprint $table) {
+            $table->enum('type', [...self::TYPES, 'marker'])->change();
+        });
+
         if (! Schema::hasColumn('playlist_items', 'fixed_mode')) {
             Schema::table('playlist_items', function (Blueprint $table) {
                 // soft or hard, markers only.
@@ -119,6 +127,10 @@ return new class extends Migration
 
         Schema::table('playlist_items', function (Blueprint $table) {
             $table->dropColumn('fixed_mode');
+        });
+
+        Schema::table('playlist_items', function (Blueprint $table) {
+            $table->enum('type', self::TYPES)->change();
         });
     }
 
