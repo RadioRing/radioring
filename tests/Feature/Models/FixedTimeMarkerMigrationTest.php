@@ -4,6 +4,7 @@ use App\Models\Station;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 uses(RefreshDatabase::class);
 
@@ -160,4 +161,40 @@ test('rolling back turns the markers into the old settings again', function () {
 
     // Restore the current schema.
     $this->migration->up();
+});
+
+test('a run interrupted halfway can be resumed without doubling markers', function () {
+    $converted = legacyPlaylist(startMode: 'hard');
+    legacyItem($converted, 0, 'news_weather');
+    $pending = legacyPlaylist();
+    legacyItem($pending, 0, 'adbreak', 900);
+
+    // State after an aborted first run: new column added, first playlist already converted.
+    Schema::table('playlist_items', fn ($table) => $table->string('fixed_mode', 8)->nullable());
+    DB::table('playlist_items')->where('playlist_id', $converted)->update(['position' => 1]);
+    DB::table('playlist_items')->insert([
+        'playlist_id' => $converted, 'position' => 0, 'type' => 'marker', 'title' => 'Fixzeit',
+        'relative_offset_seconds' => 0, 'fixed_mode' => 'hard', 'created_at' => $this->now, 'updated_at' => $this->now,
+    ]);
+
+    $this->migration->up();
+
+    expect(itemsOf($converted))->toBe([
+        ['type' => 'marker', 'offset' => 0, 'mode' => 'hard'],
+        ['type' => 'news_weather', 'offset' => null, 'mode' => null],
+    ])->and(itemsOf($pending))->toBe([
+        ['type' => 'marker', 'offset' => 900, 'mode' => 'soft'],
+        ['type' => 'adbreak', 'offset' => null, 'mode' => null],
+    ]);
+});
+
+test('running the migration again changes nothing', function () {
+    $playlistId = legacyPlaylist(startMode: 'hard');
+    legacyItem($playlistId, 0, 'adbreak', 900);
+
+    $this->migration->up();
+    $once = itemsOf($playlistId);
+    $this->migration->up();
+
+    expect(itemsOf($playlistId))->toBe($once)->toHaveCount(3);
 });

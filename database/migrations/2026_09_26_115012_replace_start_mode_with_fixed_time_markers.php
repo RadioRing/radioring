@@ -13,36 +13,54 @@ use Illuminate\Support\Facades\Schema;
  * - element timestamp: soft marker in front of the element
  * - container timestamps: dropped (never applied)
  * - generated hard rundowns: hard fixed time on the first item
+ *
+ * Resumable: MySQL cannot roll back DDL, so every step checks whether it already ran.
  */
 return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('playlist_items', function (Blueprint $table) {
-            // soft or hard, markers only.
-            $table->string('fixed_mode', 8)->nullable()->after('relative_offset_seconds');
-        });
+        if (! Schema::hasColumn('playlist_items', 'fixed_mode')) {
+            Schema::table('playlist_items', function (Blueprint $table) {
+                // soft or hard, markers only.
+                $table->string('fixed_mode', 8)->nullable()->after('relative_offset_seconds');
+            });
+        }
 
-        Schema::table('liquidsoap_states', function (Blueprint $table) {
-            // Last announced or made hard cut.
-            $table->dateTime('committed_hard_time')->nullable()->after('current_item_position');
-        });
+        if (! Schema::hasColumn('liquidsoap_states', 'committed_hard_time')) {
+            Schema::table('liquidsoap_states', function (Blueprint $table) {
+                // Last announced or made hard cut.
+                $table->dateTime('committed_hard_time')->nullable()->after('current_item_position');
+            });
+        }
 
-        $this->convertPlaylists();
-        $this->convertGeneratedRundowns();
-        $this->convertCommittedHardStarts();
+        if (Schema::hasColumn('playlists', 'start_mode')) {
+            DB::transaction(fn () => $this->convertPlaylists());
+        }
 
-        Schema::table('liquidsoap_states', function (Blueprint $table) {
-            $table->dropConstrainedForeignId('hard_start_committed_rundown_id');
-        });
+        if (Schema::hasColumn('generated_playlists', 'start_mode')) {
+            DB::transaction(fn () => $this->convertGeneratedRundowns());
+        }
 
-        Schema::table('generated_playlists', function (Blueprint $table) {
-            $table->dropColumn('start_mode');
-        });
+        if (Schema::hasColumn('liquidsoap_states', 'hard_start_committed_rundown_id')) {
+            DB::transaction(fn () => $this->convertCommittedHardStarts());
 
-        Schema::table('playlists', function (Blueprint $table) {
-            $table->dropColumn('start_mode');
-        });
+            Schema::table('liquidsoap_states', function (Blueprint $table) {
+                $table->dropConstrainedForeignId('hard_start_committed_rundown_id');
+            });
+        }
+
+        if (Schema::hasColumn('generated_playlists', 'start_mode')) {
+            Schema::table('generated_playlists', function (Blueprint $table) {
+                $table->dropColumn('start_mode');
+            });
+        }
+
+        if (Schema::hasColumn('playlists', 'start_mode')) {
+            Schema::table('playlists', function (Blueprint $table) {
+                $table->dropColumn('start_mode');
+            });
+        }
     }
 
     public function down(): void
@@ -134,14 +152,19 @@ return new class extends Migration
                 ]);
             };
 
-            if ($playlist->start_mode === 'hard') {
+            // Skip the hard marker when an earlier, interrupted run already added it.
+            $first = $items->first();
+            $hasHardStart = $first !== null && $first->type === 'marker' && $first->fixed_mode === 'hard' && (int) $first->relative_offset_seconds === 0;
+
+            if ($playlist->start_mode === 'hard' && ! $hasHardStart) {
                 $insertMarker(0, 'hard');
             }
 
             foreach ($items as $item) {
                 $changes = [];
 
-                if ($item->relative_offset_seconds !== null) {
+                // Existing markers keep their time.
+                if ($item->relative_offset_seconds !== null && $item->type !== 'marker') {
                     if (! in_array($item->type, ['fill', 'random'], true)) {
                         $insertMarker((int) $item->relative_offset_seconds, 'soft');
                     }
