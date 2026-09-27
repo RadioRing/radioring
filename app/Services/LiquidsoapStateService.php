@@ -100,8 +100,9 @@ class LiquidsoapStateService
     /**
      * Skips the rest of a fill block when its next track would start after the next fixed time.
      *
-     * Corrects drift against the plan. Only fill tracks are skipped; the fixed time may also
-     * be the first item of the next hour.
+     * Corrects drift against the plan, and drops the reserve track planned behind a hard
+     * deadline when the time is reached. Only fill tracks are skipped; the fixed time may also
+     * be the first item of the next hour, or the start of an hour that opens without one.
      *
      * @return GeneratedPlaylistItem|null item to hand out, null when the rundown is used up
      */
@@ -116,19 +117,24 @@ class LiquidsoapStateService
 
         if ($fixed) {
             $between = $following->filter(fn (GeneratedPlaylistItem $i): bool => $i->position < $fixed->position);
+            $fixedAt = $fixed->fixed_at;
         } else {
-            $fixed = $this->openingFixedItemAfter($station, $rundown);
+            $next = $this->followingRundown($station, $rundown);
 
-            if (! $fixed) {
+            if (! $next) {
                 return $item;
             }
 
+            // An hour without a fixed opening still starts softly on the hour: the reserve
+            // track planned behind the end of this one must not push it back.
+            $fixed = $next->firstItem?->fixed_at !== null ? $next->firstItem : null;
+            $fixedAt = $fixed->fixed_at ?? $this->startOf($next);
             $between = $following;
         }
 
         // Non-fill items in between always play.
         $stillToPlay = $between->where('source_type', '!=', 'resolved_fill')->sum('duration_seconds');
-        $latestStart = $fixed->fixed_at->copy()->subSeconds($stillToPlay);
+        $latestStart = $fixedAt->copy()->subSeconds($stillToPlay);
 
         if ($this->expectedStartOf($state, $rundown, $item)->lt($latestStart)) {
             return $item;
@@ -137,7 +143,7 @@ class LiquidsoapStateService
         // Continue with the first non-fill item after the block.
         $next = $between->first(fn (GeneratedPlaylistItem $i): bool => $i->source_type !== 'resolved_fill');
 
-        if (! $next && $fixed->generated_playlist_id === $rundown->id) {
+        if (! $next && $fixed?->generated_playlist_id === $rundown->id) {
             $next = $fixed;
         }
 
@@ -149,16 +155,16 @@ class LiquidsoapStateService
         $newlySkipped = GeneratedPlaylistItem::whereKey($skippedIds)->whereNull('skipped_at')->update(['skipped_at' => now()]);
 
         if ($newlySkipped > 0) {
-            Log::info("Station {$station->slug}: fixed time {$fixed->fixed_at->format('H:i:s')} is due, skipped {$newlySkipped} fill track(s) of rundown #{$rundown->id}.");
+            Log::info("Station {$station->slug}: fixed time {$fixedAt->format('H:i:s')} is due, skipped {$newlySkipped} fill track(s) of rundown #{$rundown->id}.");
         }
 
         return $next;
     }
 
-    /** First item of the following rundown, if it has a fixed time. */
-    private function openingFixedItemAfter(Station $station, GeneratedPlaylist $rundown): ?GeneratedPlaylistItem
+    /** The ready rundown that follows $rundown in broadcast order. */
+    private function followingRundown(Station $station, GeneratedPlaylist $rundown): ?GeneratedPlaylist
     {
-        $next = GeneratedPlaylist::where('station_id', $station->id)
+        return GeneratedPlaylist::where('station_id', $station->id)
             ->where('status', 'ready')
             ->where(function ($query) use ($rundown) {
                 $query->where('broadcast_date', '>', $rundown->broadcast_date)
@@ -171,10 +177,6 @@ class LiquidsoapStateService
             ->orderBy('broadcast_hour')
             ->with('firstItem')
             ->first();
-
-        $first = $next?->firstItem;
-
-        return $first?->fixed_at !== null ? $first : null;
     }
 
     /**

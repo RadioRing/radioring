@@ -59,11 +59,14 @@ class MusicRotationPlanner
     /** Candidates sampled for backtiming the last tracks (60 give ~3500 pairs). */
     private const FINISH_CANDIDATES = 60;
 
+    /** Tracks planned past a hard deadline as a reserve against drift on air. */
+    private const RESERVE_TRACKS = 1;
+
     /**
      * Plant die Reihenfolge der Fill-Tracks.
      *
      * Closest and Reach backtime the last one or two tracks to the budget; the rotation
-     * rules still take precedence.
+     * rules still take precedence. Reach adds a reserve track behind the budget.
      *
      * @param  Collection<int, MediaFile>  $pool  verfügbare Musiktitel (Kandidaten)
      * @param  list<array{id?: ?int, artist: ?string, album: ?string, at: Carbon}>  $history  bereits gesendete/platzierte Tracks im Vorfeld, aufsteigend nach Zeit sortiert
@@ -114,6 +117,20 @@ class MusicRotationPlanner
             array_splice($remaining, $index, 1);
 
             $place($track);
+        }
+
+        // Reserve behind a hard deadline. The backtimed end is exact only on paper: on air the
+        // hour drifts, and a fill that ends seconds early leaves the station silent until the
+        // cut. The playout drops the reserve when the time is reached (skipFillPastFixedTime)
+        // and the cut fades it out otherwise.
+        if ($fit === FillFit::Reach && $chosen !== []) {
+            $remaining = array_values(array_filter($remaining, fn (MediaFile $track): bool => ! in_array($track, $chosen, true)));
+
+            for ($i = 0; $i < self::RESERVE_TRACKS && $remaining !== []; $i++) {
+                $index = $this->chooseIndex($remaining, $timeline, $cursor);
+                $place($remaining[$index]);
+                array_splice($remaining, $index, 1);
+            }
         }
 
         return $chosen;

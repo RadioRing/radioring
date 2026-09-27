@@ -79,6 +79,12 @@ function fillSeconds(GeneratedPlaylist $rundown): int
     return (int) $rundown->items->where('source_type', 'resolved_fill')->sum('duration_seconds');
 }
 
+/** Fill seconds without the reserve track planned behind a hard deadline (the last fill track). */
+function backtimedFillSeconds(GeneratedPlaylist $rundown): int
+{
+    return fillSeconds($rundown) - (int) $rundown->items->where('source_type', 'resolved_fill')->sortBy('position')->last()->duration_seconds;
+}
+
 // ── Generating ───────────────────────────────────────────────────────────────
 
 test('a marker hands its fixed time to the element behind it and is not played itself', function () {
@@ -120,8 +126,10 @@ test('a fill in front of a hard fixed time never falls short of it', function ()
     $rundown = generateRundown();
     $pinned = $rundown->items->firstWhere('title', 'Voice 3');
 
-    // Hard must not fall short, so the fifth track runs into the cut.
-    expect(fillSeconds($rundown))->toBe(1000)
+    // Hard must not fall short, so the fifth track runs into the cut. A sixth waits in
+    // reserve in case the hour drifts on air.
+    expect(fillSeconds($rundown))->toBe(1200)
+        ->and(backtimedFillSeconds($rundown))->toBe(1000)
         ->and($pinned->isHardFixed())->toBeTrue()
         ->and($pinned->absolute_broadcast_at->format('H:i:s'))->toBe('10:15:00');
 });
@@ -134,15 +142,32 @@ test('the last tracks of a fill are backtimed to the fixed time', function (stri
     addMarker($this->playlist, 2, 900, $mode);
     addVoiceTrack($this->playlist, 3, 60);
 
-    expect(fillSeconds(generateRundown()))->toBeGreaterThanOrEqual(840)->toBeLessThanOrEqual(845);
+    $rundown = generateRundown();
+    $backtimed = $mode === 'hard' ? backtimedFillSeconds($rundown) : fillSeconds($rundown);
+
+    expect($backtimed)->toBeGreaterThanOrEqual(840)->toBeLessThanOrEqual(845);
 })->with(['soft', 'hard']);
+
+test('only a hard fixed time gets a reserve track behind the backtimed fill', function (string $mode, int $tracks) {
+    seedMusicPool($this->station, array_fill(0, 10, 200));
+    addVoiceTrack($this->playlist, 0, 100);
+    $this->playlist->items()->create(['position' => 1, 'type' => 'fill', 'title' => 'Fill']);
+    addMarker($this->playlist, 2, 900, $mode);
+    addVoiceTrack($this->playlist, 3, 60);
+
+    // 800 s to the fixed time: four tracks close it exactly.
+    expect(generateRundown()->items->where('source_type', 'resolved_fill'))->toHaveCount($tracks);
+})->with([
+    'soft' => ['soft', 4],
+    'hard' => ['hard', 5],
+]);
 
 test('a fill with nothing behind it runs up to the full hour', function () {
     seedMusicPool($this->station, range(150, 345, 5));
     addVoiceTrack($this->playlist, 0, 600);
     $this->playlist->items()->create(['position' => 1, 'type' => 'fill', 'title' => 'Fill']);
 
-    expect(fillSeconds(generateRundown()))->toBeGreaterThanOrEqual(3000)->toBeLessThanOrEqual(3005);
+    expect(backtimedFillSeconds(generateRundown()))->toBeGreaterThanOrEqual(3000)->toBeLessThanOrEqual(3005);
 });
 
 test('whatever else stands in front of the fixed time is taken off the fill budget', function () {
@@ -170,7 +195,7 @@ test('a fill inside a container runs up to the fixed time behind the container',
     addMarker($this->playlist, 1, 900, 'hard');
     $this->playlist->items()->create(['position' => 2, 'type' => 'adbreak', 'title' => 'Werbung']);
 
-    expect(fillSeconds(generateRundown()))->toBe(1000);
+    expect(backtimedFillSeconds(generateRundown()))->toBe(1000);
 });
 
 test('a marker in front of a container pins its first item', function () {
@@ -370,4 +395,45 @@ test('a hard fixed time in the middle of the hour is announced and cut to', func
     // After the cut: news.
     $this->travelTo(Carbon::parse('2026-05-12 10:30:00'));
     expect($service->pullNextItem($this->station)->id)->toBe($news->id);
+});
+
+test('the reserve track plays when the hour ran early before a hard next hour', function () {
+    $this->travelTo(Carbon::parse('2026-05-12 10:55:00'));
+    // Two fill tracks: the backtimed last one and the reserve behind it.
+    [$rundown, $items] = playoutRundown(2, []);
+    playoutRundown(0, [], hour: 11)[1][0]->update(['fixed_at' => '2026-05-12 11:00:00', 'fixed_mode' => 'hard']);
+
+    // The last planned track started at 10:54:23 and runs 5:19, 18 s short of the hour.
+    $items[1]->update(['duration_seconds' => 319]);
+    putOnAir($rundown, $items[1], Carbon::parse('2026-05-12 10:54:23'), 2);
+
+    expect(app(LiquidsoapStateService::class)->pullNextItem($this->station)->id)->toBe($items[2]->id)
+        ->and(GeneratedPlaylistItem::whereNotNull('skipped_at')->count())->toBe(0);
+});
+
+test('the reserve track is dropped when the hour reaches a hard next hour on time', function () {
+    $this->travelTo(Carbon::parse('2026-05-12 10:55:00'));
+    [$rundown, $items] = playoutRundown(2, []);
+    $news = playoutRundown(0, [], hour: 11)[1][0];
+    $news->update(['fixed_at' => '2026-05-12 11:00:00', 'fixed_mode' => 'hard']);
+
+    // The last planned track runs until 11:00:03.
+    $items[1]->update(['duration_seconds' => 340]);
+    putOnAir($rundown, $items[1], Carbon::parse('2026-05-12 10:54:23'), 2);
+
+    expect(app(LiquidsoapStateService::class)->pullNextItem($this->station))->toBeNull()
+        ->and($items[2]->fresh()->skipped_at)->not->toBeNull();
+});
+
+test('an hour without a fixed opening still drops the reserve on the hour', function () {
+    $this->travelTo(Carbon::parse('2026-05-12 10:58:30'));
+    [$rundown, $items] = playoutRundown(2, []);
+    [, $next] = playoutRundown(0, [], hour: 11);
+
+    // Runs until 11:00:03, the next hour opens without a marker.
+    $items[1]->update(['duration_seconds' => 340]);
+    putOnAir($rundown, $items[1], Carbon::parse('2026-05-12 10:54:23'), 2);
+
+    expect(app(LiquidsoapStateService::class)->pullNextItem($this->station)->id)->toBe($next[0]->id)
+        ->and($items[2]->fresh()->skipped_at)->not->toBeNull();
 });
