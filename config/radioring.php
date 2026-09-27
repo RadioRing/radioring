@@ -147,6 +147,9 @@ return [
         'max_files' => (int) env('EMERGENCY_MAX_FILES', 10),
         'max_bytes' => (int) env('EMERGENCY_MAX_BYTES', 200 * 1024 * 1024),
         'sync_interval_seconds' => (int) env('EMERGENCY_SYNC_INTERVAL', 900),
+        // Seconds the programme must be unavailable before the loop goes on air. Bridges
+        // the short gap after a hard cut, while the next element is still being resolved.
+        'grace_seconds' => (float) env('EMERGENCY_GRACE_SECONDS', 5),
     ],
 
     /*

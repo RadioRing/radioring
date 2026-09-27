@@ -53,6 +53,23 @@ test('the emergency branch applies the measured gain only while loudness correct
         ->not->toContain('emergency = amplify');
 });
 
+test('the emergency loop waits out a grace period instead of bridging the gap after a hard cut', function () {
+    config()->set('radioring.emergency.grace_seconds', 3);
+
+    $script = app(LiquidsoapScriptGenerator::class)->generate($this->station);
+
+    expect($script)
+        ->toContain('  if program.is_ready() then')
+        ->toContain('thread.run(every=0.1000, track_program_availability)')
+        ->toContain('time() - program_unavailable_since() >= 3.0000')
+        ->toContain('emergency = switch(id="emergency_gate", track_sensitive=false, [(emergency_due, emergency)])');
+
+    // The gate wraps the marked loop, and blank() still bridges the gap until it opens.
+    expect(strpos($script, 'emergency = switch('))
+        ->toBeGreaterThan(strpos($script, 'emergency = metadata.map('))
+        ->toBeLessThan(strpos($script, 'radio = fallback(track_sensitive=false, [live, program, emergency, blank()])'));
+});
+
 // ── now playing ────────────────────────────────────────────────────────────
 
 function reportEmergency(Station $station, MediaFile $file, array $payload = []): TestResponse

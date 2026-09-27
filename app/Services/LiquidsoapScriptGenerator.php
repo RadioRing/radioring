@@ -100,7 +100,7 @@ class LiquidsoapScriptGenerator
         $lines[] = '';
         $lines[] = "live = input.harbor(\"live\", port={$livePort}, password=\"{$livePassword}\", buffer=5., max=60., on_connect=on_live_connect, on_disconnect=on_live_disconnect)";
         $lines[] = '';
-        $lines[] = $this->emergencyBranch();
+        $lines[] = $this->emergencyBranch($programSource);
         $lines[] = '';
         $lines[] = "radio = fallback(track_sensitive=false, [live, {$programSource}, emergency, blank()])";
         $lines[] = '';
@@ -328,8 +328,14 @@ LIQ;
      *
      * track_sensitive=false on the fallback means the returning programme cuts an
      * emergency file off mid-word. That is what a station wants.
+     *
+     * The loop only takes over once the programme has been unavailable for a grace period.
+     * Short gaps are part of normal operation: after a hard cut the prefetch queue is empty
+     * and request.dynamic needs about a second to fetch and resolve the next element. Without
+     * the grace period the fallback would put the emergency loop on air for exactly that
+     * second, right before the news. blank() covers such gaps instead.
      */
-    private function emergencyBranch(): string
+    private function emergencyBranch(string $programSource): string
     {
         $playlist = rtrim((string) config('radioring.emergency.directory'), '/').'/emergency.m3u';
 
@@ -346,9 +352,36 @@ LIQ;
         // which carries no radioring_item_id, would be reported as a live takeover.
         $lines[] = 'emergency = metadata.map(fun (_) -> [("radioring_source", "emergency")], emergency)';
 
+        $grace = $this->liqFloat((float) config('radioring.emergency.grace_seconds', 5));
+        $poll = $this->liqFloat(self::EMERGENCY_POLL_SECONDS);
+
+        // Polled rather than checked inside the switch predicate: the fallback stops asking
+        // the emergency branch while the programme is ready, so the predicate alone would
+        // never see the programme come back and would keep a stale outage start.
+        $lines[] = '';
+        $lines[] = "# Grace period: the emergency loop takes over only after the programme has been unavailable for {$grace}s.";
+        $lines[] = 'program_unavailable_since = ref(-1.)';
+        $lines[] = 'def track_program_availability() =';
+        $lines[] = "  if {$programSource}.is_ready() then";
+        $lines[] = '    program_unavailable_since := -1.';
+        $lines[] = '  elsif program_unavailable_since() < 0. then';
+        $lines[] = '    program_unavailable_since := time()';
+        $lines[] = '  end';
+        $lines[] = 'end';
+        $lines[] = "thread.run(every={$poll}, track_program_availability)";
+        $lines[] = 'def emergency_due() =';
+        $lines[] = "  program_unavailable_since() >= 0. and time() - program_unavailable_since() >= {$grace}";
+        $lines[] = 'end';
+        $lines[] = 'emergency = switch(id="emergency_gate", track_sensitive=false, [(emergency_due, emergency)])';
+
         return implode('
 ', $lines);
     }
+
+    /**
+     * How often the emergency gate samples the programme's availability, in seconds.
+     */
+    private const EMERGENCY_POLL_SECONDS = 0.1;
 
     /**
      * How often the watchdog looks at the programme branch, in seconds.

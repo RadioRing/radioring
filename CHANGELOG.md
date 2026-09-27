@@ -23,6 +23,9 @@ to stand on its own.
   is on air, the protocol records the start and the return to the programme, and a changed
   selection reaches the container within seconds without restarting the stream. Stations that
   select nothing keep sending silence.
+  The loop only starts after the programme has been missing for 5 seconds
+  (`EMERGENCY_GRACE_SECONDS`), so the short gap after a hard cut stays silent instead of
+  putting a second of the loop on air before the news.
 - **Fixed times inside the hour, soft or hard.** A new *Fixed time* element pins the
   element behind it to a point in the hour. Soft (yellow):
   once the time is reached no further fill music starts, the running track plays out and the
