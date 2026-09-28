@@ -55,6 +55,9 @@ to stand on its own.
 - **Start times in the playlist editor no longer stop after a fill or a container.** Fixed
   times carry the chain on, and random elements count with the average length of their pool,
   marked with "~".
+- **Usability of external media and playlist overview** The external media and playlist overview
+  have been redesigned to match the design principles of the playlist editor and the media library.
+  Means modals instead of edit menus at top, filters and overhauled design.
 
 ### Upgrade
 

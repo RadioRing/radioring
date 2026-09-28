@@ -163,3 +163,26 @@ allows for a proprietary library. Or measure the output instead: levels, loudnes
 correlation, a rough spectrum, taken on the Liquidsoap side after processing. The second
 answers most of what an operator actually asks (is it too loud, does it clip, is the phase
 broken) and depends on nobody.
+
+**An assistant for programme planning.** A chat that answers questions about the library and
+the programme, such as "which tracks would fit a Christmas programme, which are tagged as
+such and should not be", "what ran too often last week", "which artist names are spelled two
+ways". It plans, it never changes anything itself. Three pieces, in this order:
+
+- Suggestions first, chat later. A question about the whole library is a batch job, not a
+  chat turn: artist, title, album and year go to a small model in chunks, and the answers
+  land in a suggestions table (media file, add or remove, tag, confidence, reason). A review
+  page lists them and the operator accepts or rejects, one by one or in bulk. This alone
+  covers the Christmas example.
+- The chat on top works through read-only tools (search the library, list tags, media by
+  tag, playlist summary, play history) and starts such jobs. It only ever names media it got
+  from a tool, so it cannot invent tracks that are not there. The tools check station access
+  themselves; the prompt is not a permission layer.
+- Later, audio features (tempo, energy) measured by ffmpeg on upload, for questions metadata
+  cannot answer, like "quiet tracks for the evening".
+
+Off by default, bring your own API key per instance or tenant, provider interchangeable.
+Only metadata leaves the server, never audio, and the page says so. A usage limit per tenant
+keeps the chat's cost predictable. Obscure and regional music is where the model guesses, so
+every suggestion carries a confidence and "unknown" is a valid answer. Ties in with fill by
+category in 0.7.0: suggested tags and categories feed the same fill elements.

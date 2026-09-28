@@ -73,6 +73,12 @@ class Playlist extends Model
         return $first !== null && $first->isHardMarker() && (int) $first->relative_offset_seconds === 0;
     }
 
+    /** Slots of the weekly hour grid that play this playlist. */
+    public function hourGridSlots(): HasMany
+    {
+        return $this->hasMany(HourGridSlot::class);
+    }
+
     /** Items in other playlists that embed this container. */
     public function embeddingItems(): HasMany
     {

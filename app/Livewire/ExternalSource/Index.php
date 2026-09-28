@@ -11,6 +11,7 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 
 #[Title('Externe Quellen')]
@@ -29,13 +30,19 @@ class Index extends Component
 
     public ?int $editingId = null;
 
-    // Suche & Filter der Liste
+    // Search and filters live in the URL, so a reload or a way back keeps the narrowed list.
+    #[Url(as: 'q', except: '')]
     public string $search = '';
 
+    #[Url(as: 'kind', except: '')]
     public string $filterKind = '';
 
     /** '', 'error', 'used' or 'unused'. */
+    #[Url(as: 'status', except: '')]
     public string $filterStatus = '';
+
+    /** Row that was just saved, highlighted once so the eye finds it again. */
+    public ?int $highlightId = null;
 
     // Formularfelder
     public string $name = '';
@@ -69,6 +76,8 @@ class Index extends Component
     public bool $fadeIn = false;
 
     // Syndications4Radio-Verbindung & Import
+    public bool $showConnect = false;
+
     public string $s4rTokenInput = '';
 
     public bool $showImport = false;
@@ -132,6 +141,8 @@ class Index extends Component
     {
         $this->resetForm();
         $this->showForm = true;
+
+        $this->dispatch('source-form-opened');
     }
 
     public function startEdit(int $id): void
@@ -152,7 +163,10 @@ class Index extends Component
         $this->normalize = $source->normalize;
         $this->trimLeadingSilence = $source->trim_leading_silence;
         $this->fadeIn = $source->fade_in;
+        $this->resetValidation();
         $this->showForm = true;
+
+        $this->dispatch('source-form-opened');
     }
 
     /**
@@ -210,14 +224,17 @@ class Index extends Component
         }
 
         if ($this->editingId) {
-            $this->station->externalSources()->findOrFail($this->editingId)->update($attributes);
+            $source = $this->station->externalSources()->findOrFail($this->editingId);
+            $source->update($attributes);
             $message = __('Quelle aktualisiert.');
         } else {
-            $this->station->externalSources()->create($attributes);
+            $source = $this->station->externalSources()->create($attributes);
             $message = __('Quelle angelegt.');
         }
 
         $this->resetForm();
+        $this->highlightId = $source->id;
+        $this->dispatch('source-row-highlighted', id: $source->id);
         $this->dispatch('notify', message: $message, type: 'success');
     }
 
@@ -242,6 +259,25 @@ class Index extends Component
     {
         $this->reset('showForm', 'editingId', 'copyPasswordFromId', 'name', 'broadcastTitle', 'kind', 'url', 'urlUsername', 'urlPassword', 'expectedDuration', 'prefetchLead', 'freshness', 'normalize', 'trimLeadingSilence', 'fadeIn');
         $this->resetValidation();
+
+        $this->dispatch('source-form-closed');
+    }
+
+    public function startConnect(): void
+    {
+        $this->reset('s4rTokenInput');
+        $this->resetValidation('s4rTokenInput');
+        $this->showConnect = true;
+
+        $this->dispatch('s4r-connect-opened');
+    }
+
+    public function cancelConnect(): void
+    {
+        $this->reset('showConnect', 's4rTokenInput');
+        $this->resetValidation('s4rTokenInput');
+
+        $this->dispatch('s4r-connect-closed');
     }
 
     /**
@@ -255,7 +291,8 @@ class Index extends Component
         );
 
         $this->station->update(['s4r_partner_token' => trim($this->s4rTokenInput)]);
-        $this->reset('s4rTokenInput');
+        $this->reset('s4rTokenInput', 'showConnect');
+        $this->dispatch('s4r-connect-closed');
         $this->dispatch('notify', message: __('Mit Syndications4Radio verbunden.'), type: 'success');
     }
 
@@ -263,6 +300,7 @@ class Index extends Component
     {
         $this->station->update(['s4r_partner_token' => null]);
         $this->reset('showImport', 'importStep', 'importShows', 'importSelectedShow', 'importVariant', 'importError', 'importNotice');
+        $this->dispatch('source-import-closed');
         $this->dispatch('notify', message: __('Verbindung zu Syndications4Radio getrennt.'), type: 'success');
     }
 
@@ -293,6 +331,8 @@ class Index extends Component
         }
 
         $this->showImport = true;
+
+        $this->dispatch('source-import-opened');
     }
 
     /**
@@ -428,6 +468,9 @@ class Index extends Component
         }
 
         $this->reset('showImport', 'importStep', 'importShows', 'importSelectedShow', 'importVariant', 'importError', 'importNotice');
+        $this->dispatch('source-import-closed');
+        // Show what was just imported: its group opens and scrolls into view.
+        $this->dispatch('source-group-imported', key: self::groupKey($show['id'], $this->importVariant));
         $this->dispatch('notify', type: 'success', message: $skipped > 0
             ? trans_choice('{1}1 new file from „:name" imported, :skipped were already there.|[2,*]:count new files from „:name" imported, :skipped were already there.', $created, ['name' => $show['name'], 'count' => $created, 'skipped' => $skipped])
             : trans_choice('{1}Syndication „:name" importiert.|[2,*]:count Dateien von „:name" importiert.', $created, ['name' => $show['name'], 'count' => $created]));
@@ -436,6 +479,8 @@ class Index extends Component
     public function cancelImport(): void
     {
         $this->reset('showImport', 'importStep', 'importShows', 'importSelectedShow', 'importVariant', 'importError', 'importNotice');
+
+        $this->dispatch('source-import-closed');
     }
 
     /**
@@ -530,6 +575,47 @@ class Index extends Component
         return $query->orderBy('name')->get();
     }
 
+    /** Key of the list group that holds the files of one imported show variant. */
+    public static function groupKey(int|string|null $sendungId, ?string $variant): string
+    {
+        return 's4r-'.$sendungId.'-'.$variant;
+    }
+
+    /**
+     * The listed sources as rows: the files of one imported show variant fold into a
+     * group, everything else stays a single row. A show with dozens of episodes would
+     * otherwise bury every other source.
+     *
+     * @param  Collection<int, ExternalSource>  $sources
+     * @return list<array{key: string, label: string, sources: Collection<int, ExternalSource>}>
+     */
+    private function groupRows(Collection $sources): array
+    {
+        $rows = [];
+
+        foreach ($sources as $source) {
+            $key = $source->kind === 'syndication'
+                ? self::groupKey($source->syndication_sendung_id, $source->syndication_variant)
+                : 'source-'.$source->id;
+
+            $rows[$key] ??= ['key' => $key, 'label' => $source->name, 'sources' => new Collection];
+            $rows[$key]['sources']->push($source);
+        }
+
+        foreach ($rows as $key => $row) {
+            if ($row['sources']->count() > 1) {
+                $first = $row['sources']->first();
+                $variant = $first->syndication_variant === 'lfm' ? 'laut.fm' : __('Standard');
+                $rows[$key]['label'] = ($first->broadcast_title ?: $first->name).' ('.$variant.')';
+            }
+        }
+
+        return collect($rows)
+            ->sortBy(fn (array $row): string => mb_strtolower($row['label']))
+            ->values()
+            ->all();
+    }
+
     /**
      * Which S4R shows already have sources here, and in which variants.
      *
@@ -589,8 +675,11 @@ class Index extends Component
 
     public function render()
     {
+        $sources = $this->sources();
+
         return view('livewire.external-source.index', [
-            'sources' => $this->sources(),
+            'sources' => $sources,
+            'rows' => $this->groupRows($sources),
             'totalSources' => $this->station->externalSources()->count(),
             'importedSyndications' => $this->showImport ? $this->importedSyndications() : [],
             'preparedFiles' => $this->preparedFiles(),

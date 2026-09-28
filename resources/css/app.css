@@ -40,7 +40,9 @@
 
 #content-wrapper {
     min-height: 100vh;
-    overflow-x: hidden;
+    /* clip instead of hidden: hidden turns the wrapper into a scroll container,
+       which would break position: sticky for everything inside it. */
+    overflow-x: clip;
 }
 
 /* ── Auth layout ───────────────────────────────────────────── */
@@ -89,4 +91,35 @@
 .text-muted-sm {
     font-size: .875rem;
     color: #6c757d;
+}
+
+/* ── Overview lists (playlists, external sources) ─────────── */
+/* Search, filters and the create button stay in reach however far the list is scrolled. */
+.list-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 1020;
+    background-color: var(--bs-light);
+    margin-inline: -.5rem;
+    padding: .5rem;
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+}
+
+.list-row-highlight {
+    animation: list-row-highlight 2.5s ease-out;
+}
+
+@keyframes list-row-highlight {
+    from { background-color: rgba(13, 110, 253, .18); }
+    to { background-color: transparent; }
+}
+
+.list-group-header {
+    background-color: var(--bs-tertiary-bg);
+    cursor: pointer;
+    user-select: none;
+}
+
+[x-cloak] {
+    display: none !important;
 }
