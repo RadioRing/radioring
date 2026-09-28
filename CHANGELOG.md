@@ -14,6 +14,8 @@ to stand on its own.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-28
+
 **New in this release: fixed times, an emergency loop and alert mails.** Fixed time
 elements pin an element to a point in the hour, soft or hard, and fill music now plans up to
 them. They replace the playlist-wide hard start and the timestamps on single elements, which
@@ -412,7 +414,8 @@ First public release. Media library, playlists, weekly grid and rundowns, extern
 live input, outputs to Icecast and laut.fm, per-station Liquidsoap containers, multi-tenant
 and standalone operation, installer and update script.
 
-[Unreleased]: https://github.com/RadioRing/radioring/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/RadioRing/radioring/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/RadioRing/radioring/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/RadioRing/radioring/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/RadioRing/radioring/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/RadioRing/radioring/compare/v0.2.0...v0.3.0
