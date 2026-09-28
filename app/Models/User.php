@@ -14,12 +14,21 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Str;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
-#[Fillable(['name', 'email', 'password'])]
+#[Fillable(['name', 'email', 'password', 'receives_alert_emails'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, TwoFactorAuthenticatable;
+
+    /**
+     * Mirrors the column default for models not yet reloaded.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'receives_alert_emails' => true,
+    ];
 
     protected function casts(): array
     {
@@ -27,6 +36,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_admin' => 'boolean',
+            'receives_alert_emails' => 'boolean',
             'banned_at' => 'datetime',
         ];
     }

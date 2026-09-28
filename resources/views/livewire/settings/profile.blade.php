@@ -35,6 +35,17 @@
             <button type="submit" class="btn btn-primary">{{ __('Save') }}</button>
         </form>
 
+        <div class="form-check form-switch mt-4">
+            <input class="form-check-input" type="checkbox" role="switch"
+                   id="receivesAlertEmails" wire:model.live="receivesAlertEmails">
+            <label class="form-check-label fw-medium" for="receivesAlertEmails">
+                {{ __('Alert mails for my stations') }}
+            </label>
+            <div class="text-muted-sm">
+                {{ __('As an owner of a station you are mailed when it goes off air. Turn this off to stop those mails for all of your stations.') }}
+            </div>
+        </div>
+
         @if ($this->showDeleteUser)
             <livewire:settings.delete-user-form />
         @endif

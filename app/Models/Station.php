@@ -12,19 +12,30 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
-#[Fillable(['user_id', 'tenant_id', 'name', 'slug', 'status', 'api_token', 's4r_partner_token', 'regenerate_rundowns_nightly', 'stereo_tool_license_key', 'stereo_tool_preset'])]
+#[Fillable(['user_id', 'tenant_id', 'name', 'slug', 'status', 'api_token', 's4r_partner_token', 'regenerate_rundowns_nightly', 'stereo_tool_license_key', 'stereo_tool_preset', 'alert_emails_enabled'])]
 class Station extends Model
 {
     /** @use HasFactory<StationFactory> */
     use HasFactory;
 
+    /**
+     * Mirrors the column default for models not yet reloaded.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'alert_emails_enabled' => true,
+    ];
+
     protected function casts(): array
     {
         return [
             'regenerate_rundowns_nightly' => 'boolean',
+            'alert_emails_enabled' => 'boolean',
             // Geteiltes Geheimnis mit dem Station-Container: der braucht den Klartext als
             // Env-Variable, hashen scheidet daher aus. Nachgeschlagen wird nie ueber den
             // Token, sondern immer ueber den Slug, danach hash_equals - die nicht
@@ -90,6 +101,28 @@ class Station extends Model
         return $this->belongsToMany(User::class, 'station_users')
             ->withPivot('role')
             ->withTimestamps();
+    }
+
+    /**
+     * Founder and owners who have not opted out and are not banned.
+     *
+     * @return Collection<int, User>
+     */
+    public function alertRecipients(): Collection
+    {
+        return $this->members()
+            ->wherePivot('role', 'owner')
+            ->get()
+            ->push($this->owner)
+            ->filter()
+            ->unique('id')
+            ->filter(fn (User $user): bool => $user->receives_alert_emails && ! $user->isBanned())
+            ->values();
+    }
+
+    public function alerts(): HasMany
+    {
+        return $this->hasMany(StationAlert::class);
     }
 
     /**

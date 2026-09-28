@@ -32,6 +32,17 @@ test('owner can toggle nightly rundown regeneration', function () {
     expect($this->station->fresh()->regenerate_rundowns_nightly)->toBeTrue();
 });
 
+test('owner can switch off alert mails for the station', function () {
+    Livewire::actingAs($this->owner)
+        ->test(Edit::class, ['station' => $this->station])
+        ->assertSet('alertEmailsEnabled', true)
+        ->set('alertEmailsEnabled', false)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($this->station->fresh()->alert_emails_enabled)->toBeFalse();
+});
+
 test('owner can grant a registered user access by email', function () {
     $colleague = User::factory()->create();
 

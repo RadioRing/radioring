@@ -133,6 +133,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Alert mails
+    |--------------------------------------------------------------------------
+    | Seconds a station must be off air before its owners are mailed.
+    |
+    */
+    'alerts' => [
+        'delay_seconds' => (int) env('ALERT_DELAY_SECONDS', 120),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Emergency loop
     |--------------------------------------------------------------------------
     | Files a station falls back to while the programme branch is unavailable

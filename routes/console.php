@@ -26,6 +26,9 @@ Schedule::command('media:prune-replaced')->dailyAt('03:30');
 // Jede Minute – Hard-Start-Rundowns zur vollen Stunde erzwingen (sample-genauer Cut)
 Schedule::command('radioring:enforce-hard-starts')->everyMinute()->withoutOverlapping();
 
+// Every minute: alert mails to station owners (own process, so slow SMTP blocks nothing)
+Schedule::command('radioring:check-alerts')->everyMinute()->withoutOverlapping()->runInBackground();
+
 // Jede Minute – dynamische externe HTTP-Inhalte kurz vor Ausspielung holen/messen/cachen
 Schedule::job(new PrepareUpcomingHttpItemsJob)->everyMinute()->withoutOverlapping();
 

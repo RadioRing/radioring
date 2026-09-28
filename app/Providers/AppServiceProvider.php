@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Contracts\ContainerServiceInterface;
 use App\Models\Setting;
 use App\Services\DockerService;
+use App\Services\Mail\MailSettings;
 use App\Services\PortainerService;
 use App\Support\StaleTransactionGuard;
 use Carbon\CarbonImmutable;
@@ -36,6 +37,9 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+
+        // SMTP settings from the admin area, if enabled.
+        MailSettings::apply();
     }
 
     /**

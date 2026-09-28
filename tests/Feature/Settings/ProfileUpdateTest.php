@@ -74,3 +74,14 @@ test('correct password must be provided to delete account', function () {
 
     expect($user->fresh())->not->toBeNull();
 });
+
+test('alert mails can be switched off in the profile', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test(Profile::class)
+        ->assertSet('receivesAlertEmails', true)
+        ->set('receivesAlertEmails', false);
+
+    expect($user->fresh()->receives_alert_emails)->toBeFalse();
+});

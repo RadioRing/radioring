@@ -14,6 +14,16 @@ to stand on its own.
 
 ## [Unreleased]
 
+**New in this release: fixed times, an emergency loop and alert mails.** Fixed time
+elements pin an element to a point in the hour, soft or hard, and fill music now plans up to
+them. They replace the playlist-wide hard start and the timestamps on single elements, which
+are converted on update. **Check your playlists after the update** to see that every hour
+still starts and cuts where you expect, and **restart your station containers** so the
+emergency loop is available.
+
+A station no longer has to fall silent: an emergency loop takes over when the programme is
+missing, and the owners get a mail when a station goes off air and when it is back.
+
 ### Added
 - **An emergency loop per station.** Without a live takeover and without a programme the
   station sent silence: during an update, a database outage or an hour whose rundown ran out
@@ -34,6 +44,13 @@ to stand on its own.
   tracks right after them and music in between, without setting a fill length by hand. The
   editor, the dashboard and the rundown view show fixed times in their colour, and the editor
   warns when the programme in front runs too long or leaves a gap before a hard cut.
+- **Alert mails.** Founder and owners are mailed when a station sends silence, plays the
+  emergency loop, stops playing or misses the rundown of the current hour, and again once
+  it is resolved. Only after two minutes (`ALERT_DELAY_SECONDS`), once per incident. Can be
+  switched off per station and in the profile.
+- **Mail server in the admin area.** SMTP settings under *Instance settings*, with a test
+  button. Replaces `MAIL_*` while switched on. Optional sender per station:
+  `<slug>-noreply@<domain>`.
 - **Fill music ends on time.** A fill in front of a fixed time (or the full hour) plans only
   up to it and picks its last one or two tracks so the fill ends as close to the time as the
   rotation rules allow. If the hour still drifts while on air, fill tracks that would start
@@ -68,14 +85,18 @@ cd /opt/radioring && ./update.sh
 This release migrates the database. `update.sh` runs the migrations itself. The new worker
 timeout takes effect when the container restarts.
 
-The station containers are rebuilt on update and then fetch their emergency files by
-themselves. Nothing has to be copied by hand.
+***Restart every station container after the update*** (stop, then play in the dashboard).
+Running containers keep the old image, and only the new one has the emergency loop. After
+the restart they fetch their emergency files by themselves.
 
 Playlists with a hard start and elements with a timestamp are converted to fixed time
 elements by the migration. Rundowns that are already generated keep their hard start; the
 converted soft fixed times and the new fill planning apply once an hour is generated again.
 Changes to fixed time elements, like any other change to a playlist, only reach rundowns that
 are generated afterwards.
+
+Alert mails are on for every station. Without a mail server they only go to the log: set
+one up under *Administration -> Instance settings* and send a test mail.
 
 If your `.env` sets `REDIS_QUEUE_RETRY_AFTER` (or `DB_QUEUE_RETRY_AFTER`) by hand, raise it
 to at least 360. It has to stay above the worker timeout, otherwise the queue hands the same

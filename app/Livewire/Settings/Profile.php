@@ -18,6 +18,8 @@ class Profile extends Component
 
     public string $email = '';
 
+    public bool $receivesAlertEmails = true;
+
     /**
      * Mount the component.
      */
@@ -25,6 +27,19 @@ class Profile extends Component
     {
         $this->name = Auth::user()->name;
         $this->email = Auth::user()->email;
+        $this->receivesAlertEmails = (bool) Auth::user()->receives_alert_emails;
+    }
+
+    /**
+     * Personal opt-out for alert mails, saved on toggle.
+     */
+    public function updatedReceivesAlertEmails(bool $value): void
+    {
+        Auth::user()->update(['receives_alert_emails' => $value]);
+
+        $this->dispatch('notify', message: $value
+            ? __('You will receive alert mails again.')
+            : __('You will no longer receive alert mails.'), type: 'success');
     }
 
     /**

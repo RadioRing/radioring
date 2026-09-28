@@ -48,6 +48,17 @@
                             </div>
                         </div>
 
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" role="switch"
+                                   id="alertEmailsEnabled" wire:model="alertEmailsEnabled">
+                            <label class="form-check-label fw-medium" for="alertEmailsEnabled">
+                                {{ __('Alert mails to the owners') }}
+                            </label>
+                            <div class="text-muted-sm">
+                                {{ __('Mails every owner when the station sends silence, the emergency loop is on air, the container stops playing or a rundown is missing, and again once it is resolved.') }}
+                            </div>
+                        </div>
+
                         <hr>
 
                         <button type="submit" class="btn btn-primary">

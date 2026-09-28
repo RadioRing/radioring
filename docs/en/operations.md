@@ -133,6 +133,24 @@ instance-wide; `REDIS_DB` only scopes keys, not channels.
 Requires a wildcard DNS record `*.stream.example.com` pointing at the server and the port
 range open in the firewall.
 
+### 3.6 Mail and alerts
+
+| Variable | Example | Purpose |
+|---|---|---|
+| `MAIL_MAILER` | `smtp` | `log` (default) writes mails to the log instead of sending them |
+| `MAIL_HOST` / `MAIL_PORT` / `MAIL_SCHEME` | `smtp.example.com` / `587` / `smtp` | `smtps` for implicit TLS on port 465 |
+| `MAIL_USERNAME` / `MAIL_PASSWORD` | | |
+| `MAIL_FROM_ADDRESS` / `MAIL_FROM_NAME` | `radio@example.com` / `RadioRing` | |
+| `ALERT_DELAY_SECONDS` | `120` | How long a station must be off air before its owners are mailed |
+
+Easier: set the mail server in the panel under **Administration -> Instance settings** and
+send a test mail from there. Those values replace `MAIL_*` and need no restart. The
+password is stored encrypted with `APP_KEY`.
+
+A station sender (`<slug>-noreply@<domain>`) needs a mail server that may send for every
+address of the domain, plus SPF and DKIM for it. Otherwise the mails are rejected or land
+in spam.
+
 ---
 
 ## 4. Operating mode
@@ -220,6 +238,7 @@ Registered in `routes/console.php`:
 | every minute | `PrepareUpcomingHttpItemsJob` | Prefetch external sources shortly before airtime |
 | hourly | `media:prune-chunks` | Remove abandoned upload chunks |
 | daily, configurable | `backup:run --auto` | Configuration backup, only when enabled in the panel |
+| every minute | `radioring:check-alerts` | Alert mails to station owners. Sends directly, not through the queue. |
 
 **Without a running scheduler and queue workers no rundowns are created**, and the station
 falls silent after the current hour. With `APP_MODE=all` all of them run inside the app
@@ -412,6 +431,16 @@ The chunk size lives in `resources/views/livewire/media-library/index.blade.php`
 App and container must share the same Redis instance and channel. The app logs the number
 of subscribers that received a command; zero means the container is not listening on the
 channel you think it is.
+
+### No alert mails arrive
+
+- Send a test mail from the instance settings. The error shown there comes from the mail
+  server.
+- With `MAIL_MAILER=log` and the panel settings off, mails only end up in
+  `storage/logs/laravel.log`.
+- Is the **scheduler** running? Alerts are checked by `radioring:check-alerts`.
+- Only active stations with a running container and alerts switched on are watched.
+  Recipients are the founder and the owners, unless they opted out in their profile.
 
 ### Live input is not reachable
 

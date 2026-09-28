@@ -34,6 +34,8 @@ class Edit extends Component
 
     public bool $regenerateRundownsNightly = false;
 
+    public bool $alertEmailsEnabled = true;
+
     public string $stereoToolLicenseKey = '';
 
     public string $stereoToolPreset = '';
@@ -56,6 +58,7 @@ class Edit extends Component
         $this->name = $station->name;
         $this->status = $station->status;
         $this->regenerateRundownsNightly = (bool) $station->regenerate_rundowns_nightly;
+        $this->alertEmailsEnabled = (bool) $station->alert_emails_enabled;
         $this->stereoToolLicenseKey = (string) $station->stereo_tool_license_key;
         $this->stereoToolPreset = (string) $station->stereo_tool_preset;
     }
@@ -66,6 +69,7 @@ class Edit extends Component
             'name' => 'required|string|min:2|max:80',
             'status' => 'required|in:active,paused',
             'regenerateRundownsNightly' => 'boolean',
+            'alertEmailsEnabled' => 'boolean',
             'stereoToolLicenseKey' => 'nullable|string|max:255',
             'stereoToolPreset' => [
                 'nullable',
@@ -77,6 +81,7 @@ class Edit extends Component
             'name' => $this->name,
             'status' => $this->status,
             'regenerate_rundowns_nightly' => $this->regenerateRundownsNightly,
+            'alert_emails_enabled' => $this->alertEmailsEnabled,
         ];
 
         // Stereo Tool configuration only once an admin has enabled the station. Enabling

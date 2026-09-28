@@ -375,6 +375,24 @@ used to send silence. Pick a few files under **Edit station** and they play inst
 Anything works as content: a jingle, a spoken announcement, a music bed. Two or three files
 are enough.
 
+### Alert mails
+
+The founder and every owner get a mail when the station
+
+- sends silence,
+- plays the emergency loop,
+- is meant to run but plays nothing (container crashed or failed to start),
+- has no rundown for the current hour.
+
+A second mail follows once the problem is resolved. Problems shorter than two minutes are
+not mailed. Editors get no alerts.
+
+- Switch off for the station: **Edit station**, *Alert mails to the owners*.
+- Switch off for yourself: **Settings -> Profile**, *Alert mails for my stations*.
+
+Stopped or paused stations are not watched. Mails only arrive if an administrator has set
+up a mail server (see section 11).
+
 ---
 
 ## 11. Administration
@@ -386,6 +404,12 @@ Visible only to administrators.
   register.
 - **Instance settings**: switch the operating mode between *standalone* and *cloud*. The
   change applies immediately, without a redeployment.
+- **Outgoing mail** (in the instance settings): SMTP server, login and sender for alert
+  mails and password resets. **Send a test mail** checks the values in the form before you
+  save, and shows the error of the mail server if sending fails. While *Use this mail
+  server* is off, the `MAIL_*` values from `.env` apply. *Send station mails with their own
+  sender* sends alerts as `<slug>-noreply@<domain>` under the station name. Only switch it
+  on if your mail server may send for every address of that domain.
 - **Backups**: secure the configuration and the database, manually or every night, with a
   retention limit and an optional passphrase. The archive can be downloaded here. Media
   files are deliberately not included. Restoring runs on the command line, see
@@ -454,6 +478,11 @@ In the **protocol**, filtered by date and event.
 **How do I go live?**
 Connect your encoder with the live credentials from the dashboard. The stream switches over
 automatically and returns to the programme when you disconnect.
+
+**I get no alert mails.**
+Ask an administrator to send a test mail from the instance settings. Also check that alert
+mails are on in the station settings and in your profile, and that you are an owner of the
+station.
 
 **A colleague sees media of my other station.**
 That is intended. The media library belongs to the account, so every station of the account

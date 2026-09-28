@@ -420,6 +420,24 @@ einige Dateien aus, dann laufen die stattdessen.
 Als Inhalt taugt alles: ein Jingle, eine gesprochene Ansage, ein Musikbett. Zwei oder drei
 Dateien genügen.
 
+### Alarm-Mails
+
+Der Gründer und alle Besitzer bekommen eine Mail, wenn die Station
+
+- Stille sendet,
+- die Notfallschleife spielt,
+- laufen soll, aber nichts spielt (Container abgestürzt oder Start fehlgeschlagen),
+- für die laufende Stunde keinen Rundown hat.
+
+Ist das Problem behoben, folgt eine zweite Mail. Probleme unter zwei Minuten lösen keine
+Mail aus. Bearbeiter bekommen keine Alarme.
+
+- Für die Station abschalten: **Station bearbeiten**, *Alarm-Mails an die Besitzer*.
+- Für dich abschalten: **Einstellungen -> Profil**, *Alarm-Mails für meine Stationen*.
+
+Gestoppte oder pausierte Stationen werden nicht überwacht. Mails kommen nur an, wenn ein
+Administrator einen Mailserver eingerichtet hat (siehe Abschnitt 11).
+
 ---
 
 ## 11. Administration
@@ -431,6 +449,13 @@ Nur für Nutzer mit Admin-Rechten sichtbar (Block **ADMINISTRATION**).
   koennen. Ohne gueltigen Code ist keine Registrierung moeglich.
 - **Instanz-Einstellungen**: den Betriebsmodus zwischen *standalone* und *cloud*
   umschalten. Die Aenderung wirkt sofort, ohne erneutes Deployment.
+- **Ausgehende Mails** (in den Instanz-Einstellungen): SMTP-Server, Login und Absender für
+  Alarm-Mails und Passwort-Resets. **Testmail senden** prüft die Werte im Formular schon
+  vor dem Speichern und zeigt bei einem Fehler die Meldung des Mailservers. Solange
+  *Diesen Mailserver verwenden* aus ist, gelten die `MAIL_*`-Werte aus der `.env`.
+  *Stations-Mails mit eigenem Absender verschicken* sendet Alarme als
+  `<slug>-noreply@<domain>` unter dem Stationsnamen. Nur einschalten, wenn dein Mailserver
+  für jede Adresse dieser Domain senden darf.
 - **Backups**: Sicherung der Konfiguration und der Datenbank, manuell oder jede Nacht,
   mit Aufbewahrungsgrenze und optionaler Passphrase. Das Archiv lässt sich hier
   herunterladen. Mediendateien sind bewusst nicht enthalten. Wiederherstellen läuft
@@ -497,6 +522,11 @@ Standalone-Modus gibt es kein Kontingent.
 
 **Wo sehe ich, was gelaufen ist?**
 Im **Protokoll**, gefiltert nach Datum/Ereignis.
+
+**Ich bekomme keine Alarm-Mails.**
+Bitte einen Administrator, in den Instanz-Einstellungen eine Testmail zu senden. Prüfe
+außerdem, ob Alarm-Mails in den Stationseinstellungen und in deinem Profil eingeschaltet
+sind und ob du Besitzer der Station bist.
 
 **Wie übernehme ich live?**
 Verbinde deinen Encoder mit den Live-Zugangsdaten vom Dashboard. Der Stream

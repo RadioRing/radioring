@@ -136,6 +136,24 @@ pub/sub ist instanzweit, `REDIS_DB` betrifft nur Keys, nicht Kanäle.
 Braucht einen Wildcard-Eintrag `*.stream.example.com` auf den Server und den Portbereich
 offen in der Firewall.
 
+### 3.6 Mail und Alarme
+
+| Variable | Beispiel | Zweck |
+|---|---|---|
+| `MAIL_MAILER` | `smtp` | `log` (Standard) schreibt Mails ins Log, statt sie zu senden |
+| `MAIL_HOST` / `MAIL_PORT` / `MAIL_SCHEME` | `smtp.example.com` / `587` / `smtp` | `smtps` für implizites TLS auf Port 465 |
+| `MAIL_USERNAME` / `MAIL_PASSWORD` | | |
+| `MAIL_FROM_ADDRESS` / `MAIL_FROM_NAME` | `radio@example.com` / `RadioRing` | |
+| `ALERT_DELAY_SECONDS` | `120` | So lange muss eine Station ausfallen, bevor ihre Besitzer eine Mail bekommen |
+
+Einfacher: den Mailserver im Panel unter **Administration -> Instanz-Einstellungen**
+eintragen und dort eine Testmail senden. Diese Werte ersetzen `MAIL_*` und brauchen keinen
+Neustart. Das Passwort wird mit `APP_KEY` verschlüsselt gespeichert.
+
+Ein Absender pro Station (`<slug>-noreply@<domain>`) braucht einen Mailserver, der für jede
+Adresse der Domain senden darf, sowie SPF und DKIM dafür. Sonst werden die Mails abgelehnt
+oder landen im Spam.
+
 ---
 
 ## 4. Betriebsmodus
@@ -224,6 +242,7 @@ Registriert in `routes/console.php`:
 | minütlich | `PrepareUpcomingHttpItemsJob` | Externe Quellen kurz vor Ausspielung holen |
 | stündlich | `media:prune-chunks` | Verwaiste Upload-Chunks aufräumen |
 | täglich, einstellbar | `backup:run --auto` | Konfigurations-Backup, nur wenn im Panel aktiviert |
+| minütlich | `radioring:check-alerts` | Alarm-Mails an die Stationsbesitzer. Sendet direkt, nicht über die Queue. |
 
 **Ohne laufenden Scheduler und Queue-Worker entstehen keine Rundowns**, die Station fällt
 nach der aktuellen Stunde in Stille. Mit `APP_MODE=all` laufen alle im App-Container. Wer
@@ -423,6 +442,17 @@ Requests.
 App und Container müssen dieselbe Redis-Instanz und denselben Kanal nutzen. Die App
 protokolliert, wie viele Abonnenten einen Befehl erhalten haben; null bedeutet, dass der
 Container nicht auf dem Kanal lauscht, den du vermutest.
+
+### Es kommen keine Alarm-Mails an
+
+- In den Instanz-Einstellungen eine Testmail senden. Der angezeigte Fehler kommt vom
+  Mailserver.
+- Mit `MAIL_MAILER=log` und ausgeschalteten Panel-Einstellungen landen Mails nur in
+  `storage/logs/laravel.log`.
+- Läuft der **Scheduler**? Alarme prüft `radioring:check-alerts`.
+- Überwacht werden nur aktive Stationen mit laufendem Container und eingeschalteten
+  Alarmen. Empfänger sind Gründer und Besitzer, sofern sie Alarme im Profil nicht
+  abbestellt haben.
 
 ### Der Live-Eingang ist nicht erreichbar
 
