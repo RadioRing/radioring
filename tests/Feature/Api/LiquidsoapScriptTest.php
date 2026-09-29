@@ -53,6 +53,24 @@ test('generator includes pull, now-playing and harbor blocks', function () {
         ->toContain('input.harbor');
 });
 
+test('generator repeats the now-playing report as a heartbeat and logs lost reports', function () {
+    $script = app(LiquidsoapScriptGenerator::class)->generate($this->station);
+
+    // A single lost report used to leave the snapshot on the previous track until it
+    // expired: a false no-playout alert while the station was audibly on air.
+    expect($script)
+        ->toContain('radio.on_track(on_track_change)')
+        ->toContain('elapsed = radio.elapsed()')
+        ->toContain('heartbeat = heartbeat')
+        ->toContain('thread.run(every=30.0000, now_playing_heartbeat)')
+        ->toContain('if m["radioring_item_id"] != "" or m["radioring_source"] == "emergency" then')
+        // A non-2xx answer does not throw, so it has to be checked explicitly.
+        ->toContain('if response.status_code < 200 or response.status_code >= 300 then')
+        ->not->toContain('ignore(http.post(
+      headers=[("Authorization", "Bearer #{token}"), ("Content-Type", "application/json")],
+      data=payload');
+});
+
 test('generator fades the programme out before a hard cut', function () {
     config()->set('radioring.hard_cut_fade_out_seconds', 0.8);
 

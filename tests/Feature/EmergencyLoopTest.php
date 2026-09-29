@@ -161,6 +161,38 @@ test('the returning programme ends the episode in the protocol', function () {
         ->where('event', StationLog::EVENT_EMERGENCY_STOPPED)->count())->toBe(1);
 });
 
+test('a heartbeat for the emergency file on air keeps its start time', function () {
+    $file = MediaFile::factory()->create(['tenant_id' => $this->station->tenant_id, 'duration_seconds' => 300]);
+
+    reportEmergency($this->station, $file)->assertOk();
+    $startedAt = LiquidsoapState::where('station_id', $this->station->id)->first()->now_playing_started_at;
+
+    $this->travel(30)->seconds();
+    reportEmergency($this->station, $file, ['heartbeat' => true, 'elapsed' => 30])->assertOk();
+
+    expect(LiquidsoapState::where('station_id', $this->station->id)->first()->now_playing_started_at->equalTo($startedAt))->toBeTrue();
+});
+
+test('a heartbeat fills in a lost emergency report', function () {
+    $this->freezeTime();
+    $file = MediaFile::factory()->create(['tenant_id' => $this->station->tenant_id, 'title' => 'Loop', 'duration_seconds' => 300]);
+
+    // The programme ran dry, the report of the loop taking over never arrived.
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'now_playing_title' => 'Last programme track',
+        'now_playing_duration_seconds' => 60,
+        'now_playing_started_at' => now()->subMinutes(5),
+    ]);
+
+    reportEmergency($this->station, $file, ['heartbeat' => true, 'elapsed' => 90])->assertOk();
+
+    $state = LiquidsoapState::where('station_id', $this->station->id)->first();
+
+    expect($state->onEmergency())->toBeTrue()
+        ->and($state->now_playing_started_at->timestamp)->toBe(now()->subSeconds(90)->timestamp);
+});
+
 // ── the underrun verdict ───────────────────────────────────────────────────
 
 test('a station on the emergency loop is still in an underrun', function () {

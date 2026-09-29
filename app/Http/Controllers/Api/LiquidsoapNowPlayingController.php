@@ -8,6 +8,7 @@ use App\Models\MediaFile;
 use App\Models\Station;
 use App\Services\LiquidsoapStateService;
 use App\Support\EmergencyLoop;
+use Carbon\CarbonInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -17,6 +18,11 @@ class LiquidsoapNowPlayingController extends Controller
     {
         $station = Station::where('slug', $slug)->firstOrFail();
 
+        // A heartbeat repeats the report for the track on air (see
+        // LiquidsoapScriptGenerator::nowPlayingCallback). It may fill in a lost report,
+        // never override a newer one; the start time comes from the track's elapsed time.
+        $heartbeatStartedAt = $request->boolean('heartbeat') ? $this->startedAtFromElapsed($request) : null;
+
         // Emergency loop first: its files carry no item id but do carry ID3 metadata, and
         // would otherwise be taken for a live takeover.
         if ($request->input('source') === 'emergency') {
@@ -25,6 +31,7 @@ class LiquidsoapNowPlayingController extends Controller
                 $this->emergencyFile($station, (string) $request->input('filename', '')),
                 trim((string) $request->input('title', '')) ?: null,
                 trim((string) $request->input('artist', '')) ?: null,
+                $heartbeatStartedAt,
             );
 
             return response()->json(['ok' => true, 'emergency' => true]);
@@ -94,9 +101,16 @@ class LiquidsoapNowPlayingController extends Controller
                 $station,
                 $title !== '' ? $title : null,
                 $artist !== '' ? $artist : null,
+                $heartbeatStartedAt,
             );
 
             return response()->json(['ok' => true, 'unidentified' => true]);
+        }
+
+        // A heartbeat only ever confirms a programme track. Live has its own channel, and
+        // without an item there is nothing to fill in, only a snapshot to wipe.
+        if ($heartbeatStartedAt !== null && ! $item) {
+            return response()->json(['ok' => true, 'ignored' => true]);
         }
 
         if (! $item && empty($itemId) && ($title !== '' || $artist !== '')) {
@@ -107,9 +121,24 @@ class LiquidsoapNowPlayingController extends Controller
             return response()->json(['ok' => true, 'live' => true]);
         }
 
-        $stateService->setNowPlaying($station, $item);
+        $stateService->setNowPlaying($station, $item, $heartbeatStartedAt);
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * When the reported track started, from the elapsed time Liquidsoap sends along.
+     * Without a usable value the track is taken to start now.
+     */
+    private function startedAtFromElapsed(Request $request): CarbonInterface
+    {
+        $elapsed = $request->input('elapsed');
+
+        if (! is_numeric($elapsed) || (float) $elapsed < 0) {
+            return now();
+        }
+
+        return now()->subMilliseconds((int) round((float) $elapsed * 1000));
     }
 
     /**

@@ -420,32 +420,72 @@ thread.run(delay={$interval}, request_queue_watchdog)
 LIQ;
     }
 
+    /**
+     * How often the track on air is reported again, in seconds.
+     */
+    private const NOW_PLAYING_HEARTBEAT_SECONDS = 30;
+
+    /**
+     * Reports every track change to RadioRing, and repeats the report as a heartbeat.
+     * Only programme and emergency tracks are repeated: a live takeover has its own
+     * channel (on_connect/on_disconnect), and blank() carries no metadata. on_track resets
+     * the remembered metadata on every track change, so silence after a track does not
+     * keep repeating that track.
+     */
     private function nowPlayingCallback(): string
     {
-        // title/artist werden mitgeschickt, damit das Portal die Metadaten einer
-        // Live-Übernahme (input.harbor, ohne radioring_item_id) anzeigen kann.
-        // json.stringify übernimmt das Escaping (Titel können Anführungszeichen enthalten).
-        return <<<'LIQ'
-def on_meta(m) =
+        $interval = $this->liqFloat((float) self::NOW_PLAYING_HEARTBEAT_SECONDS);
+
+        // title/artist are sent along so the portal can show the metadata of a live
+        // takeover (input.harbor, without radioring_item_id). json.stringify does the
+        // escaping (titles may contain quotes).
+        return <<<LIQ
+now_playing_meta = ref([])
+
+def post_now_playing(m, heartbeat) =
   payload = json.stringify({
     item_id = m["radioring_item_id"],
     filename = m["filename"],
     title = m["title"],
     artist = m["artist"],
-    source = m["radioring_source"]
+    source = m["radioring_source"],
+    heartbeat = heartbeat,
+    elapsed = radio.elapsed()
   })
   try
-    ignore(http.post(
+    response = http.post(
       headers=[("Authorization", "Bearer #{token}"), ("Content-Type", "application/json")],
       data=payload,
       "#{api_url}/api/liquidsoap/#{slug}/now-playing"
-    ))
+    )
+    if response.status_code < 200 or response.status_code >= 300 then
+      log(level=2, label="radioring", "now-playing: HTTP #{response.status_code}, report lost (heartbeat: #{heartbeat}).")
+    end
   catch err do
-    log(level=2, label="radioring", "on_meta: now-playing-POST fehlgeschlagen (ignoriert).")
+    log(level=2, label="radioring", "now-playing: POST failed, report lost (heartbeat: #{heartbeat}).")
     ignore(err)
   end
 end
+
+def on_meta(m) =
+  now_playing_meta := m
+  post_now_playing(m, false)
+end
 radio.on_metadata(on_meta)
+
+def on_track_change(m) =
+  now_playing_meta := m
+end
+radio.on_track(on_track_change)
+
+# Heartbeat: repeats the report for the track on air, see nowPlayingCallback.
+def now_playing_heartbeat() =
+  m = now_playing_meta()
+  if m["radioring_item_id"] != "" or m["radioring_source"] == "emergency" then
+    post_now_playing(m, true)
+  end
+end
+thread.run(every={$interval}, now_playing_heartbeat)
 LIQ;
     }
 

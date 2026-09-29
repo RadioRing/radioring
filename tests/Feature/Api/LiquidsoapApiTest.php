@@ -920,6 +920,143 @@ test('now-playing matches by annotated item id even when the filename does not m
     expect($state->now_playing_item_id)->toBe($item->id);
 });
 
+// ── now-playing heartbeat ───────────────────────────────────────────────────
+
+/**
+ * A rundown for the current hour with two consecutive music items.
+ *
+ * @return array{0: GeneratedPlaylistItem, 1: GeneratedPlaylistItem}
+ */
+function heartbeatItems(Station $station): array
+{
+    $rundown = GeneratedPlaylist::factory()->create([
+        'station_id' => $station->id, 'broadcast_date' => today(), 'broadcast_hour' => now()->hour,
+        'status' => 'ready',
+    ]);
+
+    $items = collect([0, 1])->map(fn (int $position) => GeneratedPlaylistItem::factory()->create([
+        'generated_playlist_id' => $rundown->id,
+        'media_file_id' => MediaFile::factory()->create(['tenant_id' => $station->tenant_id, 'duration_seconds' => 240])->id,
+        'position' => $position,
+        'source_type' => 'template_item',
+        'title' => "Track {$position}",
+        'duration_seconds' => 240,
+    ]));
+
+    return [$items[0], $items[1]];
+}
+
+test('a heartbeat fills in a lost report with the start time taken from the elapsed time', function () {
+    $this->travelTo(today()->setHour(15)->setMinute(59));
+    [$previous, $current] = heartbeatItems($this->station);
+
+    // The report for $current never arrived: the snapshot still describes $previous,
+    // which ended minutes ago. This is what raised the false no-playout alert.
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'now_playing_item_id' => $previous->id,
+        'now_playing_title' => $previous->title,
+        'now_playing_duration_seconds' => 240,
+        'now_playing_started_at' => now()->subMinutes(6),
+    ]);
+
+    $this->withToken($this->token)
+        ->postJson("/api/liquidsoap/{$this->station->slug}/now-playing", [
+            'item_id' => (string) $current->id, 'heartbeat' => true, 'elapsed' => 120.0,
+        ])
+        ->assertOk();
+
+    $state = LiquidsoapState::where('station_id', $this->station->id)->first();
+
+    expect($state->now_playing_item_id)->toBe($current->id)
+        ->and($state->now_playing_started_at->timestamp)->toBe(now()->subSeconds(120)->timestamp)
+        ->and($state->nowPlayingHasEnded())->toBeFalse();
+
+    expect(StationLog::where('station_id', $this->station->id)->where('event', 'track')->sole()->occurred_at->timestamp)
+        ->toBe(now()->subSeconds(120)->timestamp);
+});
+
+test('a heartbeat for the track on record changes nothing', function () {
+    [$item] = heartbeatItems($this->station);
+    $startedAt = now()->subSeconds(90)->startOfSecond();
+
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'now_playing_item_id' => $item->id,
+        'now_playing_title' => $item->title,
+        'now_playing_started_at' => $startedAt,
+    ]);
+
+    $this->withToken($this->token)
+        ->postJson("/api/liquidsoap/{$this->station->slug}/now-playing", [
+            'item_id' => (string) $item->id, 'heartbeat' => true, 'elapsed' => 60,
+        ])
+        ->assertOk();
+
+    expect(LiquidsoapState::where('station_id', $this->station->id)->first()->now_playing_started_at->equalTo($startedAt))->toBeTrue()
+        ->and(StationLog::where('station_id', $this->station->id)->where('event', 'track')->count())->toBe(0);
+});
+
+test('a heartbeat overtaken by the next track report does not roll the snapshot back', function () {
+    [$previous, $current] = heartbeatItems($this->station);
+
+    // $current was reported 2 s ago; the heartbeat for $previous was sent just before the
+    // track change and arrives late.
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'now_playing_item_id' => $current->id,
+        'now_playing_title' => $current->title,
+        'now_playing_started_at' => now()->subSeconds(2),
+    ]);
+
+    $this->withToken($this->token)
+        ->postJson("/api/liquidsoap/{$this->station->slug}/now-playing", [
+            'item_id' => (string) $previous->id, 'heartbeat' => true, 'elapsed' => 239,
+        ])
+        ->assertOk();
+
+    expect(LiquidsoapState::where('station_id', $this->station->id)->first()->now_playing_item_id)->toBe($current->id)
+        ->and(StationLog::where('station_id', $this->station->id)->where('event', 'track')->count())->toBe(0);
+});
+
+test('a heartbeat does not end a live takeover', function () {
+    [$item] = heartbeatItems($this->station);
+
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'live_active' => true,
+        'live_started_at' => now()->subMinute(),
+    ]);
+
+    $this->withToken($this->token)
+        ->postJson("/api/liquidsoap/{$this->station->slug}/now-playing", [
+            'item_id' => (string) $item->id, 'heartbeat' => true, 'elapsed' => 5,
+        ])
+        ->assertOk();
+
+    expect(LiquidsoapState::where('station_id', $this->station->id)->first()->live_active)->toBeTrue();
+});
+
+test('a heartbeat without a resolvable programme track never clears the snapshot', function () {
+    [$item] = heartbeatItems($this->station);
+
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'now_playing_item_id' => $item->id,
+        'now_playing_title' => $item->title,
+        'now_playing_started_at' => now()->subMinute(),
+    ]);
+
+    $this->withToken($this->token)
+        ->postJson("/api/liquidsoap/{$this->station->slug}/now-playing", [
+            'filename' => '/tmp/unknown.mp3', 'heartbeat' => true, 'elapsed' => 5,
+        ])
+        ->assertOk()
+        ->assertJson(['ignored' => true]);
+
+    expect(LiquidsoapState::where('station_id', $this->station->id)->first()->now_playing_item_id)->toBe($item->id);
+});
+
 // ── /api/liquidsoap/{slug}/live (harbor on_connect/on_disconnect) ────────────
 
 test('live endpoint marks the station live on connect', function () {

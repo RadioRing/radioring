@@ -282,13 +282,17 @@ class LiquidsoapStateService
 
     /**
      * Speichert den aktuell spielenden Track (Callback von Liquidsoap on_metadata).
+     *
+     * With $heartbeatStartedAt the call is a heartbeat: it only fills in a report that got
+     * lost, with the start time derived from the track's elapsed time.
      */
-    public function setNowPlaying(Station $station, ?GeneratedPlaylistItem $item): void
+    public function setNowPlaying(Station $station, ?GeneratedPlaylistItem $item, ?CarbonInterface $heartbeatStartedAt = null): void
     {
         // Interpret aus der Mediendatei des Items (für den denormalisierten Snapshot).
         $artist = $item?->mediaFile?->artist;
+        $startedAt = $heartbeatStartedAt ?? now();
 
-        $result = DB::transaction(function () use ($station, $item, $artist) {
+        $result = DB::transaction(function () use ($station, $item, $artist, $startedAt, $heartbeatStartedAt) {
             $state = LiquidsoapState::firstOrCreate(['station_id' => $station->id]);
 
             // Vorheriger Zustand (für die Übergangs-Erkennung live → playlist).
@@ -304,6 +308,10 @@ class LiquidsoapStateService
                 return ['duplicate' => true, 'wasLive' => false];
             }
 
+            if ($heartbeatStartedAt !== null && $this->heartbeatIsOutdated($state, $heartbeatStartedAt)) {
+                return ['duplicate' => true, 'wasLive' => false];
+            }
+
             // Denormalisierter Snapshot: bleibt erhalten, falls das Item später gelöscht
             // wird (Rundown-Neugenerierung während des Sendens) – so zeigt der Player
             // weiterhin den real laufenden Track, bis der nächste Track-Callback kommt.
@@ -313,7 +321,7 @@ class LiquidsoapStateService
                 'now_playing_artist' => $artist,
                 'now_playing_source_type' => $item?->source_type,
                 'now_playing_duration_seconds' => $item?->duration_seconds,
-                'now_playing_started_at' => $item ? now() : null,
+                'now_playing_started_at' => $item ? $startedAt : null,
                 // Ein Track auf Sendung beendet eine offene Underrun-Episode: die Station
                 // ist hörbar wieder da. Ohne das bliebe die Warnung stehen, solange der
                 // Cursor trocken läuft - obwohl der Prefetch-Puffer noch spielt.
@@ -356,6 +364,10 @@ class LiquidsoapStateService
 
         $wasLive = $result['wasLive'];
 
+        if ($heartbeatStartedAt !== null) {
+            $this->logRecoveredReport($station, $item?->title);
+        }
+
         if ($result['wasEmergency'] && $item) {
             StationLog::create([
                 'station_id' => $station->id,
@@ -390,9 +402,35 @@ class LiquidsoapStateService
                 'title' => $item->title,
                 'artist' => $artist,
                 'source_type' => $item->source_type,
-                'occurred_at' => now(),
+                'occurred_at' => $startedAt,
             ]);
         }
+    }
+
+    /**
+     * Would this heartbeat roll the snapshot back?
+     *
+     * A heartbeat sent just before a track change can arrive after the report of the new
+     * track. It then describes a track that started earlier than the one on record, or
+     * a programme track while live has taken over, and must not replace either.
+     */
+    private function heartbeatIsOutdated(LiquidsoapState $state, CarbonInterface $heartbeatStartedAt): bool
+    {
+        if ($state->live_active) {
+            return true;
+        }
+
+        return $state->now_playing_started_at !== null
+            && $state->now_playing_started_at->gt($heartbeatStartedAt);
+    }
+
+    /**
+     * Leaves a trace whenever a heartbeat had to fill in a lost report, so lost callbacks
+     * show up in the log instead of only as a false alert.
+     */
+    private function logRecoveredReport(Station $station, ?string $title): void
+    {
+        Log::warning("Station {$station->slug}: now-playing report for \"{$title}\" was lost, recovered by the heartbeat.");
     }
 
     /**
@@ -407,9 +445,11 @@ class LiquidsoapStateService
      * There is no item to hang a duration or a rundown position on, so both stay empty
      * until the next track pulled after the regeneration reports in with a fresh id.
      */
-    public function setNowPlayingUnidentified(Station $station, ?string $title, ?string $artist): void
+    public function setNowPlayingUnidentified(Station $station, ?string $title, ?string $artist, ?CarbonInterface $heartbeatStartedAt = null): void
     {
-        $result = DB::transaction(function () use ($station, $title, $artist) {
+        $startedAt = $heartbeatStartedAt ?? now();
+
+        $result = DB::transaction(function () use ($station, $title, $artist, $startedAt, $heartbeatStartedAt) {
             $state = LiquidsoapState::firstOrCreate(['station_id' => $station->id]);
 
             $wasLive = (bool) $state->live_active;
@@ -423,13 +463,17 @@ class LiquidsoapStateService
                 return ['duplicate' => true, 'wasLive' => false];
             }
 
+            if ($heartbeatStartedAt !== null && $this->heartbeatIsOutdated($state, $heartbeatStartedAt)) {
+                return ['duplicate' => true, 'wasLive' => false];
+            }
+
             $state->update([
                 'now_playing_item_id' => null,
                 'now_playing_title' => $title,
                 'now_playing_artist' => $artist,
                 'now_playing_source_type' => null,
                 'now_playing_duration_seconds' => null,
-                'now_playing_started_at' => now(),
+                'now_playing_started_at' => $startedAt,
                 'live_active' => false,
                 'live_title' => null,
                 'live_artist' => null,
@@ -441,6 +485,10 @@ class LiquidsoapStateService
 
         if ($result['duplicate']) {
             return;
+        }
+
+        if ($heartbeatStartedAt !== null) {
+            $this->logRecoveredReport($station, $title);
         }
 
         if ($result['wasLive']) {
@@ -460,7 +508,7 @@ class LiquidsoapStateService
             'source' => 'playlist',
             'title' => $title,
             'artist' => $artist,
-            'occurred_at' => now(),
+            'occurred_at' => $startedAt,
         ]);
     }
 
@@ -470,21 +518,34 @@ class LiquidsoapStateService
      * Reported like any other track by on_metadata, but marked with radioring_source, which
      * is what keeps it out of the live takeover branch. The underrun fields stay untouched:
      * the programme is still dry, and the dashboard has to keep saying so.
+     *
+     * A heartbeat ($heartbeatStartedAt) only fills in a lost report. The loop may play the
+     * same file twice in a row, so a repeat is recognised by a matching title on a snapshot
+     * that is still running, not by the title alone.
      */
-    public function setNowPlayingEmergency(Station $station, ?MediaFile $file, ?string $title, ?string $artist): void
+    public function setNowPlayingEmergency(Station $station, ?MediaFile $file, ?string $title, ?string $artist, ?CarbonInterface $heartbeatStartedAt = null): void
     {
-        $wasEmergency = DB::transaction(function () use ($station, $file, $title, $artist) {
+        $displayTitle = $file?->title ?: ($title ?: __('Emergency loop'));
+
+        $wasEmergency = DB::transaction(function () use ($station, $file, $artist, $displayTitle, $heartbeatStartedAt) {
             $state = LiquidsoapState::firstOrCreate(['station_id' => $station->id]);
 
             $wasEmergency = $state->onEmergency();
 
+            if ($heartbeatStartedAt !== null
+                && (($wasEmergency && $state->now_playing_title === $displayTitle)
+                    || $this->heartbeatIsOutdated($state, $heartbeatStartedAt))
+            ) {
+                return null;
+            }
+
             $state->update([
                 'now_playing_item_id' => null,
-                'now_playing_title' => $file?->title ?: ($title ?: __('Emergency loop')),
+                'now_playing_title' => $displayTitle,
                 'now_playing_artist' => $file?->artist ?: $artist,
                 'now_playing_source_type' => 'emergency',
                 'now_playing_duration_seconds' => $file?->duration_seconds,
-                'now_playing_started_at' => now(),
+                'now_playing_started_at' => $heartbeatStartedAt ?? now(),
                 'live_active' => false,
                 'live_title' => null,
                 'live_artist' => null,
@@ -493,6 +554,15 @@ class LiquidsoapStateService
 
             return $wasEmergency;
         }, self::TRANSACTION_ATTEMPTS);
+
+        // Heartbeat for what is already on record.
+        if ($wasEmergency === null) {
+            return;
+        }
+
+        if ($heartbeatStartedAt !== null) {
+            $this->logRecoveredReport($station, $displayTitle);
+        }
 
         // Once per episode, not per track: a loop running all night would otherwise fill
         // the protocol on its own.
