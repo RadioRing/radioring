@@ -40,7 +40,7 @@ done
 # Next to this script first, because that is where install.sh puts it. Under
 # 'curl | sh' $0 is "sh", so fall back to the installer's default.
 if [ -z "$RR_DIR" ]; then
-    _self_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
+    _self_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || _self_dir=""
     if [ -n "$_self_dir" ] && [ -f "$_self_dir/docker-compose.yml" ]; then
         RR_DIR="$_self_dir"
     else
