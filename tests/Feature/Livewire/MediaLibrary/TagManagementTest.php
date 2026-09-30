@@ -3,6 +3,7 @@
 use App\Livewire\MediaLibrary\FileModal;
 use App\Livewire\MediaLibrary\Index;
 use App\Models\GeneratedPlaylist;
+use App\Models\LiquidsoapState;
 use App\Models\PlaylistItem;
 use App\Models\Station;
 use App\Models\Tag;
@@ -186,6 +187,73 @@ test('deleting a media file removes it from generated rundown items', function (
         ->call('delete', $file->id);
 
     expect($rundownItem->fresh())->toBeNull();
+});
+
+test('deleting a media file keeps rundown items liquidsoap already pulled', function () {
+    Storage::fake('local');
+
+    $file = $this->station->mediaFiles()->create([
+        'title' => 'Duplicate',
+        'type' => 'music',
+        'file_path' => 'tenants/test/media/duplicate.mp3',
+    ]);
+    $other = $this->station->mediaFiles()->create([
+        'title' => 'Other',
+        'type' => 'music',
+        'file_path' => 'tenants/test/media/other.mp3',
+    ]);
+    $playlist = $this->station->playlists()->create([
+        'name' => 'Show',
+        'playback_mode' => 'sequential',
+    ]);
+    $slot = $this->station->hourGridSlots()->create([
+        'weekday' => 0,
+        'hour' => 10,
+        'playlist_id' => $playlist->id,
+    ]);
+    $rundown = GeneratedPlaylist::create([
+        'station_id' => $this->station->id,
+        'hour_grid_slot_id' => $slot->id,
+        'playlist_id' => $playlist->id,
+        'broadcast_date' => today()->toDateString(),
+        'broadcast_hour' => 10,
+        'status' => 'ready',
+        'generated_at' => now(),
+    ]);
+
+    $items = collect([$file, $other, $file, $other, $file, $other])
+        ->map(fn ($media, int $position) => $rundown->items()->create([
+            'position' => $position,
+            'media_file_id' => $media->id,
+            'title' => $media->title,
+            'source_type' => 'resolved_fill',
+        ]));
+
+    // Position 2 is on air, the pull cursor has already prefetched up to position 3.
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'current_rundown_id' => $rundown->id,
+        'current_item_position' => 4,
+        'now_playing_item_id' => $items[2]->id,
+        'now_playing_title' => 'Duplicate',
+        'now_playing_started_at' => now(),
+    ]);
+
+    Livewire::test(Index::class)
+        ->call('delete', $file->id);
+
+    expect($items[0]->fresh())->not->toBeNull()
+        ->and($items[0]->fresh()->media_file_id)->toBeNull()
+        ->and($items[2]->fresh())->not->toBeNull()
+        ->and($items[4]->fresh())->toBeNull()
+        ->and(LiquidsoapState::where('station_id', $this->station->id)->value('now_playing_item_id'))->toBe($items[2]->id)
+        ->and($rundown->items()->pluck('position', 'id')->all())->toBe([
+            $items[0]->id => 0,
+            $items[1]->id => 1,
+            $items[2]->id => 2,
+            $items[3]->id => 3,
+            $items[5]->id => 4,
+        ]);
 });
 
 test('user can bulk add a tag to selected files', function () {

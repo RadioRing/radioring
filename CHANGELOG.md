@@ -14,6 +14,11 @@ to stand on its own.
 
 ## [Unreleased]
 
+### Fixed
+- **Deleting a file no longer resets the dashboard's rundown view.** Deleting a file that
+  was on air made the dashboard show the hour from its start until the next track began.
+  Deleting a file that was still to come in the rundown could skip the rest of the hour.
+
 ## [0.6.1] - 2026-09-30
 
 ### Added

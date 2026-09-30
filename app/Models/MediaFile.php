@@ -61,13 +61,77 @@ class MediaFile extends Model
         static::deleting(function (MediaFile $file): void {
             // Drop playlist and rundown items so no entry is left without its file.
             $file->playlistItems()->delete();
-            $file->generatedPlaylistItems()->delete();
+            $file->removeFromUnpulledRundownItems();
 
             // Clear replaced versions off disk; the rows go with the foreign key.
             $file->versions->each(function (MediaFileVersion $version): void {
                 Storage::disk('local')->delete($version->file_path);
             });
         });
+    }
+
+    /**
+     * Deletes the rundown items of this file that Liquidsoap has not pulled yet and closes
+     * the gaps they leave.
+     *
+     * Items already handed to Liquidsoap stay: the one on air anchors the dashboard, skip
+     * and restart logic via now_playing_item_id, and the prefetched ones play regardless.
+     * Deleting them used to null the anchor, so the dashboard fell back to projecting the
+     * whole hour from position 0 until the next track reported in. Their media_file_id is
+     * nulled by the foreign key.
+     */
+    public function removeFromUnpulledRundownItems(): void
+    {
+        $states = [];
+        $touchedRundowns = [];
+
+        $this->generatedPlaylistItems()->with('generatedPlaylist')->get()
+            ->each(function (GeneratedPlaylistItem $item) use (&$states, &$touchedRundowns): void {
+                $rundown = $item->generatedPlaylist;
+
+                $state = $states[$rundown->station_id] ??= LiquidsoapState::with('currentRundown')
+                    ->where('station_id', $rundown->station_id)
+                    ->first() ?? false;
+
+                if ($state && $this->wasPulled($item, $rundown, $state)) {
+                    return;
+                }
+
+                $item->delete();
+                $touchedRundowns[$rundown->id] = $rundown;
+            });
+
+        foreach ($touchedRundowns as $rundown) {
+            $rundown->items()->get()->each(function (GeneratedPlaylistItem $item, int $index): void {
+                if ($item->position !== $index) {
+                    $item->update(['position' => $index]);
+                }
+            });
+        }
+    }
+
+    /** Has Liquidsoap already pulled this rundown item (on air, prefetched or past)? */
+    private function wasPulled(GeneratedPlaylistItem $item, GeneratedPlaylist $rundown, LiquidsoapState $state): bool
+    {
+        if ($item->id === $state->now_playing_item_id) {
+            return true;
+        }
+
+        $current = $state->currentRundown;
+
+        if (! $current) {
+            return false;
+        }
+
+        if ($rundown->id === $current->id) {
+            return $item->position < $state->current_item_position;
+        }
+
+        $rundownDate = $rundown->broadcast_date->toDateString();
+        $currentDate = $current->broadcast_date->toDateString();
+
+        return $rundownDate < $currentDate
+            || ($rundownDate === $currentDate && $rundown->broadcast_hour < $current->broadcast_hour);
     }
 
     public function tenant(): BelongsTo
