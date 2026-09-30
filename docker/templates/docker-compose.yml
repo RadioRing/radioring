@@ -23,7 +23,9 @@ services:
     # A single source for every value. Keeps the .env and an enumerated
     # environment block from drifting apart over time.
     env_file: [.env]
-    networks: [radioring, web]
+    # radioring-stream: listener figures from the Icecast sidecars.
+    # radioring-docker: the only way to the socket proxy.
+    networks: [radioring, radioring-stream, radioring-docker, web]
     # Loopback only by default. With Traefik this is merely a way in for
     # debugging; without a reverse proxy it is the only way in (reachable
     # through an SSH tunnel then, or widen APP_BIND deliberately).
@@ -45,7 +47,9 @@ services:
       - traefik.http.services.radioring.loadbalancer.server.port=8080
 
   # Hands the app exactly the Docker endpoints it needs.
-  # No ports: on purpose - reachable on the internal network only.
+  # No ports, and a network of its own with the app as the only other member:
+  # with POST=1 whoever reaches it is root on the host, so station containers,
+  # Icecast sidecars and Traefik must not.
   dockerproxy:
     profiles: [driver-docker]
     image: tecnativa/docker-socket-proxy:0.3
@@ -57,7 +61,7 @@ services:
     volumes:
       # :ro is cosmetic - a Unix socket is bidirectional, read-only applies to the inode.
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks: [radioring]
+    networks: [radioring-docker]
 
   mysql:
     profiles: [bundled-db]
@@ -108,10 +112,14 @@ services:
       - "443:443"
     volumes:
       - acme:/acme
-    networks: [radioring, web]
+    # Not in radioring: Traefik faces the internet and only needs the proxy
+    # network plus its own Docker proxy.
+    networks: [radioring-traefik-docker, web]
 
   # Traefik gets its OWN, genuinely read-only proxy. Neither the socket itself
-  # nor the app's proxy, which has to allow POST.
+  # nor the app's proxy, which has to allow POST. Read-only still means reading
+  # every container's environment, secrets included, so it shares a network
+  # with Traefik alone.
   dockerproxy-traefik:
     profiles: [traefik]
     image: tecnativa/docker-socket-proxy:0.3
@@ -124,13 +132,24 @@ services:
       POST: 0
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks: [radioring]
+    networks: [radioring-traefik-docker]
 
 networks:
-  # Explicit name: otherwise the network name depends on the installation
+  # Explicit names: otherwise the network name depends on the installation
   # directory (<project>_default) and DOCKER_STATION_NETWORK points nowhere.
   radioring:
     name: radioring
+  # Station containers and their Icecast sidecars (DOCKER_STREAM_NETWORK). The
+  # sidecars are public, so they live here and never in radioring.
+  radioring-stream:
+    name: radioring-stream
+  # No gateway: the socket proxies need no way out, only their one client.
+  radioring-docker:
+    name: radioring-docker
+    internal: true
+  radioring-traefik-docker:
+    name: radioring-traefik-docker
+    internal: true
   web:
     name: ${WEB_NETWORK:-radioring-web}
     external: ${WEB_NETWORK_EXTERNAL:-false}

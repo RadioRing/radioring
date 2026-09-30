@@ -15,7 +15,7 @@ beforeEach(function () {
     config([
         'radioring.container_driver' => 'docker',
         'radioring.docker.host' => 'tcp://dockerproxy:2375',
-        'radioring.docker.api_version' => 'v1.43',
+        'radioring.docker.api_version' => 'v1.44',
         'radioring.docker.station_network' => '',
         'radioring.station_image' => 'ghcr.io/acme/radioring-liquidsoap-station:latest',
         'radioring.liquidsoap_api_url' => 'https://radioring.app',
@@ -77,11 +77,11 @@ test('start pulls the image, creates and starts the container', function () {
     Http::assertSent(fn ($request) => ! str_contains($request->url(), '/endpoints/')
         && ! $request->hasHeader('X-API-Key'));
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), 'http://dockerproxy:2375/v1.43/images/create')
+    Http::assertSent(fn ($request) => str_contains($request->url(), 'http://dockerproxy:2375/v1.44/images/create')
         && str_contains($request->url(), 'tag=latest'));
 
     Http::assertSent(function ($request) {
-        if (! str_contains($request->url(), '/v1.43/containers/create?name=radioring-'.$this->station->slug)) {
+        if (! str_contains($request->url(), '/v1.44/containers/create?name=radioring-'.$this->station->slug)) {
             return false;
         }
 
@@ -278,6 +278,7 @@ function enableInternalIcecast(Station $station): void
         'radioring.icecast.web_network' => 'radioring-web',
         'radioring.icecast.cert_resolver' => 'radioring',
         'radioring.docker.station_network' => 'radioring',
+        'radioring.docker.stream_network' => 'radioring-stream',
     ]);
 
     $station->outputs()->create([
@@ -321,56 +322,61 @@ test('starting a station with an internal output brings up the sidecar', functio
     });
 });
 
-test('the sidecar is created with one network and joins the proxy network before it starts', function () {
+/**
+ * Returns the EndpointsConfig keys of the create call for the given container name.
+ *
+ * @return list<string>
+ */
+function createdNetworks(string $name): array
+{
+    $create = Http::recorded(fn ($request) => str_contains($request->url(), 'create?name='.$name))
+        ->map(fn (array $pair) => $pair[0])
+        ->first();
+
+    return array_keys($create->data()['NetworkingConfig']['EndpointsConfig'] ?? []);
+}
+
+test('the public sidecar joins the stream and proxy networks, never the internal one', function () {
     enableInternalIcecast($this->station);
     fakeSuccessfulDocker();
 
     app(DockerService::class)->startStationContainer($this->station->fresh());
 
-    $sidecarRequests = Http::recorded(fn ($request) => str_contains($request->url(), 'radioring-icecast-')
-        || str_contains($request->url(), '/networks/')
-        || str_ends_with($request->url(), '/containers/abc123/start'))
-        ->map(fn (array $pair) => $pair[0]);
-
-    $create = $sidecarRequests->first(fn ($request) => str_contains($request->url(), 'create?name=radioring-icecast-'));
-
-    // API versions before 1.44 answer a create with two endpoints with HTTP 400.
-    expect(array_keys($create->data()['NetworkingConfig']['EndpointsConfig']))->toBe(['radioring']);
-
-    $urls = $sidecarRequests->map(fn ($request) => $request->method().' '.parse_url($request->url(), PHP_URL_PATH))->values()->all();
-    $connectAt = array_search('POST /v1.43/networks/radioring-web/connect', $urls, true);
-    $startAt = array_search('POST /v1.43/containers/abc123/start', $urls, true);
-
-    expect($connectAt)->not->toBeFalse();
-    expect($connectAt)->toBeLessThan($startAt);
-
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/networks/radioring-web/connect')
-        && $request->data() === ['Container' => 'abc123']);
-});
-
-test('identical station and proxy networks need no extra connect', function () {
-    enableInternalIcecast($this->station);
-    config(['radioring.docker.station_network' => 'radioring-web']);
-    fakeSuccessfulDocker();
-
-    app(DockerService::class)->startStationContainer($this->station->fresh());
+    // Everything in one create call: needs API 1.44, and the socket proxy offers no
+    // network endpoints for a later connect anyway.
+    expect(createdNetworks('radioring-icecast-'.$this->station->slug))->toBe(['radioring-stream', 'radioring-web']);
 
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '/networks/'));
 });
 
-test('a sidecar that cannot join the proxy network is not started', function () {
+test('the station container joins the internal and the stream network', function () {
     enableInternalIcecast($this->station);
-    Http::fake([
-        '*/images/create*' => Http::response('{"status":"Downloaded"}', 200),
-        '*/containers/create?name=radioring-icecast-*' => Http::response(['Id' => 'ice123'], 201),
-        '*/containers/create*' => Http::response(['Id' => 'abc123'], 201),
-        '*/networks/*' => Http::response(['message' => 'network radioring-web not found'], 404),
-        '*' => Http::response('', 204),
-    ]);
+    fakeSuccessfulDocker();
 
     app(DockerService::class)->startStationContainer($this->station->fresh());
 
-    Http::assertNotSent(fn ($request) => str_ends_with($request->url(), '/containers/ice123/start'));
+    expect(createdNetworks('radioring-'.$this->station->slug))->toBe(['radioring', 'radioring-stream']);
+});
+
+test('the traefik label points at the proxy network', function () {
+    enableInternalIcecast($this->station);
+    fakeSuccessfulDocker();
+
+    app(DockerService::class)->startStationContainer($this->station->fresh());
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), 'create?name=radioring-icecast-')
+        && $request->data()['Labels']['traefik.docker.network'] === 'radioring-web');
+});
+
+test('without a stream network the internal icecast is not started', function () {
+    enableInternalIcecast($this->station);
+    config(['radioring.docker.stream_network' => '']);
+    fakeSuccessfulDocker();
+
+    app(DockerService::class)->startStationContainer($this->station->fresh());
+
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), 'create?name=radioring-icecast-'));
+    expect(createdNetworks('radioring-'.$this->station->slug))->toBe(['radioring']);
 });
 
 test('the sidecar receives the source password of its station', function () {

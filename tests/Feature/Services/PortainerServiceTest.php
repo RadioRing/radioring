@@ -139,6 +139,7 @@ function enablePortainerIcecast(Station $station): void
         'radioring.icecast.web_network' => 'radioring-web',
         'radioring.icecast.cert_resolver' => 'radioring',
         'radioring.docker.station_network' => 'radioring',
+        'radioring.docker.stream_network' => 'radioring-stream',
     ]);
 
     $station->outputs()->create([
@@ -186,15 +187,14 @@ test('starting a station with an internal output brings up the sidecar', functio
 
         return $data['Image'] === 'ghcr.io/acme/icecast:latest'
             && ($labels["traefik.http.routers.{$router}.rule"] ?? null) === 'Host(`'.$this->station->slug.'.stream.example.com`)'
-            // One endpoint only: older API versions reject a create with several.
-            && array_keys($data['NetworkingConfig']['EndpointsConfig']) === ['radioring'];
+            // Stream and proxy network, never the internal one with database and Redis.
+            && array_keys($data['NetworkingConfig']['EndpointsConfig']) === ['radioring-stream', 'radioring-web'];
     });
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/endpoints/2/docker/networks/radioring-web/connect')
-        && $request->data() === ['Container' => 'ice123']);
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/networks/'));
 });
 
-test('the station container joins the configured network so it can reach the sidecar', function () {
+test('the station container joins the internal and the stream network so it can reach the sidecar', function () {
     enablePortainerIcecast($this->station);
 
     Http::fake([
@@ -210,7 +210,7 @@ test('the station container joins the configured network so it can reach the sid
             return false;
         }
 
-        return array_key_exists('radioring', $request->data()['NetworkingConfig']['EndpointsConfig'] ?? []);
+        return array_keys($request->data()['NetworkingConfig']['EndpointsConfig'] ?? []) === ['radioring', 'radioring-stream'];
     });
 });
 

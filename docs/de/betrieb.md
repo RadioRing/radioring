@@ -98,8 +98,9 @@ nacharbeitest.
 |---|---|---|
 | `CONTAINER_DRIVER` | `docker` | `docker` oder `portainer` (Legacy) |
 | `DOCKER_HOST` | `tcp://dockerproxy:2375` | Socket-Proxy (empfohlen) oder `unix:///var/run/docker.sock` |
-| `DOCKER_API_VERSION` | `v1.43` | Leer = Vorgabe des Daemons |
+| `DOCKER_API_VERSION` | `v1.44` | Mindestens v1.44 (Docker Engine 25). Leer = Vorgabe des Daemons |
 | `DOCKER_STATION_NETWORK` | `radioring` | Benanntes Netz, dem die Station-Container beitreten. Leer = Default-Bridge, dann muss `LIQUIDSOAP_API_URL` öffentlich erreichbar sein. |
+| `DOCKER_STREAM_NETWORK` | `radioring-stream` | Netz für Station-Container und ihre Icecast-Sidecars. Hält den öffentlich erreichbaren Icecast aus dem internen Netz mit Datenbank und Redis heraus. Pflicht für den internen Icecast. |
 | `DOCKER_PULL_TIMEOUT` | `600` | Das Station-Image ist mehrere hundert MB groß, 30 Sekunden reichen für einen Kaltstart nicht. |
 | `STATION_IMAGE` | `ghcr.io/radioring/liquidsoap-station:latest` | |
 | `STATION_REGISTRY_USERNAME` / `_PASSWORD` | | Nur bei privater Registry |

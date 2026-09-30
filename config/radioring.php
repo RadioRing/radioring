@@ -35,6 +35,14 @@ return [
     | Das Netz muss im Compose einen expliziten `name:` haben, sonst haengt der Name
     | vom Installationsverzeichnis ab.
     |
+    | stream_network: named network shared by the station containers and their Icecast
+    | sidecars (and the app, for the listener figures). It keeps the public Icecast out
+    | of station_network, where database and Redis live. Required for the internal
+    | Icecast. See App\Services\Docker\ContainerNetworks.
+    |
+    | api_version: v1.44 (Docker Engine 25) is the minimum. Earlier versions cannot put
+    | a container into two networks in one create call.
+    |
     | pull_timeout: das Station-Image ist mehrere hundert MB gross, Laravels
     | Standard-Timeout von 30 Sekunden reicht fuer einen Kaltstart nicht.
     |
@@ -43,8 +51,9 @@ return [
 
     'docker' => [
         'host' => env('DOCKER_HOST', 'unix:///var/run/docker.sock'),
-        'api_version' => env('DOCKER_API_VERSION', 'v1.43'),
+        'api_version' => env('DOCKER_API_VERSION', 'v1.44'),
         'station_network' => env('DOCKER_STATION_NETWORK', ''),
+        'stream_network' => env('DOCKER_STREAM_NETWORK', ''),
         'timeout' => (int) env('DOCKER_TIMEOUT', 30),
         'connect_timeout' => (int) env('DOCKER_CONNECT_TIMEOUT', 5),
         'pull_timeout' => (int) env('DOCKER_PULL_TIMEOUT', 600),

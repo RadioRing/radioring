@@ -26,6 +26,48 @@ to stand on its own.
 ### Changed
 - **Heatbeat for liquidsoap status** The liquidsoap station container now sends a regular heartbeat to the backend.
     Should prevent situations where the backend thinks no playout is happening.
+- **Docker 25 or newer is required (Docker API 1.44).** A container can only join two
+  networks in one step from that version on, and the new network layout below needs it.
+  `install.sh` refuses older engines, `./support.sh` reports them. Distribution packages
+  (`docker.io`) often lag behind; the packages from docker.com are current.
+- **Stricter network separation.** Nothing that faces the internet shares a network with the
+  database, Redis or a Docker socket proxy any more:
+  - The app's socket proxy has a network of its own (`radioring-docker`) with the app as the
+    only other member. Before, every station container could reach it, and whoever reaches
+    it can take over the host.
+  - Traefik and its read-only socket proxy moved out of `radioring` into a network of their
+    own. The read-only proxy still hands out the environment of every container, secrets
+    included, and every station container could ask it.
+  - The internal Icecast lives in the new network `radioring-stream` together with the
+    station containers, and in the proxy network for Traefik. It no longer comes near the
+    database. `DOCKER_STREAM_NETWORK` names that network; without it the internal Icecast
+    is not offered.
+
+  SECURITY.md describes the layout. `./support.sh` checks it.
+
+### Fixed
+- **The internal Icecast did not start.** Starting a station with an internal Icecast output
+  left the Icecast container out: Docker refused to create it in two networks at once, the
+  error only went to the log, and the station ran without its stream.
+
+### Upgrade
+
+```sh
+cd /opt/radioring && ./update.sh && ./update.sh
+```
+
+**Run `./update.sh` twice.** The first run fetches the new compose file and the new
+updater, the second one runs the new updater: it sets `DOCKER_API_VERSION=v1.44` and
+`DOCKER_STREAM_NETWORK=radioring-stream` in your `.env`. It leaves both alone on a Docker
+older than 25 and says so; everything except the internal Icecast keeps working there.
+Instead of the second run you can set the two lines yourself and run `docker compose up -d`.
+
+***Stop and start every station container afterwards*** (stop, then play in the dashboard).
+Only a recreated container joins the new stream network, and only then is its Icecast
+started.
+
+**If you run your own Traefik**, nothing changes for you: it keeps reaching the app and the
+Icecast containers through the network in `WEB_NETWORK`.
 
 ## [0.6.0] - 2026-09-28
 

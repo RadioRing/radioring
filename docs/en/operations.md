@@ -95,8 +95,9 @@ The installer writes all of this. The tables are for when you edit by hand.
 |---|---|---|
 | `CONTAINER_DRIVER` | `docker` | `docker` or `portainer` (legacy) |
 | `DOCKER_HOST` | `tcp://dockerproxy:2375` | Socket proxy (recommended) or `unix:///var/run/docker.sock` |
-| `DOCKER_API_VERSION` | `v1.43` | Empty means the daemon default |
+| `DOCKER_API_VERSION` | `v1.44` | At least v1.44 (Docker Engine 25). Empty means the daemon default |
 | `DOCKER_STATION_NETWORK` | `radioring` | Named network the station containers join. Empty means the default bridge, and then `LIQUIDSOAP_API_URL` must be publicly reachable. |
+| `DOCKER_STREAM_NETWORK` | `radioring-stream` | Network shared by the station containers and their Icecast sidecars. Keeps the publicly reachable Icecast out of the internal network with database and Redis. Required for the internal Icecast. |
 | `DOCKER_PULL_TIMEOUT` | `600` | The station image is several hundred megabytes; 30 seconds is not enough for a cold start. |
 | `STATION_IMAGE` | `ghcr.io/radioring/liquidsoap-station:latest` | |
 | `STATION_REGISTRY_USERNAME` / `_PASSWORD` | | Only for a private registry |

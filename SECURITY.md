@@ -50,8 +50,10 @@ the panel as a privileged service.
 
 Two related notes:
 
-- The proxy must never publish a port. In the shipped compose file it lives on an internal
-  network only.
+- The proxy must never publish a port. In the shipped compose file it shares a network of
+  its own (`radioring-docker`, no gateway) with the app alone. Nothing that processes
+  outside input can reach it: not the station containers, not the Icecast sidecars, not
+  Traefik.
 - `:ro` on the socket mount is cosmetic. A unix socket is bidirectional; read-only applies
   to the inode, not to what you can ask the daemon to do. We keep it because it costs
   nothing, but it hardens nothing.
@@ -66,6 +68,28 @@ If you extend the container drivers, do not break this.
 
 If you need real isolation, run the station containers on a separate host and point
 `DOCKER_HOST` at it over an authenticated channel.
+
+### Network layout
+
+Everything that faces the internet is kept out of the network with the database, Redis
+and the socket proxy:
+
+| Network | Members | Purpose |
+|---|---|---|
+| `radioring` | app, database, Redis, station containers | internal traffic |
+| `radioring-stream` | app, station containers, Icecast sidecars | Liquidsoap sends to its Icecast, the app reads listener figures |
+| `radioring-docker` | app, socket proxy | container control, no gateway |
+| `radioring-traefik-docker` | Traefik, its read-only socket proxy | container discovery, no gateway |
+| `radioring-web` | app, Traefik, Icecast sidecars | public routing |
+
+A compromised Icecast therefore reaches Traefik, the station containers' public ports and
+the app's HTTP port, but neither the database nor a socket proxy. Traefik's read-only proxy
+lives apart as well: "read-only" still includes `GET /containers/{id}/json`, which returns
+every container's environment, secrets included.
+
+Station containers still sit in `radioring`, because they need the app and Redis. They
+process uploads and external HTTP sources, so the database remains within their reach.
+Liquidsoap's telnet server binds to localhost and is not reachable from the stream network.
 
 ### Station members are semi-privileged users
 

@@ -228,6 +228,27 @@ if [ -z "$(env_get DOCKER_WEB_NETWORK)" ] && [ -n "$(env_get WEB_NETWORK)" ]; th
     echo "DOCKER_WEB_NETWORK set to $(env_get WEB_NETWORK) (internal Icecast)"
 fi
 
+# Docker API 1.44 (Engine 25) is what puts a container into two networks in one
+# create call, which the stream network needs. Older engines keep v1.43 and go
+# without the internal Icecast rather than failing every container start.
+_engine_api="$(docker version -f '{{.Server.APIVersion}}' 2>/dev/null </dev/null || true)"
+if printf '%s\n' "$_engine_api" | awk -F. '{ exit !($1 > 1 || ($1 == 1 && $2 >= 44)) }'; then
+    case "$(env_get DOCKER_API_VERSION)" in
+        v1.4[0-3]|v1.[0-3][0-9])
+            env_set DOCKER_API_VERSION v1.44
+            echo "DOCKER_API_VERSION set to v1.44"
+            ;;
+    esac
+
+    if [ -z "$(env_get DOCKER_STREAM_NETWORK)" ]; then
+        env_set DOCKER_STREAM_NETWORK radioring-stream
+        echo "DOCKER_STREAM_NETWORK set to radioring-stream (internal Icecast)"
+    fi
+else
+    echo "Warning: Docker Engine API ${_engine_api:-unknown} is below 1.44 (Docker 25)." >&2
+    echo "Everything keeps working, but the internal Icecast stays unavailable until Docker is updated." >&2
+fi
+
 if [ "$(env_get QUEUE_CONNECTION)" = "database" ] && [ -n "$(env_get REDIS_HOST)" ]; then
     echo "Moving the queue from the database to Redis."
 

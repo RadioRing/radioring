@@ -13,6 +13,7 @@ beforeEach(function () {
     config([
         'radioring.stream.domain' => 'stream.example.com',
         'radioring.icecast.traefik_enabled' => true,
+        'radioring.docker.stream_network' => 'radioring-stream',
         'radioring.icecast.status_ttl_seconds' => 10,
     ]);
 

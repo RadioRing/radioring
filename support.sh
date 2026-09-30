@@ -300,6 +300,14 @@ else
     DOCKER_OK=1
     ok "Docker $(docker version -f '{{.Server.Version}}' 2>/dev/null </dev/null) is running"
 
+    _engine_api="$(docker version -f '{{.Server.APIVersion}}' 2>/dev/null </dev/null || true)"
+    if printf '%s\n' "$_engine_api" | awk -F. '{ exit !($1 > 1 || ($1 == 1 && $2 >= 44)) }'; then
+        ok "Docker Engine API $_engine_api (1.44 needed)"
+    else
+        fail "Docker Engine API ${_engine_api:-unknown} is below 1.44. RadioRing needs Docker 25 or newer."
+        hint "Distribution packages often lag behind: https://docs.docker.com/engine/install/"
+    fi
+
     if _compose="$(docker compose version --short 2>/dev/null </dev/null)"; then
         ok "Docker Compose $_compose"
     else
@@ -356,6 +364,7 @@ else
     STREAM_PORT_MAX="$(env_get STREAM_PORT_MAX)"
     MANAGED_BY="$(env_get STATION_MANAGED_BY)"
     STATION_NETWORK="$(env_get DOCKER_STATION_NETWORK)"
+    STREAM_NETWORK="$(env_get DOCKER_STREAM_NETWORK)"
     DOCKER_WEB_NETWORK="$(env_get DOCKER_WEB_NETWORK)"
 
     [ -n "$APP_MODE" ] || APP_MODE=all
@@ -563,6 +572,43 @@ if [ -n "$APP_ID" ]; then
             fail "App is not on $WEB_NETWORK. The reverse proxy cannot reach it (Bad Gateway)."
         fi
     fi
+
+    # The listener figures come straight from the sidecars.
+    if [ -n "$STREAM_NETWORK" ]; then
+        if on_network "$APP_ID" "$STREAM_NETWORK"; then
+            ok "App is on the stream network $STREAM_NETWORK"
+        else
+            warn "App is not on DOCKER_STREAM_NETWORK=$STREAM_NETWORK. Listener figures stay empty."
+            hint "Compare docker-compose.yml with the template of your release; ./update.sh restores it."
+        fi
+    else
+        info "DOCKER_STREAM_NETWORK is not set, the internal Icecast is not offered."
+    fi
+fi
+
+# Isolation: whoever reaches the app's socket proxy (POST=1) is root on the host,
+# and the read-only one of Traefik still hands out every container's environment.
+# Neither may share a network with anything that processes outside input.
+_proxy_id="$(service_id dockerproxy)"
+if [ -n "$_proxy_id" ]; then
+    case " $(networks_of "$_proxy_id") " in
+        " radioring-docker ") ok "The socket proxy sits alone with the app in radioring-docker" ;;
+        *)
+            fail "The socket proxy is on: $(networks_of "$_proxy_id"). Anything there can take over the host."
+            hint "Compare docker-compose.yml with the template of your release; ./update.sh restores it."
+            ;;
+    esac
+fi
+
+_proxy_id="$(service_id dockerproxy-traefik)"
+if [ -n "$_proxy_id" ]; then
+    case " $(networks_of "$_proxy_id") " in
+        " radioring-traefik-docker ") ok "Traefik's socket proxy sits alone with Traefik" ;;
+        *)
+            fail "Traefik's socket proxy is on: $(networks_of "$_proxy_id"). Anything there can read every container's secrets."
+            hint "Compare docker-compose.yml with the template of your release; ./update.sh restores it."
+            ;;
+    esac
 fi
 
 # The Icecast sidecars join DOCKER_WEB_NETWORK and are only public if Traefik
@@ -575,6 +621,11 @@ if [ -n "$TRAEFIK_ID" ]; then
     else
         warn "Traefik is not on DOCKER_WEB_NETWORK=$DOCKER_WEB_NETWORK. Internal Icecast streams stay unreachable."
         hint "Set DOCKER_WEB_NETWORK=$WEB_NETWORK in .env"
+    fi
+
+    if on_network "$TRAEFIK_ID" "$STATION_NETWORK"; then
+        warn "Traefik is on the internal network $STATION_NETWORK. It faces the internet and does not need to."
+        hint "Compare docker-compose.yml with the template of your release; ./update.sh restores it."
     fi
 elif [ "$TRAEFIK_ENABLE" = "true" ] && network_exists "$WEB_NETWORK"; then
     # An external Traefik: all that can be said is who else sits on that network.
@@ -789,6 +840,19 @@ else
             else
                 hint "Traefik cannot route to it. Check DOCKER_WEB_NETWORK."
             fi
+        fi
+
+        # Station and sidecar meet in the stream network. Containers from before it
+        # existed pick it up when the station is stopped and started again.
+        if [ -n "$STREAM_NETWORK" ] && ! on_network "$_name" "$STREAM_NETWORK"; then
+            warn "$_name is not on the stream network $STREAM_NETWORK."
+            hint "Stop and start the station in the panel, it is then recreated in the current network layout."
+        fi
+
+        # The sidecar is public. In the internal network it would reach the database.
+        if [ "$_kind" = "Icecast" ] && on_network "$_name" "$STATION_NETWORK"; then
+            fail "$_name sits in the internal network $STATION_NETWORK, next to database and Redis."
+            hint "Stop and start the station in the panel, it is then recreated in the current network layout."
         fi
 
         if [ -n "$_want_image" ] && [ "$_image" != "$_want_image" ]; then

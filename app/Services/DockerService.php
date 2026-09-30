@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Contracts\ContainerServiceInterface;
 use App\Models\Station;
 use App\Services\Concerns\ManagesIcecastSidecar;
+use App\Services\Docker\ContainerNetworks;
 use App\Services\Docker\DockerConnection;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -112,13 +113,10 @@ class DockerService implements ContainerServiceInterface
                 ];
             }
 
-            // Optional einem benannten Netz beitreten, damit der Container die App intern
-            // erreicht statt per Hairpin ueber die oeffentliche URL. Leer = Default-Bridge.
-            if ($network = (string) config('radioring.docker.station_network')) {
-                $payload['NetworkingConfig'] = [
-                    'EndpointsConfig' => [$network => new \stdClass],
-                ];
-            }
+            // Named networks: the internal one to reach the app without hairpinning through
+            // the public URL, the stream one to reach the station's own Icecast. None set =
+            // default bridge.
+            $payload += ContainerNetworks::payload(ContainerNetworks::forStation());
 
             $response = $this->client()->post('/containers/create?'.http_build_query(['name' => $name]), $payload);
 
@@ -393,10 +391,6 @@ class DockerService implements ContainerServiceInterface
                 return false;
             }
 
-            if (! $this->connectIcecastToAdditionalNetworks($station, $containerId)) {
-                return false;
-            }
-
             $start = $this->client()->post("/containers/{$containerId}/start");
 
             if ($start->failed() && $start->status() !== 304) {
@@ -408,27 +402,6 @@ class DockerService implements ContainerServiceInterface
             return true;
         } catch (\Throwable $e) {
             Log::error("Docker: Fehler beim Start des Icecast-Sidecars {$name}: ".$e->getMessage());
-
-            return false;
-        }
-    }
-
-    protected function connectContainerToNetwork(string $containerId, string $network): bool
-    {
-        try {
-            $response = $this->client()->post('/networks/'.rawurlencode($network).'/connect', [
-                'Container' => $containerId,
-            ]);
-
-            if ($response->failed()) {
-                Log::error("Docker: Verbinden von {$containerId} mit dem Netz {$network} fehlgeschlagen. ".$this->describe($response));
-
-                return false;
-            }
-
-            return true;
-        } catch (\Throwable $e) {
-            Log::error("Docker: Verbinden von {$containerId} mit dem Netz {$network} fehlgeschlagen: ".$e->getMessage());
 
             return false;
         }

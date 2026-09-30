@@ -16,7 +16,7 @@ namespace App\Services\Docker;
 final readonly class DockerConnection
 {
     /**
-     * @param  string  $baseUrl  e.g. http://dockerproxy:2375/v1.43
+     * @param  string  $baseUrl  e.g. http://dockerproxy:2375/v1.44
      * @param  array<int, mixed>  $curlOptions  empty, or the unix socket option
      * @param  string|null  $socketPath  set only when talking to a unix socket
      */
@@ -29,10 +29,10 @@ final readonly class DockerConnection
     /**
      * | DOCKER_HOST                  | baseUrl                        | cURL              |
      * |------------------------------|--------------------------------|-------------------|
-     * | tcp://dockerproxy:2375       | http://dockerproxy:2375/v1.43  | -                 |
-     * | http(s)://host:port          | passthrough + /v1.43           | -                 |
-     * | unix:///var/run/docker.sock  | http://localhost/v1.43         | UNIX_SOCKET_PATH  |
-     * | /var/run/docker.sock         | http://localhost/v1.43         | UNIX_SOCKET_PATH  |
+     * | tcp://dockerproxy:2375       | http://dockerproxy:2375/v1.44  | -                 |
+     * | http(s)://host:port          | passthrough + /v1.44           | -                 |
+     * | unix:///var/run/docker.sock  | http://localhost/v1.44         | UNIX_SOCKET_PATH  |
+     * | /var/run/docker.sock         | http://localhost/v1.44         | UNIX_SOCKET_PATH  |
      *
      * An empty $apiVersion means "no prefix", i.e. let the daemon pick its default. That
      * is the escape hatch for very old engines.

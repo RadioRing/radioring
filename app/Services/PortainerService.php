@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Contracts\ContainerServiceInterface;
 use App\Models\Station;
 use App\Services\Concerns\ManagesIcecastSidecar;
+use App\Services\Docker\ContainerNetworks;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -75,14 +76,10 @@ class PortainerService implements ContainerServiceInterface
                 ];
             }
 
-            // Optionally join a named network, so the container reaches the app internally
-            // instead of hairpinning through the public URL. Empty = default bridge. The
-            // internal Icecast needs this: container names only resolve in a named network.
-            if ($network = (string) config('radioring.docker.station_network')) {
-                $payload['NetworkingConfig'] = [
-                    'EndpointsConfig' => [$network => new \stdClass],
-                ];
-            }
+            // Named networks: the internal one to reach the app without hairpinning through
+            // the public URL, the stream one to reach the station's own Icecast (container
+            // names only resolve in a named network). None set = default bridge.
+            $payload += ContainerNetworks::payload(ContainerNetworks::forStation());
 
             $response = $this->client()->post(
                 "/endpoints/{$this->environment}/docker/containers/create?name={$name}",
@@ -236,10 +233,6 @@ class PortainerService implements ContainerServiceInterface
                 return false;
             }
 
-            if (! $this->connectIcecastToAdditionalNetworks($station, $containerId)) {
-                return false;
-            }
-
             $start = $this->client()->post("/endpoints/{$this->environment}/docker/containers/{$containerId}/start");
 
             if ($start->failed() && $start->status() !== 304) {
@@ -251,28 +244,6 @@ class PortainerService implements ContainerServiceInterface
             return true;
         } catch (\Throwable $e) {
             Log::error("Portainer: Fehler beim Start des Icecast-Sidecars {$name}: ".$e->getMessage());
-
-            return false;
-        }
-    }
-
-    protected function connectContainerToNetwork(string $containerId, string $network): bool
-    {
-        try {
-            $response = $this->client()->post(
-                "/endpoints/{$this->environment}/docker/networks/".rawurlencode($network).'/connect',
-                ['Container' => $containerId],
-            );
-
-            if ($response->failed()) {
-                Log::error("Portainer: Verbinden von {$containerId} mit dem Netz {$network} fehlgeschlagen (HTTP {$response->status()}).");
-
-                return false;
-            }
-
-            return true;
-        } catch (\Throwable $e) {
-            Log::error("Portainer: Verbinden von {$containerId} mit dem Netz {$network} fehlgeschlagen: ".$e->getMessage());
 
             return false;
         }

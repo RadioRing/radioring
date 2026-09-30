@@ -170,7 +170,13 @@ fi
 
 docker compose version >/dev/null 2>&1 </dev/null || die "Docker Compose v2 is missing (docker compose version)."
 docker info >/dev/null 2>&1 </dev/null || die "No access to the Docker daemon. Run as root or join the docker group."
-ok "Docker ready"
+
+# RadioRing talks Docker API 1.44: a station container joins two networks in one
+# create call, which older engines refuse.
+_engine_api="$(docker version -f '{{.Server.APIVersion}}' 2>/dev/null </dev/null || true)"
+printf '%s\n' "$_engine_api" | awk -F. '{ exit !($1 > 1 || ($1 == 1 && $2 >= 44)) }' \
+    || die "Docker Engine API ${_engine_api:-unknown} is too old. RadioRing needs Docker 25 or newer (API 1.44). Distribution packages often lag behind: https://docs.docker.com/engine/install/"
+ok "Docker ready (API $_engine_api)"
 
 # ------------------------------------------------------- Existing install ----
 
@@ -413,8 +419,9 @@ QUEUE_CONNECTION=redis
 # root on the host. See SECURITY.md.
 CONTAINER_DRIVER=$CONTAINER_DRIVER
 DOCKER_HOST=tcp://dockerproxy:2375
-DOCKER_API_VERSION=v1.43
+DOCKER_API_VERSION=v1.44
 DOCKER_STATION_NETWORK=radioring
+DOCKER_STREAM_NETWORK=radioring-stream
 DOCKER_PULL_TIMEOUT=600
 ${PORTAINER_ENDPOINT:+PORTAINER_ENDPOINT=$PORTAINER_ENDPOINT}
 ${PORTAINER_TOKEN:+PORTAINER_TOKEN=$PORTAINER_TOKEN}

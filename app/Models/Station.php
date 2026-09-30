@@ -411,12 +411,14 @@ class Station extends Model
      *
      * The sidecar is published through Traefik only, so it needs both a stream domain for
      * the hostname and an active reverse proxy for TLS. Without those there is no https
-     * URL to embed.
+     * URL to embed. It also needs the stream network, where Liquidsoap resolves the
+     * sidecar by container name without the sidecar joining the internal network.
      */
     public static function internalStreamSupported(): bool
     {
         return (string) config('radioring.stream.domain') !== ''
-            && (bool) config('radioring.icecast.traefik_enabled');
+            && (bool) config('radioring.icecast.traefik_enabled')
+            && (string) config('radioring.docker.stream_network') !== '';
     }
 
     /**

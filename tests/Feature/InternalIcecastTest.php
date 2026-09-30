@@ -14,6 +14,7 @@ beforeEach(function () {
     config([
         'radioring.stream.domain' => 'stream.example.com',
         'radioring.icecast.traefik_enabled' => true,
+        'radioring.docker.stream_network' => 'radioring-stream',
     ]);
 
     $this->user = User::factory()->create();
@@ -28,18 +29,21 @@ beforeEach(function () {
 
 // ── Availability ─────────────────────────────────────────────────────────────
 
-test('the internal server needs both a stream domain and a reverse proxy', function (?string $domain, bool $traefik, bool $expected) {
+test('the internal server needs a stream domain, a reverse proxy and the stream network', function (?string $domain, bool $traefik, string $network, bool $expected) {
     config([
         'radioring.stream.domain' => $domain,
         'radioring.icecast.traefik_enabled' => $traefik,
+        'radioring.docker.stream_network' => $network,
     ]);
 
     expect(Station::internalStreamSupported())->toBe($expected);
 })->with([
-    'both present' => ['stream.example.com', true, true],
-    'no proxy' => ['stream.example.com', false, false],
-    'no domain' => ['', true, false],
-    'neither' => ['', false, false],
+    'all present' => ['stream.example.com', true, 'radioring-stream', true],
+    'no proxy' => ['stream.example.com', false, 'radioring-stream', false],
+    'no domain' => ['', true, 'radioring-stream', false],
+    // Without it the sidecar would have to join the internal network to be reachable.
+    'no stream network' => ['stream.example.com', true, '', false],
+    'none' => ['', false, '', false],
 ]);
 
 test('the public url is the station subdomain plus the mount', function () {
