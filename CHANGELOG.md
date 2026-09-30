@@ -14,6 +14,8 @@ to stand on its own.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-30
+
 ### Added
 - **`support.sh`, a health check for an installation.** Run `./support.sh` next to your
   `docker-compose.yml` to check the host, Docker, the `.env`, every container, the networks,
@@ -471,7 +473,8 @@ First public release. Media library, playlists, weekly grid and rundowns, extern
 live input, outputs to Icecast and laut.fm, per-station Liquidsoap containers, multi-tenant
 and standalone operation, installer and update script.
 
-[Unreleased]: https://github.com/RadioRing/radioring/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/RadioRing/radioring/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/RadioRing/radioring/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/RadioRing/radioring/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/RadioRing/radioring/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/RadioRing/radioring/compare/v0.3.0...v0.4.0
