@@ -137,6 +137,36 @@ test('setNowPlaying stores a denormalized snapshot of the track', function () {
         ->and($state->now_playing_started_at)->not->toBeNull();
 });
 
+test('setNowPlaying shows metadata corrected in the library after the rundown was generated', function () {
+    $rundown = GeneratedPlaylist::factory()->create([
+        'station_id' => $this->station->id,
+        'broadcast_date' => today(),
+        'broadcast_hour' => now()->hour,
+        'status' => 'ready',
+    ]);
+
+    $mediaFile = MediaFile::factory()->create(['tenant_id' => $this->station->tenant_id, 'type' => 'music', 'title' => 'Old Title', 'artist' => 'Old Artist']);
+
+    $item = GeneratedPlaylistItem::factory()->create([
+        'generated_playlist_id' => $rundown->id,
+        'media_file_id' => $mediaFile->id,
+        'position' => 0,
+        'source_type' => 'template_item',
+        'title' => 'Old Title',
+    ]);
+
+    $mediaFile->update(['title' => 'New Title', 'artist' => 'New Artist']);
+
+    $this->service->setNowPlaying($this->station, $item->fresh());
+
+    $state = LiquidsoapState::where('station_id', $this->station->id)->first();
+    $log = StationLog::where('station_id', $this->station->id)->where('event', StationLog::EVENT_TRACK)->sole();
+
+    expect($state->now_playing_title)->toBe('New Title')
+        ->and($state->now_playing_artist)->toBe('New Artist')
+        ->and($log->title)->toBe('New Title');
+});
+
 test('pullNextItem does not pull a future rundown early across a schedule gap', function () {
     // Aktuelle Stunde lief leer aus (Cursor erschöpft).
     $current = GeneratedPlaylist::factory()->create([

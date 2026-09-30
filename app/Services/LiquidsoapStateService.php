@@ -288,11 +288,11 @@ class LiquidsoapStateService
      */
     public function setNowPlaying(Station $station, ?GeneratedPlaylistItem $item, ?CarbonInterface $heartbeatStartedAt = null): void
     {
-        // Interpret aus der Mediendatei des Items (für den denormalisierten Snapshot).
+        $title = $item?->mediaFile?->title ?? $item?->title;
         $artist = $item?->mediaFile?->artist;
         $startedAt = $heartbeatStartedAt ?? now();
 
-        $result = DB::transaction(function () use ($station, $item, $artist, $startedAt, $heartbeatStartedAt) {
+        $result = DB::transaction(function () use ($station, $item, $title, $artist, $startedAt, $heartbeatStartedAt) {
             $state = LiquidsoapState::firstOrCreate(['station_id' => $station->id]);
 
             // Vorheriger Zustand (für die Übergangs-Erkennung live → playlist).
@@ -317,7 +317,7 @@ class LiquidsoapStateService
             // weiterhin den real laufenden Track, bis der nächste Track-Callback kommt.
             $state->update([
                 'now_playing_item_id' => $item?->id,
-                'now_playing_title' => $item?->title,
+                'now_playing_title' => $title,
                 'now_playing_artist' => $artist,
                 'now_playing_source_type' => $item?->source_type,
                 'now_playing_duration_seconds' => $item?->duration_seconds,
@@ -365,7 +365,7 @@ class LiquidsoapStateService
         $wasLive = $result['wasLive'];
 
         if ($heartbeatStartedAt !== null) {
-            $this->logRecoveredReport($station, $item?->title);
+            $this->logRecoveredReport($station, $title);
         }
 
         if ($result['wasEmergency'] && $item) {
@@ -399,7 +399,7 @@ class LiquidsoapStateService
                 'source' => 'playlist',
                 'media_file_id' => $item->media_file_id,
                 'generated_playlist_item_id' => $item->id,
-                'title' => $item->title,
+                'title' => $title,
                 'artist' => $artist,
                 'source_type' => $item->source_type,
                 'occurred_at' => $startedAt,
