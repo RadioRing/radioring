@@ -70,38 +70,71 @@ trait ManagesIcecastSidecar
     abstract protected function deleteIcecastSidecar(Station $station): bool;
 
     /**
+     * Attaches an existing container to a network through the driver's own API.
+     */
+    abstract protected function connectContainerToNetwork(string $containerId, string $network): bool;
+
+    /**
      * The sidecar's container spec, identical for every driver.
+     *
+     * Only the first network goes into the create call: Docker API versions before 1.44
+     * reject a create with more than one endpoint ("Container cannot be created with
+     * multiple network endpoints"). The rest follow via connectIcecastToAdditionalNetworks().
      *
      * @return array<string, mixed>
      */
     protected function icecastPayload(Station $station, string $host): array
     {
-        return [
+        $payload = [
             'Image' => (string) config('radioring.icecast.image'),
             'Env' => $this->icecastEnvVars($station),
             'Labels' => $this->icecastLabels($station, $host),
             'HostConfig' => [
                 'RestartPolicy' => ['Name' => 'unless-stopped'],
             ],
-            'NetworkingConfig' => [
-                'EndpointsConfig' => $this->icecastNetworks(),
-            ],
         ];
+
+        $networks = $this->icecastNetworks();
+
+        if ($networks !== []) {
+            $payload['NetworkingConfig'] = [
+                'EndpointsConfig' => [$networks[0] => new \stdClass],
+            ];
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Joins the created sidecar to every network beyond the first one. Has to happen
+     * before the start, so Traefik and Liquidsoap see it from the first second.
+     */
+    protected function connectIcecastToAdditionalNetworks(Station $station, string $containerId): bool
+    {
+        foreach (array_slice($this->icecastNetworks(), 1) as $network) {
+            if (! $this->connectContainerToNetwork($containerId, $network)) {
+                Log::error("Icecast-Sidecar {$station->icecastContainerName()} konnte nicht mit dem Netz {$network} verbunden werden.");
+
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
      * The station network, so Liquidsoap resolves the sidecar by container name, and the
      * proxy network, so Traefik sees it. Identical or empty names collapse into one.
      *
-     * @return array<string, \stdClass>
+     * @return list<string>
      */
     protected function icecastNetworks(): array
     {
         $networks = [];
 
         foreach ([config('radioring.docker.station_network'), config('radioring.icecast.web_network')] as $network) {
-            if (($network = (string) $network) !== '') {
-                $networks[$network] = new \stdClass;
+            if (($network = (string) $network) !== '' && ! in_array($network, $networks, true)) {
+                $networks[] = $network;
             }
         }
 

@@ -236,6 +236,10 @@ class PortainerService implements ContainerServiceInterface
                 return false;
             }
 
+            if (! $this->connectIcecastToAdditionalNetworks($station, $containerId)) {
+                return false;
+            }
+
             $start = $this->client()->post("/endpoints/{$this->environment}/docker/containers/{$containerId}/start");
 
             if ($start->failed() && $start->status() !== 304) {
@@ -247,6 +251,28 @@ class PortainerService implements ContainerServiceInterface
             return true;
         } catch (\Throwable $e) {
             Log::error("Portainer: Fehler beim Start des Icecast-Sidecars {$name}: ".$e->getMessage());
+
+            return false;
+        }
+    }
+
+    protected function connectContainerToNetwork(string $containerId, string $network): bool
+    {
+        try {
+            $response = $this->client()->post(
+                "/endpoints/{$this->environment}/docker/networks/".rawurlencode($network).'/connect',
+                ['Container' => $containerId],
+            );
+
+            if ($response->failed()) {
+                Log::error("Portainer: Verbinden von {$containerId} mit dem Netz {$network} fehlgeschlagen (HTTP {$response->status()}).");
+
+                return false;
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::error("Portainer: Verbinden von {$containerId} mit dem Netz {$network} fehlgeschlagen: ".$e->getMessage());
 
             return false;
         }

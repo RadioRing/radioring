@@ -186,9 +186,12 @@ test('starting a station with an internal output brings up the sidecar', functio
 
         return $data['Image'] === 'ghcr.io/acme/icecast:latest'
             && ($labels["traefik.http.routers.{$router}.rule"] ?? null) === 'Host(`'.$this->station->slug.'.stream.example.com`)'
-            && array_key_exists('radioring', $data['NetworkingConfig']['EndpointsConfig'])
-            && array_key_exists('radioring-web', $data['NetworkingConfig']['EndpointsConfig']);
+            // One endpoint only: older API versions reject a create with several.
+            && array_keys($data['NetworkingConfig']['EndpointsConfig']) === ['radioring'];
     });
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/endpoints/2/docker/networks/radioring-web/connect')
+        && $request->data() === ['Container' => 'ice123']);
 });
 
 test('the station container joins the configured network so it can reach the sidecar', function () {

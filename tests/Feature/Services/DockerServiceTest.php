@@ -317,11 +317,60 @@ test('starting a station with an internal output brings up the sidecar', functio
         return $data['Image'] === 'ghcr.io/acme/icecast:latest'
             && ($labels['traefik.enable'] ?? null) === 'true'
             && ($labels["traefik.http.routers.{$router}.rule"] ?? null) === 'Host(`'.$this->station->slug.'.stream.example.com`)'
-            && ($labels["traefik.http.services.{$router}.loadbalancer.server.port"] ?? null) === '8000'
-            // Beide Netze: Liquidsoap erreicht ihn intern, Traefik sieht ihn im Web-Netz.
-            && array_key_exists('radioring', $data['NetworkingConfig']['EndpointsConfig'])
-            && array_key_exists('radioring-web', $data['NetworkingConfig']['EndpointsConfig']);
+            && ($labels["traefik.http.services.{$router}.loadbalancer.server.port"] ?? null) === '8000';
     });
+});
+
+test('the sidecar is created with one network and joins the proxy network before it starts', function () {
+    enableInternalIcecast($this->station);
+    fakeSuccessfulDocker();
+
+    app(DockerService::class)->startStationContainer($this->station->fresh());
+
+    $sidecarRequests = Http::recorded(fn ($request) => str_contains($request->url(), 'radioring-icecast-')
+        || str_contains($request->url(), '/networks/')
+        || str_ends_with($request->url(), '/containers/abc123/start'))
+        ->map(fn (array $pair) => $pair[0]);
+
+    $create = $sidecarRequests->first(fn ($request) => str_contains($request->url(), 'create?name=radioring-icecast-'));
+
+    // API versions before 1.44 answer a create with two endpoints with HTTP 400.
+    expect(array_keys($create->data()['NetworkingConfig']['EndpointsConfig']))->toBe(['radioring']);
+
+    $urls = $sidecarRequests->map(fn ($request) => $request->method().' '.parse_url($request->url(), PHP_URL_PATH))->values()->all();
+    $connectAt = array_search('POST /v1.43/networks/radioring-web/connect', $urls, true);
+    $startAt = array_search('POST /v1.43/containers/abc123/start', $urls, true);
+
+    expect($connectAt)->not->toBeFalse();
+    expect($connectAt)->toBeLessThan($startAt);
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/networks/radioring-web/connect')
+        && $request->data() === ['Container' => 'abc123']);
+});
+
+test('identical station and proxy networks need no extra connect', function () {
+    enableInternalIcecast($this->station);
+    config(['radioring.docker.station_network' => 'radioring-web']);
+    fakeSuccessfulDocker();
+
+    app(DockerService::class)->startStationContainer($this->station->fresh());
+
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/networks/'));
+});
+
+test('a sidecar that cannot join the proxy network is not started', function () {
+    enableInternalIcecast($this->station);
+    Http::fake([
+        '*/images/create*' => Http::response('{"status":"Downloaded"}', 200),
+        '*/containers/create?name=radioring-icecast-*' => Http::response(['Id' => 'ice123'], 201),
+        '*/containers/create*' => Http::response(['Id' => 'abc123'], 201),
+        '*/networks/*' => Http::response(['message' => 'network radioring-web not found'], 404),
+        '*' => Http::response('', 204),
+    ]);
+
+    app(DockerService::class)->startStationContainer($this->station->fresh());
+
+    Http::assertNotSent(fn ($request) => str_ends_with($request->url(), '/containers/ice123/start'));
 });
 
 test('the sidecar receives the source password of its station', function () {
