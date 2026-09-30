@@ -14,6 +14,19 @@ to stand on its own.
 
 ## [Unreleased]
 
+### Added
+- **`support.sh`, a health check for an installation.** Run `./support.sh` next to your
+  `docker-compose.yml` to check the host, Docker, the `.env`, every container, the networks,
+  database, Redis, queues, workers, station containers, the service logs, DNS and the
+  certificate. Every
+  problem comes with a hint. `./support.sh --report` writes a file with secrets masked that
+  you can send to whoever helps you, so they need no access to your server. New
+  installations get it from `install.sh`, existing ones with the next `./update.sh`.
+
+### Changed
+- **Heatbeat for liquidsoap status** The liquidsoap station container now sends a regular heartbeat to the backend.
+    Should prevent situations where the backend thinks no playout is happening.
+
 ## [0.6.0] - 2026-09-28
 
 **New in this release: fixed times, an emergency loop and alert mails.** Fixed time

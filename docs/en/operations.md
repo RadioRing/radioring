@@ -55,6 +55,15 @@ cd /opt/radioring && ./update.sh          # pull and restart
 cd /opt/radioring && ./update.sh --check  # only report whether newer images exist
 ```
 
+Checking an installation:
+
+```sh
+cd /opt/radioring && ./support.sh           # check everything, print hints
+cd /opt/radioring && ./support.sh --report  # also write a redacted report to send along
+```
+
+See [section 9](#9-troubleshooting) for what it covers.
+
 Running the installer again on an existing directory switches to repair mode: existing
 values become the defaults, `APP_KEY` is never regenerated, and the previous `.env` is
 backed up.
@@ -397,6 +406,25 @@ relative paths. The database refers to exactly those paths.
 ---
 
 ## 9. Troubleshooting
+
+### Start with support.sh
+
+```sh
+cd /opt/radioring && ./support.sh
+```
+
+It only reads and is safe to run on a live station. It checks the host (disk, memory, clock
+sync), Docker and Compose, the `.env` (required values, permissions, image tags against
+`RR_VERSION`), every service of the stack (state, health, restarts), the `radioring` and proxy
+networks and who sits on them, database, Redis, pending migrations, queue backlog, workers
+and scheduler, the Docker API as the app sees it, the station and Icecast containers, the logs of the
+last 24 hours of every service (API calls refused by the socket proxy, certificate errors in
+Traefik, MySQL and Redis errors, stations that cannot reach the app), and finally DNS, ports 80/443 and the certificate as seen from the server. Every problem comes
+with a hint on what to do next. The exit code is 1 as soon as one check fails.
+
+`--report` additionally writes all of this plus recent logs into one file. Secrets from the
+`.env` and station tokens are masked, but log lines can carry anything, so read it once
+before sending it on. `--offline` skips the DNS and HTTPS checks.
 
 ### The station plays silence
 

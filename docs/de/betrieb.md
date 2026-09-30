@@ -57,6 +57,15 @@ cd /opt/radioring && ./update.sh          # ziehen und neu starten
 cd /opt/radioring && ./update.sh --check  # nur prüfen, ob es neuere Images gibt
 ```
 
+Eine Installation prüfen:
+
+```sh
+cd /opt/radioring && ./support.sh           # alles prüfen, Hinweise ausgeben
+cd /opt/radioring && ./support.sh --report  # zusätzlich einen bereinigten Bericht schreiben
+```
+
+Was dabei geprüft wird, steht in [Abschnitt 9](#9-fehlersuche).
+
 Ein erneuter Lauf des Installers auf einem bestehenden Verzeichnis wechselt in den
 Reparaturmodus: vorhandene Werte werden zu Vorgaben, `APP_KEY` wird **nie** neu erzeugt,
 und die bisherige `.env` wird vorher gesichert.
@@ -404,6 +413,27 @@ relativen Pfaden. Die Datenbank verweist auf genau diese Pfade.
 ---
 
 ## 9. Fehlersuche
+
+### Zuerst support.sh
+
+```sh
+cd /opt/radioring && ./support.sh
+```
+
+Das Script liest nur und darf jederzeit auf einer laufenden Station ausgeführt werden. Es
+prüft den Host (Plattenplatz, Speicher, Zeitsynchronisation), Docker und Compose, die `.env`
+(Pflichtwerte, Rechte, Image-Tags gegen `RR_VERSION`), jeden Dienst des Stacks (Zustand,
+Health, Neustarts), das `radioring`- und das Proxy-Netz und wer darin hängt, Datenbank,
+Redis, offene Migrationen, Queue-Rückstau, Worker und Scheduler, die Docker-API aus Sicht
+der App, die Stations- und Icecast-Container, die Logs aller Dienste der letzten 24 Stunden
+(vom Socket-Proxy abgelehnte API-Aufrufe, Zertifikatsfehler in Traefik, MySQL- und
+Redis-Fehler, Stationen, die die App nicht erreichen) und zuletzt DNS, die Ports 80/443 und das
+Zertifikat vom Server aus gesehen. Zu jedem Problem gibt es einen Hinweis, was als Nächstes
+zu tun ist. Der Exit-Code ist 1, sobald eine Prüfung fehlschlägt.
+
+`--report` schreibt all das plus die letzten Logzeilen zusätzlich in eine Datei. Geheimnisse
+aus der `.env` und Stations-Tokens werden maskiert, Logzeilen können aber alles enthalten:
+die Datei vor dem Weitergeben einmal lesen. `--offline` überspringt die DNS- und HTTPS-Prüfung.
 
 ### Die Station sendet Stille
 

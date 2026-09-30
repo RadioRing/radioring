@@ -506,6 +506,13 @@ else
     warn "Could not download install.sh - repairs have to be run from the URL for now."
 fi
 
+if fetch "$REPO_RAW/support.sh" support.sh; then
+    chmod +x support.sh 2>/dev/null || warn "Could not make support.sh executable."
+    ok "support.sh written"
+else
+    warn "Could not download support.sh - the health check is not available for now."
+fi
+
 # ------------------------------------------------------------------- Start ----
 
 info "Pulling images and starting"
@@ -603,4 +610,6 @@ warn "RadioRing controls Docker on this host. Compromising the app means root."
 warn "Please read SECURITY.md before the instance is reachable from the internet."
 say ""
 say "  Update:       cd $RR_DIR && ./update.sh"
+say "  Check:        cd $RR_DIR && ./support.sh"
+say "                (once DNS points here; --report writes a file to send along)"
 say ""

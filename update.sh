@@ -270,6 +270,10 @@ fetch "$REPO_RAW/update.sh" update.sh.new && {
     mv -f update.sh.new update.sh
 }
 
+# The health check knows what the release looks like, so it moves along too.
+# Releases from before it existed simply have none to fetch.
+fetch "$REPO_RAW/support.sh" support.sh && chmod +x support.sh 2>/dev/null || true
+
 docker compose pull </dev/null
 docker compose up -d </dev/null
 

@@ -119,6 +119,9 @@ cd /opt/radioring
 ./update.sh --channel=edge   # switch channels
 ```
 
+Something off? `./support.sh` checks the whole installation and points at what is wrong;
+`./support.sh --report` writes a redacted file to send to whoever helps you.
+
 Updating rewrites the image pins and refetches the compose template from the matching tag,
 so the three never drift apart. A jump across a major version stops and points at the
 release notes; `--force` proceeds.
