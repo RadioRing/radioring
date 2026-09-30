@@ -187,7 +187,7 @@
                                 {{-- Info --}}
                                 <div class="flex-grow-1 overflow-hidden">
                                     <div class="text-truncate fw-medium small {{ $isPlaying ? 'fw-semibold' : '' }} {{ $item->skipped_at ? 'text-decoration-line-through text-muted' : '' }}">
-                                        {{ $item->title }}
+                                        {{ $item->displayTitle() }}
                                     </div>
                                     <div class="text-muted d-flex flex-wrap gap-2" style="font-size:.75rem">
                                         @if($item->durationFormatted())

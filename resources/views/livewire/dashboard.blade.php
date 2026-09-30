@@ -319,7 +319,7 @@
                 @if($nextProjected)
                     <div class="text-muted small">
                         <i class="bi bi-skip-end me-1"></i><span class="fw-medium">{{ __('Als nächstes:') }}</span>
-                        {{ $nextProjected->item->title }}@if($nextProjected->item->mediaFile?->artist) &ndash; {{ $nextProjected->item->mediaFile->artist }}@endif
+                        {{ $nextProjected->item->displayTitle() }}@if($nextProjected->item->mediaFile?->artist) &ndash; {{ $nextProjected->item->mediaFile->artist }}@endif
                         @if($nextProjected->projectedStart)
                             <span class="opacity-75">({{ __('ca.') }} {{ $nextProjected->projectedStart->format('H:i') }})</span>
                         @endif
@@ -459,7 +459,7 @@
 
                         {{-- Titel + Interpret --}}
                         <span class="text-truncate flex-grow-1 small {{ $entry->isPlaying ? 'fw-semibold' : '' }}">
-                            {{ $item->title }}@if($item->mediaFile?->artist)<span class="text-muted"> &ndash; {{ $item->mediaFile->artist }}</span>@endif
+                            {{ $item->displayTitle() }}@if($item->mediaFile?->artist)<span class="text-muted"> &ndash; {{ $item->mediaFile->artist }}</span>@endif
                         </span>
 
                         {{-- Fixed time badge: red hard, yellow soft --}}

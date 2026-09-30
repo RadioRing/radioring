@@ -44,6 +44,16 @@ class GeneratedPlaylistItem extends Model
     }
 
     /**
+     * The title as it should be shown and sent: the media file's current title, so edits
+     * in the library apply without regenerating the rundown. Falls back to the title
+     * frozen at generation for items without a file (external sources, deleted files).
+     */
+    public function displayTitle(): ?string
+    {
+        return $this->mediaFile?->title ?? $this->title;
+    }
+
+    /**
      * Berechnet aus der (pro Ausspielung) gemessenen Lautheit den liq_amplify-Gain in dB.
      * Spiegelt MediaFile::loudnessGainDb() für die vorbereitete Kopie dynamischer Quellen.
      */

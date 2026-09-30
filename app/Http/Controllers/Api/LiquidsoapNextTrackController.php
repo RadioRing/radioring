@@ -122,7 +122,7 @@ class LiquidsoapNextTrackController extends Controller
         // Bewusst der Live-DB-Stand der Mediendatei, nicht der eingefrorene
         // Rundown-Snapshot ($item->title) – so wirken Korrekturen ohne Neu-Generierung.
         $annotations .= $this->metadataAnnotations(
-            $item->mediaFile?->title ?? $item->title,
+            $item->displayTitle(),
             $item->mediaFile?->artist,
         );
 

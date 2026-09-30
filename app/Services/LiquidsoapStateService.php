@@ -288,7 +288,7 @@ class LiquidsoapStateService
      */
     public function setNowPlaying(Station $station, ?GeneratedPlaylistItem $item, ?CarbonInterface $heartbeatStartedAt = null): void
     {
-        $title = $item?->mediaFile?->title ?? $item?->title;
+        $title = $item?->displayTitle();
         $artist = $item?->mediaFile?->artist;
         $startedAt = $heartbeatStartedAt ?? now();
 
