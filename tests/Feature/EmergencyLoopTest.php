@@ -30,7 +30,10 @@ test('the emergency loop plays local files behind the programme and before silen
     $script = app(LiquidsoapScriptGenerator::class)->generate($this->station);
 
     expect($script)
-        ->toContain('emergency = playlist(id="emergency", mode="randomize", reload_mode="rounds", reload=1, "/app/liquidsoap/emergency/emergency.m3u")')
+        // Never reloaded per round: with an empty playlist that recurses without end.
+        // The entrypoint reloads it over telnet after a sync instead.
+        ->toContain('emergency = playlist(id="emergency", mode="randomize", reload_mode="never", "/app/liquidsoap/emergency/emergency.m3u")')
+        ->not->toContain('reload_mode="rounds"')
         // blank() stays last: nothing selected, nothing synced, every file broken.
         ->toContain('radio = fallback(track_sensitive=false, [live, program, emergency, blank()])');
 });

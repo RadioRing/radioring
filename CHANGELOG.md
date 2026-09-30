@@ -49,6 +49,8 @@ to stand on its own.
 - **The internal Icecast did not start.** Starting a station with an internal Icecast output
   left the Icecast container out: Docker refused to create it in two networks at once, the
   error only went to the log, and the station ran without its stream.
+- **Endless Emergency Playlist loop** When no emergency playlist was available it looped endlessly producing like 5000  
+  log entries a second.
 
 ### Upgrade
 

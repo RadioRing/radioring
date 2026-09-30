@@ -326,6 +326,11 @@ LIQ;
      * cut_gain and fade.in stay on the programme branch: a hard cut must not turn the
      * emergency loop down.
      *
+     * reload_mode="never": the entrypoint sends "emergency.reload" over telnet after a sync
+     * changed the playlist. Reloading per round is not an option in Liquidsoap 2.2: with an
+     * empty playlist every reload fetches again, which ends the round again and reloads again,
+     * a recursion that spams the log, burns a CPU core and ends in a segfault.
+     *
      * track_sensitive=false on the fallback means the returning programme cuts an
      * emergency file off mid-word. That is what a station wants.
      *
@@ -341,7 +346,7 @@ LIQ;
 
         $lines = [
             '# Emergency loop: local files, played while the programme branch is unavailable.',
-            "emergency = playlist(id=\"emergency\", mode=\"randomize\", reload_mode=\"rounds\", reload=1, \"{$playlist}\")",
+            "emergency = playlist(id=\"emergency\", mode=\"randomize\", reload_mode=\"never\", \"{$playlist}\")",
         ];
 
         if (config('radioring.loudness.enabled', true)) {

@@ -130,8 +130,8 @@ sync_emergency() {
     fi
   done
 
-  # Written through .tmp: Liquidsoap re-reads the playlist after every round and must never
-  # see a half written one. Each line carries the offline measured gain.
+  # Written through .tmp: Liquidsoap must never read a half written playlist. Each line
+  # carries the offline measured gain.
   : > "${EMERGENCY_PLAYLIST}.tmp"
 
   while IFS=$'\t' read -r name url amplify; do
@@ -145,9 +145,25 @@ sync_emergency() {
 
   [[ -s "${EMERGENCY_PLAYLIST}.tmp" ]] || echo "# no emergency files" > "${EMERGENCY_PLAYLIST}.tmp"
 
+  local changed=true
+  cmp -s "${EMERGENCY_PLAYLIST}.tmp" "$EMERGENCY_PLAYLIST" && changed=false
+
   mv "${EMERGENCY_PLAYLIST}.tmp" "$EMERGENCY_PLAYLIST"
   rm -f "$manifest"
   echo "Emergency loop synced ($(grep -cv '^#' "$EMERGENCY_PLAYLIST" || true) file(s))."
+
+  [[ "$changed" == "true" ]] && reload_emergency
+  return 0
+}
+
+# The script loads the playlist with reload_mode="never" (a per round reload recurses
+# without end on an empty playlist), so a changed playlist is pushed in here. Only on a
+# change: a reload reshuffles the round. Before Liquidsoap is up the telnet call fails
+# harmlessly, the start reads the fresh file anyway.
+reload_emergency() {
+  printf 'emergency.reload\nquit\n' | nc -w 1 127.0.0.1 1234 >/dev/null 2>&1 \
+    && echo "Emergency loop: playlist reloaded." \
+    || true
 }
 
 # Safety net for a selection changed while the container runs, in case the sync_emergency
