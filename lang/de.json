@@ -533,5 +533,7 @@
     "You will receive alert mails again.": "Du bekommst wieder Alarm-Mails.",
     "You will no longer receive alert mails.": "Du bekommst keine Alarm-Mails mehr.",
     "Alert mails for my stations": "Alarm-Mails für meine Stationen",
-    "As an owner of a station you are mailed when it goes off air. Turn this off to stop those mails for all of your stations.": "Als Besitzer einer Station bekommst du eine Mail, wenn sie ausfällt. Schalte das ab, um diese Mails für alle deine Stationen abzubestellen."
+    "As an owner of a station you are mailed when it goes off air. Turn this off to stop those mails for all of your stations.": "Als Besitzer einer Station bekommst du eine Mail, wenn sie ausfällt. Schalte das ab, um diese Mails für alle deine Stationen abzubestellen.",
+    "Switch to an existing station": "Zu einer vorhandenen Station wechseln",
+    "You already have access to these stations.": "Auf diese Stationen hast du bereits Zugriff."
 }

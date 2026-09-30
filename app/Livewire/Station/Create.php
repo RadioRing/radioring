@@ -40,6 +40,18 @@ class Create extends Component
         $this->redirect(route('dashboard'), navigate: true);
     }
 
+    /**
+     * Switches to a station the user already has access to, so someone invited as owner
+     * or editor is never forced to create a station of their own.
+     */
+    public function choose(int $stationId): void
+    {
+        $station = auth()->user()->accessibleStations()->findOrFail($stationId);
+        auth()->user()->setCurrentStation($station);
+
+        $this->redirect(route('dashboard'), navigate: true);
+    }
+
     private function uniqueSlug(string $base): string
     {
         $slug = $base;
@@ -60,6 +72,7 @@ class Create extends Component
             'quota' => auth()->user()->tenant?->station_quota,
             'showQuota' => AppMode::isMultiTenant(),
             'used' => auth()->user()->stations()->count(),
+            'accessibleStations' => auth()->user()->accessibleStations()->orderBy('stations.name')->get(),
         ])->layout('layouts.app');
     }
 }

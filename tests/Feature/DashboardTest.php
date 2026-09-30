@@ -20,3 +20,21 @@ test('authenticated users can visit the dashboard', function () {
     $response = $this->get(route('dashboard'));
     $response->assertOk();
 });
+
+test('an editor without own stations is taken to the shared station', function () {
+    $station = Station::factory()->create();
+    $editor = User::factory()->create();
+    $station->members()->attach($editor->id, ['role' => 'editor']);
+    $this->actingAs($editor);
+
+    $this->get(route('dashboard'))->assertOk()->assertSee($station->name);
+});
+
+test('an admin who is owner of a foreign station is not sent to station creation', function () {
+    $station = Station::factory()->create();
+    $admin = User::factory()->admin()->create();
+    $station->members()->attach($admin->id, ['role' => 'owner']);
+    $this->actingAs($admin);
+
+    $this->get(route('dashboard'))->assertOk()->assertSee($station->name);
+});

@@ -520,9 +520,13 @@ docker compose pull </dev/null
 docker compose up -d </dev/null
 
 info "Waiting for readiness"
+# The entrypoint migrates before anything else starts. A plain migrate:status
+# already succeeds once the migrations table exists, while the rest of the
+# schema is still being created. --pending=1 makes it exit 1 as long as any
+# migration is outstanding, so the bootstrap below only runs on a full schema.
 _waited=0
 while [ "$_waited" -lt 180 ]; do
-    if docker compose exec -T app php artisan migrate:status >/dev/null 2>&1 </dev/null; then
+    if docker compose exec -T app php artisan migrate:status --pending=1 >/dev/null 2>&1 </dev/null; then
         break
     fi
     sleep 3

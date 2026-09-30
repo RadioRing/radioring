@@ -8,6 +8,28 @@
         @endif
     </div>
 
+    @if($accessibleStations->isNotEmpty())
+        <div class="card mb-4" style="max-width: 480px;">
+            <div class="card-body">
+                <h6 class="fw-semibold mb-1">{{ __('Switch to an existing station') }}</h6>
+                <p class="text-muted-sm mb-3">{{ __('You already have access to these stations.') }}</p>
+                <div class="list-group">
+                    @foreach($accessibleStations as $existingStation)
+                        <button type="button" wire:click="choose({{ $existingStation->id }})"
+                                class="list-group-item list-group-item-action d-flex align-items-center justify-content-between">
+                            <span>
+                                <i class="bi bi-broadcast-pin me-1 text-primary"></i>{{ $existingStation->name }}
+                            </span>
+                            <span class="badge bg-secondary">
+                                {{ $existingStation->pivot->role === 'owner' ? __('Owner') : __('Editor') }}
+                            </span>
+                        </button>
+                    @endforeach
+                </div>
+            </div>
+        </div>
+    @endif
+
     @if(!$canCreate)
         <div class="alert alert-warning">
             <i class="bi bi-exclamation-triangle me-2"></i>
@@ -33,7 +55,7 @@
                         <button type="submit" class="btn btn-primary">
                             <i class="bi bi-plus-lg me-1"></i>{{ __('Station erstellen') }}
                         </button>
-                        @if(auth()->user()->stations()->count() > 0)
+                        @if($accessibleStations->isNotEmpty())
                             <a href="{{ route('station.select') }}" class="btn btn-outline-secondary" wire:navigate>
                                 {{ __('Abbrechen') }}
                             </a>
