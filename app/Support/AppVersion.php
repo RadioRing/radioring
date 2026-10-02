@@ -37,6 +37,28 @@ class AppVersion
         return (bool) preg_match('/^\d+\.\d+\.\d+/', $this->version);
     }
 
+    /**
+     * The raw build name: a semantic version, "edge" or "dev".
+     */
+    public function name(): string
+    {
+        return $this->version;
+    }
+
+    public function commit(): ?string
+    {
+        return $this->commit;
+    }
+
+    /**
+     * Builds without any build information (local checkouts) have nothing to
+     * compare against GitHub.
+     */
+    public function isDevelopment(): bool
+    {
+        return $this->version === 'dev';
+    }
+
     public function shortCommit(): ?string
     {
         return $this->commit ? Str::substr($this->commit, 0, 7) : null;

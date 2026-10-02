@@ -365,5 +365,6 @@ return [
         'name' => env('APP_VERSION', ''),
         'commit' => env('APP_COMMIT', ''),
         'repository' => env('APP_REPOSITORY', 'radioring/radioring'),
+        'update_check' => (bool) env('APP_UPDATE_CHECK', true),
     ],
 ];

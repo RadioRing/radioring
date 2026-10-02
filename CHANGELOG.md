@@ -14,6 +14,9 @@ to stand on its own.
 
 ## [Unreleased]
 
+### Added
+- **Update Checker** Checks if a new update is available and displays it in the UI.
+
 ### Changed
 - **Better music rotation.** Fills spread the whole pool over the day, never play the same
   artist twice in a row and avoid repeating a title at the same time as yesterday. The GVL

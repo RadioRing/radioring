@@ -540,5 +540,18 @@
     "Rotation rules": "Rotationsregeln",
     "Artist separation": "Interpretenabstand",
     "min": "Min.",
-    "Minimum gap between two titles of the same artist in fills and random elements. The same artist never plays twice in a row anyway, and the GVL rules always apply. 0 turns the gap off.": "Mindestabstand zwischen zwei Titeln desselben Interpreten in Auffüll- und Zufallselementen. Derselbe Interpret läuft ohnehin nie zweimal hintereinander, und die GVL-Regeln gelten immer. 0 schaltet den Abstand ab."
+    "Minimum gap between two titles of the same artist in fills and random elements. The same artist never plays twice in a row anyway, and the GVL rules always apply. 0 turns the gap off.": "Mindestabstand zwischen zwei Titeln desselben Interpreten in Auffüll- und Zufallselementen. Derselbe Interpret läuft ohnehin nie zweimal hintereinander, und die GVL-Regeln gelten immer. 0 schaltet den Abstand ab.",
+    "Update available": "Update verfügbar",
+    "New release: :title": "Neues Release: :title",
+    ":count new commit on :branch|:count new commits on :branch": ":count neuer Commit auf :branch|:count neue Commits auf :branch",
+    "Close": "Schließen",
+    "Installed: :version": "Installiert: :version",
+    "Published: :date": "Veröffentlicht: :date",
+    "No release notes.": "Keine Release-Notes.",
+    "... and :count more": "... und :count weitere",
+    "View on GitHub": "Auf GitHub ansehen",
+    "Update check is disabled for this build.": "Die Update-Prüfung ist für diesen Build deaktiviert.",
+    "RadioRing is up to date.": "RadioRing ist aktuell.",
+    "Update available: :version": "Update verfügbar: :version",
+    "Update available: :count new commit|Update available: :count new commits": "Update verfügbar: :count neuer Commit|Update verfügbar: :count neue Commits"
 }

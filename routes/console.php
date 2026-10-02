@@ -32,6 +32,10 @@ Schedule::command('radioring:check-alerts')->everyMinute()->withoutOverlapping()
 // Jede Minute – dynamische externe HTTP-Inhalte kurz vor Ausspielung holen/messen/cachen
 Schedule::job(new PrepareUpcomingHttpItemsJob)->everyMinute()->withoutOverlapping();
 
+// Hourly: ask GitHub for a newer release (or newer commits on edge). Cached, the sidebar
+// only reads the stored answer.
+Schedule::command('radioring:check-updates')->hourlyAt(17)->runInBackground();
+
 // Nightly configuration backup. Time and retention come from the settings table, so the
 // operator can change them at runtime; the schedule is rebuilt on every `schedule:run`
 // and therefore picks the current value up without a redeploy.

@@ -120,6 +120,40 @@
     user-select: none;
 }
 
+/* ── Version badge: a newer release or newer commits exist ── */
+.app-version-update {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    font-size: inherit;
+    color: #ffc107;
+    padding: .1rem .45rem !important;
+    border-radius: 50rem;
+    background-color: rgba(255, 193, 7, .12);
+    animation: app-version-glow 2.4s ease-in-out infinite;
+}
+
+.app-version-update:hover,
+.app-version-update:focus {
+    color: #ffda6a;
+}
+
+@keyframes app-version-glow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, .45); }
+    50% { box-shadow: 0 0 .6rem .15rem rgba(255, 193, 7, .35); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .app-version-update {
+        animation: none;
+        box-shadow: 0 0 0 1px rgba(255, 193, 7, .6);
+    }
+}
+
+.release-notes img {
+    max-width: 100%;
+}
+
 [x-cloak] {
     display: none !important;
 }
