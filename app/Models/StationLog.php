@@ -34,6 +34,9 @@ class StationLog extends Model
 
     public const EVENT_RUNDOWN_GENERATED = 'rundown_generated';
 
+    /** A generated rundown breaks the GVL repeat rules because the music pool is too small. */
+    public const EVENT_ROTATION_VIOLATION = 'rotation_violation';
+
     /** Playout was running behind schedule and skipped ahead to the current hour. */
     public const EVENT_SCHEDULE_CATCH_UP = 'schedule_catch_up';
 

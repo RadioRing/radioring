@@ -48,6 +48,22 @@
                             </div>
                         </div>
 
+                        <div class="mb-3">
+                            <label for="artistSeparationMinutes" class="form-label fw-medium">{{ __('Artist separation') }}</label>
+                            <div class="input-group" style="max-width: 12rem">
+                                <input id="artistSeparationMinutes" type="number" min="0" max="240" step="5"
+                                       wire:model="artistSeparationMinutes"
+                                       class="form-control @error('artistSeparationMinutes') is-invalid @enderror">
+                                <span class="input-group-text">{{ __('min') }}</span>
+                                @error('artistSeparationMinutes')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div class="text-muted-sm">
+                                {{ __('Minimum gap between two titles of the same artist in fills and random elements. The same artist never plays twice in a row anyway, and the GVL rules always apply. 0 turns the gap off.') }}
+                            </div>
+                        </div>
+
                         <div class="form-check form-switch mb-3">
                             <input class="form-check-input" type="checkbox" role="switch"
                                    id="alertEmailsEnabled" wire:model="alertEmailsEnabled">

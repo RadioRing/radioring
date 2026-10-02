@@ -22,6 +22,7 @@
                 <option value="rundown">{{ __('Rundown generiert') }}</option>
                 <option value="underrun">{{ __('Underrun') }}</option>
                 <option value="external_failed">{{ __('Externes Element fehlt') }}</option>
+                <option value="rotation">{{ __('Rotation rules') }}</option>
                 <option value="emergency">{{ __('Emergency loop') }}</option>
             </select>
         </div>
@@ -85,6 +86,11 @@
                                     @case(\App\Models\StationLog::EVENT_RUNDOWN_GENERATED)
                                         <span class="badge text-bg-success-subtle text-success">
                                             <i class="bi bi-arrow-repeat me-1"></i>{{ __('Rundown') }}
+                                        </span>
+                                        @break
+                                    @case(\App\Models\StationLog::EVENT_ROTATION_VIOLATION)
+                                        <span class="badge text-bg-warning-subtle text-warning">
+                                            <i class="bi bi-shuffle me-1"></i>{{ __('Rotation rules') }}
                                         </span>
                                         @break
                                     @case(\App\Models\StationLog::EVENT_SCHEDULE_CATCH_UP)

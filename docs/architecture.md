@@ -84,9 +84,11 @@ break) that other playlists embed as an item. It exists only in the template wor
 flattened into concrete items during generation, and never reaches the hour grid, so
 nothing downstream of the rundown knows containers exist. Containers do not nest.
 
-Rotation is planned in `MusicRotationPlanner` with a decaying penalty for tracks played
-recently, rather than a hard block. If the library is too small, it fills anyway with the
-least-penalised choice instead of failing.
+Rotation is planned in `MusicRotationPlanner` with penalty tiers rather than hard blocks:
+GVL rules first, then title separation, same artist back to back, the station's artist
+separation and same clock time as yesterday. Ties go to the freshest track. The planner
+sees the generated hours before and after the slot. If the library is too small, it fills
+anyway with the least-penalised choice and the rundown logs a protocol entry.
 
 ## Media delivery
 

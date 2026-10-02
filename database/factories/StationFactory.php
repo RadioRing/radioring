@@ -26,6 +26,7 @@ class StationFactory extends Factory
             'slug' => Str::slug($name),
             'status' => 'active',
             'regenerate_rundowns_nightly' => false,
+            'artist_separation_minutes' => 45,
         ];
     }
 }

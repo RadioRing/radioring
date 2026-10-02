@@ -535,5 +535,10 @@
     "Alert mails for my stations": "Alarm-Mails für meine Stationen",
     "As an owner of a station you are mailed when it goes off air. Turn this off to stop those mails for all of your stations.": "Als Besitzer einer Station bekommst du eine Mail, wenn sie ausfällt. Schalte das ab, um diese Mails für alle deine Stationen abzubestellen.",
     "Switch to an existing station": "Zu einer vorhandenen Station wechseln",
-    "You already have access to these stations.": "Auf diese Stationen hast du bereits Zugriff."
+    "You already have access to these stations.": "Auf diese Stationen hast du bereits Zugriff.",
+    ":date :hour:00: :count title breaks the GVL repeat rules (music pool too small).|:date :hour:00: :count titles break the GVL repeat rules (music pool too small).": ":date :hour:00 Uhr: :count Titel verletzt die GVL-Wiederholungsregeln (Musikpool zu klein).|:date :hour:00 Uhr: :count Titel verletzen die GVL-Wiederholungsregeln (Musikpool zu klein).",
+    "Rotation rules": "Rotationsregeln",
+    "Artist separation": "Interpretenabstand",
+    "min": "Min.",
+    "Minimum gap between two titles of the same artist in fills and random elements. The same artist never plays twice in a row anyway, and the GVL rules always apply. 0 turns the gap off.": "Mindestabstand zwischen zwei Titeln desselben Interpreten in Auffüll- und Zufallselementen. Derselbe Interpret läuft ohnehin nie zweimal hintereinander, und die GVL-Regeln gelten immer. 0 schaltet den Abstand ab."
 }

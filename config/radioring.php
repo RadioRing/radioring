@@ -186,17 +186,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Musik-Rotation: Titel-Cooldown
+    | Music rotation
     |--------------------------------------------------------------------------
-    | Reduziert Wiederholungen desselben Titels über den Tag. Innerhalb des
-    | Cooldown-Fensters bekommt ein erneut gewählter Titel eine abklingende
-    | Strafe (gerade gespielt = volle Strafe, am Fensterende ~0). Weiche Regel:
-    | reicht das Material nicht, wird trotzdem aufgefüllt (least-penalty).
+    | title_separation_seconds: minimum gap before the same title airs again.
+    | A shorter gap is only used when the pool leaves no other choice.
+    | history_seconds: how far before and after a slot the planner looks at
+    | airings (counting plays per day, same clock time on previous days).
+    | The artist separation is set per station.
     |
     */
     'rotation' => [
-        'title_cooldown_seconds' => (int) env('ROTATION_TITLE_COOLDOWN_SECONDS', 28800), // 8h
-        'title_penalty' => (int) env('ROTATION_TITLE_PENALTY', 5000),
+        'title_separation_seconds' => (int) env('ROTATION_TITLE_SEPARATION_SECONDS', env('ROTATION_TITLE_COOLDOWN_SECONDS', 28800)), // 8h
+        'history_seconds' => (int) env('ROTATION_HISTORY_SECONDS', 172800), // 48h
     ],
 
     /*

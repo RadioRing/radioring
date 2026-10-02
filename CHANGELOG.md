@@ -14,6 +14,16 @@ to stand on its own.
 
 ## [Unreleased]
 
+### Changed
+- **Better music rotation.** Fills spread the whole pool over the day, never play the same
+  artist twice in a row and avoid repeating a title at the same time as yesterday. The GVL
+  repeat rules always come first and are now also checked against the hours planned after.
+- **Artist separation per station** (default 45 minutes) under *Edit station*.
+- **Protocol entry when a rundown breaks the GVL rules**, usually because the music pool is
+  too small.
+- `ROTATION_TITLE_COOLDOWN_SECONDS` is now `ROTATION_TITLE_SEPARATION_SECONDS` (the old name
+  still works). `ROTATION_TITLE_PENALTY` is gone.
+
 ### Fixed
 - **Deleting a file no longer resets the dashboard's rundown view.** Deleting a file that
   was on air made the dashboard show the hour from its start until the next track began.

@@ -32,6 +32,29 @@ test('owner can toggle nightly rundown regeneration', function () {
     expect($this->station->fresh()->regenerate_rundowns_nightly)->toBeTrue();
 });
 
+test('owner can set the artist separation of the station', function () {
+    expect($this->station->artist_separation_minutes)->toBe(45);
+
+    Livewire::actingAs($this->owner)
+        ->test(Edit::class, ['station' => $this->station])
+        ->assertSet('artistSeparationMinutes', 45)
+        ->set('artistSeparationMinutes', 90)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($this->station->fresh()->artist_separation_minutes)->toBe(90);
+});
+
+test('the artist separation is limited to four hours', function () {
+    Livewire::actingAs($this->owner)
+        ->test(Edit::class, ['station' => $this->station])
+        ->set('artistSeparationMinutes', 300)
+        ->call('save')
+        ->assertHasErrors(['artistSeparationMinutes']);
+
+    expect($this->station->fresh()->artist_separation_minutes)->toBe(45);
+});
+
 test('owner can switch off alert mails for the station', function () {
     Livewire::actingAs($this->owner)
         ->test(Edit::class, ['station' => $this->station])

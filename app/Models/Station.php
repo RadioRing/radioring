@@ -16,7 +16,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
-#[Fillable(['user_id', 'tenant_id', 'name', 'slug', 'status', 'api_token', 's4r_partner_token', 'regenerate_rundowns_nightly', 'stereo_tool_license_key', 'stereo_tool_preset', 'alert_emails_enabled'])]
+#[Fillable(['user_id', 'tenant_id', 'name', 'slug', 'status', 'api_token', 's4r_partner_token', 'regenerate_rundowns_nightly', 'artist_separation_minutes', 'stereo_tool_license_key', 'stereo_tool_preset', 'alert_emails_enabled'])]
 class Station extends Model
 {
     /** @use HasFactory<StationFactory> */
@@ -35,6 +35,7 @@ class Station extends Model
     {
         return [
             'regenerate_rundowns_nightly' => 'boolean',
+            'artist_separation_minutes' => 'integer',
             'alert_emails_enabled' => 'boolean',
             // Geteiltes Geheimnis mit dem Station-Container: der braucht den Klartext als
             // Env-Variable, hashen scheidet daher aus. Nachgeschlagen wird nie ueber den

@@ -5,24 +5,29 @@ namespace App\Services;
 use App\Enums\FillFit;
 use App\Models\MediaFile;
 use Carbon\Carbon;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
 /**
- * Wählt Musiktitel für ein Fill-Element so aus, dass GEMA/GVL-Rotationsregeln über
- * ein gleitendes 3-Stunden-Fenster eingehalten werden:
+ * Picks music for fill and random elements.
  *
- * - höchstens 4 Titel desselben Interpreten pro 3h-Fenster
- * - höchstens 3 Titel desselben Interpreten am Stück
- * - höchstens 3 Titel desselben Albums pro 3h-Fenster
- * - nie zwei Titel desselben Albums direkt hintereinander
- * - derselbe Titel innerhalb des Cooldown-Fensters: abklingende Strafe (Diversität)
+ * Penalty tiers, highest first:
+ * 1. GVL: per 3h max 4 per artist (3 in a row), max 3 per album (2 in a row)
+ * 2. same title within the title separation
+ * 3. same artist directly before or after
+ * 4. same artist within the station's artist separation
+ * 5. same title at the same clock time 1 or 2 days apart
  *
- * Reicht das Material nicht aus, um die Regeln einzuhalten, wird der jeweils am
- * wenigsten verletzende Titel gewählt („so gut wie möglich").
+ * Ties: fewest airings in 24h, then oldest title, then oldest artist; random within the
+ * freshest slice. The timeline may contain later hours, so rules look both ways.
+ *
+ * @phpstan-type TimelineEntry array{id?: ?int, artist: ?string, album: ?string, at: CarbonInterface, music?: bool}
+ * @phpstan-type Airing array{id: ?int, artist: ?string, album: ?string, at: int, music: bool}
+ * @phpstan-type Ranked array{index: int, track: MediaFile, penalty: int, freshness: list<int>}
  */
 class MusicRotationPlanner
 {
-    public const WINDOW_SECONDS = 10800; // 3 Stunden
+    public const WINDOW_SECONDS = 10800;
 
     public const MAX_ARTIST_PER_WINDOW = 4;
 
@@ -32,104 +37,118 @@ class MusicRotationPlanner
 
     public const MAX_ALBUM_IN_A_ROW = 2;
 
-    /**
-     * Cooldown-Fenster (Sekunden), innerhalb dessen ein bereits gespielter Titel eine
-     * abklingende Strafe erhält, und das Maximalgewicht dieser Strafe (für gerade eben
-     * gespielte Titel). Konfigurierbar über config/radioring.php.
-     */
-    private int $titleCooldownSeconds;
+    private const GVL_PENALTY = 1_000_000;
 
-    private int $titlePenalty;
+    private const TITLE_PENALTY = 10_000;
+
+    private const ADJACENT_ARTIST_PENALTY = 1_000;
+
+    private const ARTIST_SEPARATION_PENALTY = 100;
+
+    private const SAME_CLOCK_TIME_PENALTY = 50;
+
+    private const SAME_CLOCK_TIME_TOLERANCE = 3600;
+
+    private const PLAYS_WINDOW_SECONDS = 86400;
+
+    /** Max gap between a track's end and the next planned title to count as adjacent. */
+    private const ADJACENT_SLACK_SECONDS = 300;
+
+    /** Max gap between two title starts to count as neighbours. */
+    private const NEIGHBOUR_GAP_SECONDS = 1800;
+
+    private const FRESH_SLICE = 0.1;
+
+    private const FRESH_SLICE_MIN = 5;
+
+    /** Candidates for backtiming the last tracks (60 give ~3500 pairs). */
+    private const FINISH_CANDIDATES = 60;
+
+    private int $titleSeparationSeconds;
+
+    private int $historySeconds;
+
+    private int $artistSeparationSeconds = 0;
+
+    private int $violations = 0;
 
     public function __construct()
     {
-        $this->titleCooldownSeconds = (int) config('radioring.rotation.title_cooldown_seconds', 28800);
-        $this->titlePenalty = (int) config('radioring.rotation.title_penalty', 5000);
+        $this->titleSeparationSeconds = (int) config('radioring.rotation.title_separation_seconds', 28800);
+        $this->historySeconds = (int) config('radioring.rotation.history_seconds', 172800);
     }
 
     /**
-     * Wie weit zurück die History für die Penalty-Berechnung relevant ist
-     * (Maximum aus Rotations- und Titel-Cooldown-Fenster).
+     * Timeline range needed before and after a slot.
      */
     public function historyWindowSeconds(): int
     {
-        return max(self::WINDOW_SECONDS, $this->titleCooldownSeconds);
+        return max(self::WINDOW_SECONDS, $this->titleSeparationSeconds, $this->historySeconds);
     }
 
-    /** Candidates sampled for backtiming the last tracks (60 give ~3500 pairs). */
-    private const FINISH_CANDIDATES = 60;
-
-    /** Tracks planned past a hard deadline as a reserve against drift on air. */
-    private const RESERVE_TRACKS = 1;
+    /**
+     * Tracks of the last plan() that break a GVL rule.
+     */
+    public function lastPlanViolations(): int
+    {
+        return $this->violations;
+    }
 
     /**
-     * Plant die Reihenfolge der Fill-Tracks.
+     * Closest and Reach backtime the last one or two tracks; Reach adds one reserve track.
      *
-     * Closest and Reach backtime the last one or two tracks to the budget; the rotation
-     * rules still take precedence. Reach adds a reserve track behind the budget.
-     *
-     * @param  Collection<int, MediaFile>  $pool  verfügbare Musiktitel (Kandidaten)
-     * @param  list<array{id?: ?int, artist: ?string, album: ?string, at: Carbon}>  $history  bereits gesendete/platzierte Tracks im Vorfeld, aufsteigend nach Zeit sortiert
-     * @return list<MediaFile> gewählte Tracks in Sendereihenfolge
+     * @param  Collection<int, MediaFile>  $pool
+     * @param  list<TimelineEntry>  $timeline
+     * @return list<MediaFile> in broadcast order
      */
-    public function plan(Collection $pool, array $history, Carbon $startAt, int $maxDuration, FillFit $fit = FillFit::Cross): array
+    public function plan(Collection $pool, array $timeline, Carbon $startAt, int $maxDuration, FillFit $fit = FillFit::Cross, int $artistSeparationSeconds = 0): array
     {
+        $this->artistSeparationSeconds = max(0, $artistSeparationSeconds);
+        $this->violations = 0;
+
         $remaining = $pool->values()->all();
-
-        /** @var list<array{id: ?int, artist: ?string, album: ?string, at: Carbon}> $timeline */
-        $timeline = array_map(fn (array $e): array => [
-            'id' => $e['id'] ?? null,
-            'artist' => $this->normalize($e['artist'] ?? null),
-            'album' => $this->normalize($e['album'] ?? null),
-            'at' => $e['at'],
-        ], $history);
-
-        $cursor = $startAt->copy();
+        $timeline = $this->normalizeTimeline($timeline);
+        $cursor = $startAt->getTimestamp();
         $filled = 0;
         $chosen = [];
         $longest = (int) $pool->max('duration_seconds');
 
         $place = function (MediaFile $track) use (&$timeline, &$chosen, &$cursor, &$filled): void {
-            $timeline[] = $this->timelineEntry($track, $cursor);
+            if ($this->gvlPenalty($track, $this->context($timeline, $cursor)) > 0) {
+                $this->violations++;
+            }
+
+            $timeline[] = $this->airing($track, $cursor);
             $chosen[] = $track;
-            $cursor = $cursor->copy()->addSeconds($track->duration_seconds ?? 0);
+            $cursor += $track->duration_seconds ?? 0;
             $filled += $track->duration_seconds ?? 0;
         };
 
         while ($filled < $maxDuration && $remaining !== []) {
             $left = $maxDuration - $filled;
+            $ranked = $this->rank($remaining, $timeline, $cursor);
 
-            // Two tracks can close the gap: fit the end.
             if ($fit !== FillFit::Cross && $left <= 2 * $longest) {
-                $finish = $this->finish($remaining, $timeline, $cursor, $left, $fit);
+                $finish = $this->finish($ranked, $timeline, $cursor, $left, $fit);
 
                 if ($finish !== null) {
-                    foreach ($finish as $track) {
-                        $place($track);
-                    }
+                    array_map($place, $finish);
 
                     break;
                 }
             }
 
-            $index = $this->chooseIndex($remaining, $timeline, $cursor);
-            $track = $remaining[$index];
+            $index = $this->pickFromRanked($ranked);
+            $place($remaining[$index]);
             array_splice($remaining, $index, 1);
-
-            $place($track);
         }
 
-        // Reserve behind a hard deadline. The backtimed end is exact only on paper: on air the
-        // hour drifts, and a fill that ends seconds early leaves the station silent until the
-        // cut. The playout drops the reserve when the time is reached (skipFillPastFixedTime)
-        // and the cut fades it out otherwise.
+        // Reserve against drift on air; the playout drops it at the fixed time.
         if ($fit === FillFit::Reach && $chosen !== []) {
             $remaining = array_values(array_filter($remaining, fn (MediaFile $track): bool => ! in_array($track, $chosen, true)));
 
-            for ($i = 0; $i < self::RESERVE_TRACKS && $remaining !== []; $i++) {
-                $index = $this->chooseIndex($remaining, $timeline, $cursor);
-                $place($remaining[$index]);
-                array_splice($remaining, $index, 1);
+            if ($remaining !== []) {
+                $place($remaining[$this->pickFromRanked($this->rank($remaining, $timeline, $cursor))]);
             }
         }
 
@@ -137,35 +156,43 @@ class MusicRotationPlanner
     }
 
     /**
-     * Best zero, one or two tracks to close the last $left seconds, or null if Reach cannot
-     * be met. Only candidates with the lowest available penalty are considered.
+     * Single pick for a random element, same rules as plan().
      *
-     * @param  list<MediaFile>  $remaining
-     * @param  list<array{id: ?int, artist: ?string, album: ?string, at: Carbon}>  $timeline
-     * @return list<MediaFile>|null tracks in broadcast order
+     * @param  Collection<int, MediaFile>  $candidates
+     * @param  list<TimelineEntry>  $timeline
      */
-    private function finish(array $remaining, array $timeline, Carbon $at, int $left, FillFit $fit): ?array
+    public function pickOne(Collection $candidates, array $timeline, Carbon $at, int $artistSeparationSeconds = 0): ?MediaFile
     {
-        $penalties = array_map(fn (MediaFile $track): int => $this->penalty($track, $timeline, $at), $remaining);
-        $lowest = min($penalties);
+        if ($candidates->isEmpty()) {
+            return null;
+        }
 
-        $candidates = array_keys($penalties, $lowest, true);
-        shuffle($candidates);
-        $candidates = array_map(fn (int $i): MediaFile => $remaining[$i], array_slice($candidates, 0, self::FINISH_CANDIDATES));
+        $this->artistSeparationSeconds = max(0, $artistSeparationSeconds);
+        $remaining = $candidates->values()->all();
+
+        return $remaining[$this->pickFromRanked($this->rank($remaining, $this->normalizeTimeline($timeline), $at->getTimestamp()))];
+    }
+
+    /**
+     * Best zero, one or two tracks for the last $left seconds; null if Reach is impossible.
+     *
+     * @param  list<Ranked>  $ranked
+     * @param  list<Airing>  $timeline
+     * @return list<MediaFile>|null
+     */
+    private function finish(array $ranked, array $timeline, int $at, int $left, FillFit $fit): ?array
+    {
+        $lowest = $ranked[0]['penalty'];
+        $candidates = array_column(array_slice($this->lowestTier($ranked), 0, self::FINISH_CANDIDATES), 'track');
 
         $deviation = fn (int $total): ?int => match ($fit) {
             FillFit::Reach => $total >= $left ? $total - $left : null,
             default => abs($total - $left),
         };
 
-        $best = null;
-        $bestDeviation = PHP_INT_MAX;
-
-        // Stopping now is an option for a soft fixed time.
-        if ($fit === FillFit::Closest) {
-            $best = [];
-            $bestDeviation = $left;
-        }
+        // Closest may also stop right here.
+        $best = $fit === FillFit::Closest ? [] : null;
+        $bestDeviation = $fit === FillFit::Closest ? $left : PHP_INT_MAX;
 
         foreach ($candidates as $first) {
             $firstLength = $first->duration_seconds ?? 0;
@@ -176,8 +203,8 @@ class MusicRotationPlanner
                 $bestDeviation = $single;
             }
 
-            $afterFirst = [...$timeline, $this->timelineEntry($first, $at)];
-            $secondAt = $at->copy()->addSeconds($firstLength);
+            $secondAt = $at + $firstLength;
+            $afterFirst = null;
 
             foreach ($candidates as $second) {
                 if ($second === $first) {
@@ -186,8 +213,13 @@ class MusicRotationPlanner
 
                 $pair = $deviation($firstLength + ($second->duration_seconds ?? 0));
 
-                // Check the penalty only for pairs that improve the fit.
-                if ($pair === null || $pair >= $bestDeviation || $this->penalty($second, $afterFirst, $secondAt) > $lowest) {
+                if ($pair === null || $pair >= $bestDeviation) {
+                    continue;
+                }
+
+                $afterFirst ??= $this->context([...$timeline, $this->airing($first, $at)], $secondAt);
+
+                if ($this->penalty($second, $afterFirst) > $lowest) {
                     continue;
                 }
 
@@ -200,88 +232,163 @@ class MusicRotationPlanner
     }
 
     /**
-     * @return array{id: ?int, artist: ?string, album: ?string, at: Carbon}
+     * @param  list<MediaFile>  $remaining
+     * @param  list<Airing>  $timeline
+     * @return list<Ranked> best first
      */
-    private function timelineEntry(MediaFile $track, Carbon $at): array
+    private function rank(array $remaining, array $timeline, int $at): array
     {
+        $context = $this->context($timeline, $at);
+        $rows = [];
+
+        foreach ($remaining as $index => $track) {
+            $rows[] = [
+                'index' => $index,
+                'track' => $track,
+                'penalty' => $this->penalty($track, $context),
+                'freshness' => $this->freshness($track, $context),
+            ];
+        }
+
+        // Shuffle so equal candidates do not keep the pool order.
+        shuffle($rows);
+        usort($rows, fn (array $a, array $b): int => [$a['penalty'], ...$a['freshness']] <=> [$b['penalty'], ...$b['freshness']]);
+
+        return $rows;
+    }
+
+    /**
+     * @param  list<Ranked>  $ranked
+     * @return list<Ranked>
+     */
+    private function lowestTier(array $ranked): array
+    {
+        return array_values(array_filter($ranked, fn (array $row): bool => $row['penalty'] === $ranked[0]['penalty']));
+    }
+
+    /**
+     * Random index within the freshest slice of the lowest tier.
+     *
+     * @param  list<Ranked>  $ranked
+     */
+    private function pickFromRanked(array $ranked): int
+    {
+        $tier = $this->lowestTier($ranked);
+        $slice = array_slice($tier, 0, max(self::FRESH_SLICE_MIN, (int) ceil(count($tier) * self::FRESH_SLICE)));
+
+        return $slice[array_rand($slice)]['index'];
+    }
+
+    /**
+     * Per-slot lookup tables for penalty() and freshness().
+     *
+     * @param  list<Airing>  $timeline
+     * @return array{
+     *     at: int,
+     *     titleTimes: array<int, list<int>>,
+     *     artistTimes: array<string, list<int>>,
+     *     albumTimes: array<string, list<int>>,
+     *     before: list<array{artist: ?string, album: ?string}>,
+     *     after: list<array{artist: ?string, album: ?string}>,
+     *     nextMusicAt: ?int
+     * }
+     */
+    private function context(array $timeline, int $at): array
+    {
+        $titleTimes = $artistTimes = $albumTimes = $before = $after = [];
+
+        foreach ($timeline as $entry) {
+            if ($entry['id'] !== null) {
+                $titleTimes[$entry['id']][] = $entry['at'];
+            }
+
+            if ($entry['artist'] !== null) {
+                $artistTimes[$entry['artist']][] = $entry['at'];
+            }
+
+            if ($entry['album'] !== null) {
+                $albumTimes[$entry['album']][] = $entry['at'];
+            }
+
+            if ($entry['music'] && abs($entry['at'] - $at) < self::WINDOW_SECONDS) {
+                if ($entry['at'] < $at) {
+                    $before[] = $entry;
+                } else {
+                    $after[] = $entry;
+                }
+            }
+        }
+
+        usort($before, fn (array $a, array $b): int => $b['at'] <=> $a['at']);
+        usort($after, fn (array $a, array $b): int => $a['at'] <=> $b['at']);
+        $nextMusicAt = $after[0]['at'] ?? null;
+
         return [
-            'id' => $track->id,
-            'artist' => $this->normalize($track->artist),
-            'album' => $this->normalize($track->album),
-            'at' => $at->copy(),
+            'at' => $at,
+            'titleTimes' => $titleTimes,
+            'artistTimes' => $artistTimes,
+            'albumTimes' => $albumTimes,
+            'before' => $this->neighbourChain($before, $at),
+            'after' => $this->neighbourChain($after, $nextMusicAt ?? $at),
+            'nextMusicAt' => $nextMusicAt,
         ];
     }
 
     /**
-     * Wählt den Index des nächsten Tracks: bevorzugt einen, der keine Regel verletzt;
-     * sonst den mit der geringsten Strafe (Fallback bei zu wenig Material).
+     * Consecutive titles from $from on, stopping at the first gap.
      *
-     * @param  list<MediaFile>  $remaining
-     * @param  list<array{id: ?int, artist: ?string, album: ?string, at: Carbon}>  $timeline
+     * @param  list<Airing>  $entries  sorted away from $from
+     * @return list<array{artist: ?string, album: ?string}>
      */
-    private function chooseIndex(array $remaining, array $timeline, Carbon $at): int
+    private function neighbourChain(array $entries, int $from): array
     {
-        /** @var list<int> $feasible */
-        $feasible = [];
-        /** @var array<int, int> $penalties */
-        $penalties = [];
+        $chain = [];
 
-        foreach ($remaining as $i => $track) {
-            $penalty = $this->penalty($track, $timeline, $at);
-            $penalties[$i] = $penalty;
-
-            if ($penalty === 0) {
-                $feasible[] = $i;
+        foreach ($entries as $entry) {
+            if (abs($from - $entry['at']) > self::NEIGHBOUR_GAP_SECONDS) {
+                break;
             }
+
+            $chain[] = ['artist' => $entry['artist'], 'album' => $entry['album']];
+            $from = $entry['at'];
         }
 
-        if ($feasible !== []) {
-            return $feasible[array_rand($feasible)];
-        }
-
-        $min = min($penalties);
-        /** @var list<int> $candidates */
-        $candidates = array_keys($penalties, $min, true);
-
-        return $candidates[array_rand($candidates)];
+        return $chain;
     }
 
     /**
-     * Strafpunkte für das Platzieren eines Tracks an dieser Stelle. 0 = regelkonform.
-     * Titel-Wiederholungen wiegen am schwersten, dann Interpret, dann Album.
+     * 0 = no rule touched.
      *
-     * @param  list<array{id: ?int, artist: ?string, album: ?string, at: Carbon}>  $timeline
+     * @param  array<string, mixed>  $context  see context()
      */
-    private function penalty(MediaFile $track, array $timeline, Carbon $at): int
+    private function penalty(MediaFile $track, array $context): int
     {
-        $penalty = 0;
+        $at = $context['at'];
+        $penalty = $this->gvlPenalty($track, $context);
+        $titleTimes = $track->id !== null ? ($context['titleTimes'][$track->id] ?? []) : [];
 
-        // Titel-Cooldown: derselbe Titel innerhalb des Fensters → abklingende Strafe.
-        $penalty += $this->titleCooldownPenalty($track, $timeline, $at);
+        $penalty += $this->decayingPenalty(self::TITLE_PENALTY, $this->nearestDistance($titleTimes, $at), $this->titleSeparationSeconds);
 
         $artist = $this->normalize($track->artist);
         if ($artist !== null) {
-            $windowExcess = $this->windowCount($timeline, $at, 'artist', $artist) - (self::MAX_ARTIST_PER_WINDOW - 1);
-            if ($windowExcess > 0) {
-                $penalty += 1000 * $windowExcess;
+            if (($context['before'][0]['artist'] ?? null) === $artist) {
+                $penalty += self::ADJACENT_ARTIST_PENALTY;
             }
 
-            $rowExcess = $this->trailingRun($timeline, 'artist', $artist) - (self::MAX_ARTIST_IN_A_ROW - 1);
-            if ($rowExcess > 0) {
-                $penalty += 1000 * $rowExcess;
+            if ($this->isAdjacentToNext($track, $context) && ($context['after'][0]['artist'] ?? null) === $artist) {
+                $penalty += self::ADJACENT_ARTIST_PENALTY;
             }
+
+            $penalty += $this->decayingPenalty(self::ARTIST_SEPARATION_PENALTY, $this->nearestDistance($context['artistTimes'][$artist] ?? [], $at), $this->artistSeparationSeconds);
         }
 
-        $album = $this->normalize($track->album);
-        if ($album !== null) {
-            $windowExcess = $this->windowCount($timeline, $at, 'album', $album) - (self::MAX_ALBUM_PER_WINDOW - 1);
-            if ($windowExcess > 0) {
-                $penalty += 10 * $windowExcess;
-            }
+        foreach ($titleTimes as $time) {
+            $distance = abs($at - $time);
 
-            $rowExcess = $this->trailingRun($timeline, 'album', $album) - (self::MAX_ALBUM_IN_A_ROW - 1);
-            if ($rowExcess > 0) {
-                $penalty += 10 * $rowExcess;
+            if (abs($distance - 86400) <= self::SAME_CLOCK_TIME_TOLERANCE || abs($distance - 172800) <= self::SAME_CLOCK_TIME_TOLERANCE) {
+                $penalty += self::SAME_CLOCK_TIME_PENALTY;
+
+                break;
             }
         }
 
@@ -289,88 +396,152 @@ class MusicRotationPlanner
     }
 
     /**
-     * Abklingende Strafe, wenn derselbe Titel innerhalb des Cooldown-Fensters bereits
-     * lief: gerade eben gespielt → volle Strafe, am Fensterende → ~0. Greift nur bei
-     * bekannter Track-ID (In-Memory-Tracks ohne ID bleiben unbestraft).
-     *
-     * @param  list<array{id: ?int, artist: ?string, album: ?string, at: Carbon}>  $timeline
+     * Base to 2x base, falling with distance; 0 at or beyond the separation.
      */
-    private function titleCooldownPenalty(MediaFile $track, array $timeline, Carbon $at): int
+    private function decayingPenalty(int $base, ?int $distance, int $separation): int
     {
-        $id = $track->id;
-
-        if ($id === null || $this->titleCooldownSeconds <= 0) {
+        if ($distance === null || $distance >= $separation) {
             return 0;
         }
 
-        $windowStart = $at->copy()->subSeconds($this->titleCooldownSeconds);
-        $mostRecent = null;
+        return $base + (int) round($base * ($separation - $distance) / $separation);
+    }
 
-        foreach ($timeline as $entry) {
-            if (($entry['id'] ?? null) === $id && $entry['at'] >= $windowStart && $entry['at'] < $at) {
-                if ($mostRecent === null || $entry['at'] > $mostRecent) {
-                    $mostRecent = $entry['at'];
+    /**
+     * @param  array<string, mixed>  $context  see context()
+     */
+    private function gvlPenalty(MediaFile $track, array $context): int
+    {
+        $penalty = 0;
+        $adjacentAfter = $this->isAdjacentToNext($track, $context);
+
+        $artist = $this->normalize($track->artist);
+        if ($artist !== null) {
+            $penalty += max(0, $this->maxWindowCount($context['artistTimes'][$artist] ?? [], $context['at']) - self::MAX_ARTIST_PER_WINDOW);
+            $penalty += max(0, $this->runLength($context, 'artist', $artist, $adjacentAfter) - self::MAX_ARTIST_IN_A_ROW);
+        }
+
+        $album = $this->normalize($track->album);
+        if ($album !== null) {
+            $penalty += max(0, $this->maxWindowCount($context['albumTimes'][$album] ?? [], $context['at']) - self::MAX_ALBUM_PER_WINDOW);
+            $penalty += max(0, $this->runLength($context, 'album', $album, $adjacentAfter) - self::MAX_ALBUM_IN_A_ROW);
+        }
+
+        return self::GVL_PENALTY * $penalty;
+    }
+
+    /**
+     * Most airings (candidate included) in any 3h window containing $at.
+     *
+     * @param  list<int>  $times
+     */
+    private function maxWindowCount(array $times, int $at): int
+    {
+        $all = [...$times, $at];
+        $max = 0;
+
+        foreach ($all as $start) {
+            if ($start > $at || $start + self::WINDOW_SECONDS <= $at) {
+                continue;
+            }
+
+            $count = count(array_filter($all, fn (int $time): bool => $time >= $start && $time < $start + self::WINDOW_SECONDS));
+            $max = max($max, $count);
+        }
+
+        return $max;
+    }
+
+    /**
+     * Run of equal values the candidate would join (candidate included).
+     *
+     * @param  array<string, mixed>  $context  see context()
+     */
+    private function runLength(array $context, string $field, string $value, bool $adjacentAfter): int
+    {
+        $run = 1;
+
+        foreach ([$context['before'], $adjacentAfter ? $context['after'] : []] as $neighbours) {
+            foreach ($neighbours as $entry) {
+                if ($entry[$field] !== $value) {
+                    break;
                 }
+                $run++;
             }
-        }
-
-        if ($mostRecent === null) {
-            return 0;
-        }
-
-        $age = $at->getTimestamp() - $mostRecent->getTimestamp();
-        $remaining = $this->titleCooldownSeconds - $age;
-
-        return $remaining > 0
-            ? (int) round($this->titlePenalty * $remaining / $this->titleCooldownSeconds)
-            : 0;
-    }
-
-    /**
-     * Anzahl der Einträge im 3h-Fenster vor $at mit identischem Wert im Feld.
-     *
-     * @param  list<array{artist: ?string, album: ?string, at: Carbon}>  $timeline
-     */
-    private function windowCount(array $timeline, Carbon $at, string $field, string $value): int
-    {
-        $windowStart = $at->copy()->subSeconds(self::WINDOW_SECONDS);
-        $count = 0;
-
-        foreach ($timeline as $entry) {
-            if ($entry[$field] === $value && $entry['at'] >= $windowStart && $entry['at'] < $at) {
-                $count++;
-            }
-        }
-
-        return $count;
-    }
-
-    /**
-     * Länge der ununterbrochenen Serie identischer Werte am Ende der Timeline.
-     *
-     * @param  list<array{artist: ?string, album: ?string, at: Carbon}>  $timeline
-     */
-    private function trailingRun(array $timeline, string $field, string $value): int
-    {
-        $run = 0;
-
-        for ($i = count($timeline) - 1; $i >= 0; $i--) {
-            if ($timeline[$i][$field] !== $value) {
-                break;
-            }
-            $run++;
         }
 
         return $run;
     }
 
+    /**
+     * @param  array<string, mixed>  $context  see context()
+     */
+    private function isAdjacentToNext(MediaFile $track, array $context): bool
+    {
+        return $context['nextMusicAt'] !== null
+            && $context['nextMusicAt'] <= $context['at'] + ($track->duration_seconds ?? 0) + self::ADJACENT_SLACK_SECONDS;
+    }
+
+    /**
+     * Sort key, lower = fresher.
+     *
+     * @param  array<string, mixed>  $context  see context()
+     * @return list<int>
+     */
+    private function freshness(MediaFile $track, array $context): array
+    {
+        $at = $context['at'];
+        $titleTimes = $track->id !== null ? ($context['titleTimes'][$track->id] ?? []) : [];
+        $artist = $this->normalize($track->artist);
+        $artistTimes = $artist !== null ? ($context['artistTimes'][$artist] ?? []) : [];
+
+        return [
+            count(array_filter($titleTimes, fn (int $time): bool => abs($time - $at) < self::PLAYS_WINDOW_SECONDS)),
+            -($this->nearestDistance($titleTimes, $at) ?? PHP_INT_MAX),
+            -($this->nearestDistance($artistTimes, $at) ?? PHP_INT_MAX),
+        ];
+    }
+
+    /**
+     * @param  list<int>  $times
+     */
+    private function nearestDistance(array $times, int $at): ?int
+    {
+        return $times === [] ? null : min(array_map(fn (int $time): int => abs($at - $time), $times));
+    }
+
+    /**
+     * @param  list<TimelineEntry>  $timeline
+     * @return list<Airing>
+     */
+    private function normalizeTimeline(array $timeline): array
+    {
+        return array_map(fn (array $entry): array => [
+            'id' => $entry['id'] ?? null,
+            'artist' => $this->normalize($entry['artist'] ?? null),
+            'album' => $this->normalize($entry['album'] ?? null),
+            'at' => $entry['at']->getTimestamp(),
+            'music' => $entry['music'] ?? (($entry['artist'] ?? null) !== null),
+        ], $timeline);
+    }
+
+    /**
+     * @return Airing
+     */
+    private function airing(MediaFile $track, int $at): array
+    {
+        return [
+            'id' => $track->id,
+            'artist' => $this->normalize($track->artist),
+            'album' => $this->normalize($track->album),
+            'at' => $at,
+            'music' => ($track->type ?? 'music') === 'music',
+        ];
+    }
+
     private function normalize(?string $value): ?string
     {
-        if ($value === null) {
-            return null;
-        }
-
-        $value = trim($value);
+        $value = trim((string) $value);
 
         return $value === '' ? null : mb_strtolower($value);
     }
