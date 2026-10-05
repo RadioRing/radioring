@@ -564,5 +564,21 @@
     "Showing": "Zeige",
     "to": "bis",
     "of": "von",
-    "results": "Ergebnissen"
+    "results": "Ergebnissen",
+    "Run time": "Laufzeit",
+    "From": "Von",
+    "Until": "Bis",
+    "Run time start": "Beginn der Laufzeit",
+    "Run time end": "Ende der Laufzeit",
+    "Fill and random elements only pick this file between these dates, for example a Christmas jingle in December or a trailer that expires tonight. Either end may stay empty.": "Fill- und Zufallselemente wählen diese Datei nur in diesem Zeitraum, zum Beispiel einen Weihnachtsjingle im Dezember oder einen Trailer, der heute Abend abläuft. Beide Enden dürfen leer bleiben.",
+    "The run time is over: fill and random elements no longer pick this file.": "Die Laufzeit ist vorbei: Fill- und Zufallselemente wählen diese Datei nicht mehr.",
+    "Fill and random elements may only pick this file inside this run time.": "Fill- und Zufallselemente dürfen diese Datei nur innerhalb dieser Laufzeit wählen.",
+    "The end of the run time must lie after its start.": "Das Ende der Laufzeit muss nach dem Beginn liegen.",
+    "Y-m-d H:i": "d.m.Y H:i",
+    ":from until :until": ":from bis :until",
+    "from :from": "ab :from",
+    "until :until": "bis :until",
+    "Media": "Medien",
+    "External": "Extern",
+    "Upload new": "Neu hochladen"
 }

@@ -18,16 +18,18 @@ hands it to Liquidsoap track by track, and streams the result to Icecast or laut
 
 ## What it does
 
-- **Media library** with ID3 import, editable artist/title/album, tags, duplicate
-  detection and offline loudness measurement (EBU R128) so every track goes out at a
-  consistent level.
+- **Media library** for music, jingles and voice tracks, with ID3 import, editable
+  artist/title/album that is written back into the file, tags, duplicate detection,
+  airtime windows and run times, and offline loudness measurement (EBU R128) so every
+  track goes out at a consistent level.
 - **Playlists** as reusable building blocks. Besides fixed tracks they hold *fill* blocks
-  (rotation-aware auto-fill up to a duration), *random* picks, external HTTP sources and
-  ad-break markers.
+  (auto-fill up to the next fixed time, keeping the GVL repeat rules and artist
+  separation), *random* picks, *containers* (reusable blocks), soft or hard *fixed times*,
+  external HTTP sources and ad-break markers.
 - **Weekly grid**, 7 days by 24 hours. Each slot points at a playlist.
 - **Rundowns**: the concrete, frozen playlist for one specific hour on one specific day,
-  generated ahead of time from slot plus playlist. Hard starts cut the previous hour off on
-  time; soft starts let it finish.
+  generated ahead of time from slot plus playlist. A hard fixed time cuts the running track
+  on the second; a soft one lets it finish.
 - **External sources** for dynamic content such as news, weather or syndicated shows.
   They are fetched, cached and normalised shortly before airtime, with a live fallback.
 - **Live input** per station over `input.harbor`, so a presenter can take over the stream

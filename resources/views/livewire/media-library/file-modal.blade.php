@@ -110,6 +110,41 @@
                                         @endif
                                     </div>
 
+                                    {{-- Run time --}}
+                                    <div class="mt-4">
+                                        <label class="form-label small fw-medium mb-1">
+                                            <i class="bi bi-calendar-range me-1"></i>{{ __('Run time') }}
+                                        </label>
+                                        <p class="text-muted small">
+                                            {{ __('Fill and random elements only pick this file between these dates, for example a Christmas jingle in December or a trailer that expires tonight. Either end may stay empty.') }}
+                                        </p>
+                                        <div class="row g-2">
+                                            <div class="col-12 col-sm-6">
+                                                <div class="input-group input-group-sm">
+                                                    <span class="input-group-text">{{ __('From') }}</span>
+                                                    <input type="datetime-local" wire:model="airableFrom" @disabled(! $this->mayWrite)
+                                                           class="form-control @error('airableFrom') is-invalid @enderror"
+                                                           aria-label="{{ __('Run time start') }}">
+                                                </div>
+                                                @error('airableFrom') <div class="text-danger small mt-1">{{ $message }}</div> @enderror
+                                            </div>
+                                            <div class="col-12 col-sm-6">
+                                                <div class="input-group input-group-sm">
+                                                    <span class="input-group-text">{{ __('Until') }}</span>
+                                                    <input type="datetime-local" wire:model="airableUntil" @disabled(! $this->mayWrite)
+                                                           class="form-control @error('airableUntil') is-invalid @enderror"
+                                                           aria-label="{{ __('Run time end') }}">
+                                                </div>
+                                                @error('airableUntil') <div class="text-danger small mt-1">{{ $message }}</div> @enderror
+                                            </div>
+                                        </div>
+                                        @if($file?->hasExpired())
+                                            <div class="text-danger mt-1" style="font-size:.75rem">
+                                                <i class="bi bi-calendar-x me-1"></i>{{ __('The run time is over: fill and random elements no longer pick this file.') }}
+                                            </div>
+                                        @endif
+                                    </div>
+
                                     {{-- Airtime windows --}}
                                     <div class="mt-4">
                                         <div class="d-flex align-items-center justify-content-between mb-1">

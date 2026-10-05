@@ -36,12 +36,13 @@ Ein paar Begriffe ziehen sich durch die ganze App:
 | Begriff | Bedeutung |
 |---|---|
 | **Station** | Dein Radiosender. Alle Medien, Playlisten und Einstellungen hängen an einer Station. Du kannst mehrere Stationen besitzen (bis zu deinem Kontingent). |
-| **Medienbibliothek** | Der Pool aller Musikstuecke und Jingles. Gehoert deinem **Konto**, nicht einer einzelnen Station: alle deine Stationen nutzen dieselbe Bibliothek. |
+| **Medienbibliothek** | Der Pool aller Musikstuecke, Jingles und Voicetracks. Gehoert deinem **Konto**, nicht einer einzelnen Station: alle deine Stationen nutzen dieselbe Bibliothek. |
 | **Playlist** | Eine wiederverwendbare Bausteinliste (z. B. „Vormittag Pop"), die du in das Wochenraster einhängst. |
 | **Wochenraster** | Wochenplan mit 7 Tagen × 24 Stunden. Jeder Stundenslot bekommt eine Playlist. |
 | **Rundown** | Die konkrete, für eine bestimmte Stunde an einem bestimmten Tag *ausgewürfelte* Abspielliste. Wird aus dem Slot + der Playlist erzeugt und „eingefroren". |
 | **Ausgang** | Das Ziel, an das gesendet wird (Icecast-Server oder laut.fm). |
-| **Container** | Der pro Station laufende Liquidsoap-Prozess, der den Stream tatsächlich produziert. |
+| **Stationscontainer** | Der pro Station laufende Liquidsoap-Prozess, der den Stream tatsächlich produziert. Im Dashboard kurz „Container“. |
+| **Container (Playlist)** | Ein wiederverwendbarer Block aus Elementen, z. B. Jingle + Nachrichten, den du in Playlisten einsetzt. Hat mit dem Stationscontainer nichts zu tun. |
 
 Der grobe Datenfluss:
 
@@ -100,21 +101,65 @@ Zufalls-/Auffüll-Mechanismus bedienen.
    Unterstützt werden **MP3, M4A, OGG, WAV, FLAC**.
 3. Die Dateien werden in Teilstücken (Chunks) übertragen – auch große Dateien
    und viele Dateien auf einmal sind kein Problem.
-4. Vor dem Speichern kannst du je Datei **Titel**, **Interpret** und den **Typ**
-   (Musik oder Jingle) prüfen. Titel und Interpret werden, wenn vorhanden, aus
-   den ID3-Tags vorbefüllt.
-5. **Speichern** legt die Dateien in der Bibliothek an.
+4. Vor dem Speichern kannst du je Datei **Titel**, **Interpret**, **Album** und den
+   **Typ** (Musik, Jingle oder Voicetrack) prüfen. Titel, Interpret und Album werden,
+   wenn vorhanden, aus den ID3-Tags vorbefüllt.
+5. Optional wählst du **Tags**, die alle Dateien dieses Uploads bekommen. Ein noch
+   nicht vorhandener Tag lässt sich direkt im Formular anlegen.
+6. **Speichern** legt die Dateien in der Bibliothek an.
 
 Nach dem Upload wird die **Lautheit (LUFS)** jeder Datei einmalig im Hintergrund
 gemessen und für eine gleichmäßige Aussteuerung normalisiert. Das passiert
 automatisch – du musst nichts tun.
 
-### Metadaten bearbeiten
+### Medientypen
 
-Über das Bearbeiten-Symbol einer Datei änderst du **Titel**, **Interpret** und
-**Album**. Zusätzlich gibt es die Option **Fade-In**: Ist sie aktiv, wird die
-Datei beim Start sanft eingeblendet (nützlich z. B. bei Aufnahmen mit hartem
-Anfang).
+- **Musik** – das, woraus Auffüll-Elemente die Stunde füllen.
+- **Jingle** – Station-IDs, Trenner, Trailer. Wird nur gespielt, wenn du ihn in eine
+  Playlist setzt oder ein Zufallselement ihn zieht.
+- **Voicetrack** – eine vorab aufgenommene Moderation. Technisch eine normale
+  Audiodatei, aber im Rundown und auf dem Dashboard violett mit Mikrofon markiert,
+  damit du siehst, wo jemand spricht. Ein Voicetrack ist für eine bestimmte Stelle
+  aufgenommen: Zufallselemente ziehen ihn deshalb nie, du setzt ihn selbst in die
+  Playlist.
+
+### Der Datei-Dialog
+
+Ein Klick auf den Titel einer Datei (oder auf das Stift-Symbol) öffnet den Dialog, in dem
+alles zu dieser Datei bearbeitet wird:
+
+- **Titel**, **Interpret**, **Album** und **Typ**.
+- **Fade-In**: Die Datei wird beim Start sanft eingeblendet (nützlich z. B. bei
+  Aufnahmen mit hartem Anfang).
+- **Notizen** und **Tags**.
+- **Laufzeit** und **Sendefenster** (siehe unten).
+- **Datei ersetzen** (nur Besitzer): Eine neue Fassung tritt an die Stelle der alten. Playlisten, Tags
+  und Metadaten bleiben, wie sie sind. Bereits generierte Rundowns spielen die alte
+  Fassung zu Ende, bis du sie neu generierst. Frühere Fassungen lassen sich
+  wiederherstellen und werden automatisch entfernt, sobald kein Rundown mehr auf sie
+  verweist.
+
+Titel, Interpret und Album werden beim Speichern auch **in die Datei zurückgeschrieben**
+(MP3, FLAC, OGG, M4A), ebenso die Werte aus dem Upload-Formular. Das Audio selbst wird
+dabei nicht verändert, Cover und andere Tags bleiben erhalten. Lädst du eine Datei
+später herunter oder spielst sie in einem anderen Programm, hat sie dieselben Angaben
+wie im Panel. WAV-Dateien werden nicht angefasst.
+
+### Laufzeit und Sendefenster
+
+Beides begrenzt, wann **Auffüll- und Zufallselemente** eine Datei wählen dürfen.
+Elemente, die du selbst in eine Playlist setzt, laufen immer.
+
+- **Laufzeit**: ein optionaler Beginn und ein optionales Ende, jeweils mit Datum und
+  Uhrzeit. Beispiele: ein Weihnachtsjingle nur vom 1. bis 26. Dezember, ein Trailer, der
+  heute um 20 Uhr abläuft. Der Beginn zählt mit, das Ende nicht. In der Bibliothek
+  erscheint die Laufzeit als Badge, abgelaufene Dateien sind rot markiert.
+- **Sendefenster**: Wochentage plus eine Uhrzeit von/bis, bei Bedarf mehrere. Ein
+  Fenster darf über Mitternacht laufen. Beispiel: ein „Guten Morgen“-Jingle nur
+  werktags von 6 bis 10 Uhr.
+
+Hat eine Datei beides, müssen Laufzeit **und** ein Sendefenster passen. Geprüft wird der
+geplante Sendezeitpunkt, nicht der Moment der Rundown-Erzeugung.
 
 ### Tags
 
@@ -122,15 +167,22 @@ Tags sind frei wählbare Schlagworte (z. B. *Sommer*, *Ruhig*, *90er*, *Station-
 mit denen du Musik gruppierst. Sie sind die Grundlage für **Zufalls-** und
 **Auffüll-Elemente** in Playlisten.
 
-- **Tags verwalten**: Tags anlegen und löschen.
-- Einer Datei Tags zuweisen: über das Tag-Symbol der Datei.
+- **Tags verwalten**: Tags anlegen, umbenennen (Stift-Symbol am Tag) und löschen.
+  Zufalls- und Auffüll-Elemente merken sich Tags intern, ein neuer Name ändert also
+  nichts daran, was sie auswählen.
+- Einer Datei Tags zuweisen: im Datei-Dialog oder schon beim Upload.
 - **Mehrfachauswahl**: Markiere mehrere Dateien und füge per *Massenaktion* einen
-  Tag hinzu oder entferne ihn. „Alle sichtbaren auswählen" erleichtert das.
+  Tag hinzu oder entferne ihn. Die Auswahl bleibt beim Blättern erhalten.
 
 ### Filtern & Suchen
 
-Du kannst die Liste nach **Typ** (Musik/Jingle), nach **Tag** (oder „ohne Tag")
-und per Freitextsuche (**Titel/Interpret**) einschränken.
+Du kannst die Liste nach **Typ** (Musik, Jingle, Voicetrack), nach **Tag** (oder
+„ohne Tag") und per Freitextsuche (**Titel/Interpret**) einschränken.
+
+Die Bibliothek zeigt **50 Dateien pro Seite**. Ändert sich ein Filter oder die Suche,
+geht es wieder auf Seite 1. Bei mehreren Seiten markiert **Seite auswählen** nur die
+aktuelle Seite; danach erscheint **Alle *n* Treffer auswählen**, um alle Dateien des
+Filters auf einmal zu taggen.
 
 ### Duplikate finden
 
@@ -150,11 +202,11 @@ Dasselbe gilt fuer Tags: ein in einer Station angelegter Tag steht in allen zur 
 
 | Rolle | Bibliothek |
 |---|---|
-| **Besitzer** | hochladen, bearbeiten, taggen, loeschen |
-| **Bearbeiter** | hochladen, bearbeiten, taggen. **Kein** Loeschen. |
+| **Gründer**, **Besitzer** | hochladen, bearbeiten, taggen, ersetzen, loeschen |
+| **Bearbeiter** | hochladen, bearbeiten, taggen. **Kein** Ersetzen und Loeschen. |
 
-Loeschen entfernt eine Datei aus allen Stationen des Kontos, deshalb bleibt es dem
-Besitzer vorbehalten.
+Loeschen und Ersetzen wirken in allen Stationen des Kontos, deshalb bleiben sie den
+Besitzern vorbehalten.
 
 ---
 
@@ -172,39 +224,73 @@ Unter **Playlisten → Neue Playlist** vergibst du:
 - **Abspielmodus**:
   - **Sequenziell** – Elemente in der festgelegten Reihenfolge.
   - **Zufällig** – Reihenfolge wird bei der Rundown-Erzeugung gemischt.
-- **Startmodus**:
-  - **Weich (soft)** – nahtloser Übergang/Crossfade vom vorherigen Programm.
-  - **Hart (hard)** – exakter Start zur vollen Stunde; der laufende Track wird
-    dafür sauber abgeschnitten. Ideal für Nachrichten o. Ä., die pünktlich
-    beginnen müssen.
 
-> Der Startmodus liegt an der **Playlist**, nicht am Rasterslot. Wenn du eine
-> Playlist also überall „hart" auf die volle Stunde legen willst, stellst du das
-> einmal an der Playlist ein.
+Ob eine Stunde pünktlich beginnt oder etwas zu einer festen Minute läuft, regelst du mit
+**Fixzeit-Elementen** in der Playlist (siehe unten).
 
 ### Elemente hinzufügen
 
-Im Playlist-Manager fügst du über **Element hinzufügen** verschiedene Bausteine
-ein:
+Der Editor zeigt links die Playlist und rechts eine **Palette** mit vier Reitern:
+**Medien**, **Container**, **Extern** und **Spezial**. Ein Suchfeld gilt für alle.
+
+- **Ein Klick** hängt ein Element ans Ende an.
+- **Mehrere ankreuzen** und als Block einfügen, in der Reihenfolge, in der du sie
+  angekreuzt hast.
+- **Ziehen** setzt ein Element direkt an die gewünschte Stelle.
+- Im Reiter *Medien* lädst du über **Neu hochladen** auch direkt eine Datei hoch; sie
+  landet zugleich in der Bibliothek.
 
 | Typ | Beschreibung |
 |---|---|
-| **Aus Bibliothek** | Ein konkretes Musikstück oder Jingle aus deiner Bibliothek (mit Suche). |
-| **Datei hochladen** | Direkt eine neue Datei hochladen – sie landet zugleich in der Bibliothek. |
-| **Zufälliges Element** | Beim Erzeugen des Rundowns wird **ein** zufälliger Titel gezogen – optional aus bestimmten **Tags**. |
-| **Auffüllen mit Musik** | Füllt die Stunde mit zufälliger Musik (optional nach Tags), bis eine **maximale Dauer** erreicht ist. Gut, um Stunden ohne festes Skript komplett zu füllen. |
+| **Datei aus der Bibliothek** | Ein konkretes Musikstück, ein Jingle oder ein Voicetrack. |
+| **Zufälliges Element** | Beim Erzeugen des Rundowns wird **eine** Datei gezogen, optional nur aus bestimmten **Tags**. Bevorzugt Dateien, die länger nicht liefen. Voicetracks werden nie gezogen. |
+| **Auffüllen mit Musik** | Füllt mit Musik (optional nach Tags) bis zur nächsten Fixzeit oder zur vollen Stunde, auf Wunsch begrenzt durch eine **maximale Dauer**. Die letzten Titel werden so gewählt, dass die Musik möglichst genau dort endet. |
 | **URL / Stream** | Eine externe Audiodatei oder ein Stream per URL (mit optionaler Dauer). |
 | **Externe Quelle** | Eine zuvor definierte dynamische Quelle (Nachrichten, Wetter, Syndication – siehe [Externe Quellen](#5-externe-quellen)). |
+| **Container** | Ein wiederverwendbarer Block aus Elementen (siehe unten). |
+| **Fixzeit** | Legt das Element dahinter auf eine Minute der Stunde fest, weich oder hart (siehe unten). |
 | **Werbeunterbrechung** | Ein Marker (`START_AD_BREAK`) für eine laut.fm-Werbeunterbrechung. |
 
-### Reihenfolge, Offsets & Bearbeiten
+Auffüll- und Zufallselemente halten die **Rotationsregeln** ein: zuerst die
+GVL-Wiederholungsregeln, dann ein Mindestabstand für denselben Titel, nie zweimal
+hintereinander derselbe Interpret, der [Interpretenabstand](#10-team--stationsverwaltung)
+der Station und möglichst nicht derselbe Titel zur selben Uhrzeit wie gestern. Reicht die
+Bibliothek dafür nicht, wird trotzdem gefüllt und das Protokoll vermerkt es.
+
+### Fixzeiten
+
+Ein **Fixzeit**-Element legt das Element direkt dahinter auf eine Minute der Stunde fest
+(z. B. 30:00).
+
+- **Weich** (gelb): Ist die Zeit erreicht, startet keine weitere Auffüll-Musik. Der
+  laufende Titel spielt zu Ende, dann folgt das Element.
+- **Hart** (rot): Das Programm wird ausgeblendet und geschnitten, das Element startet
+  auf die Sekunde. Für Nachrichten zur vollen Stunde setzt du eine harte Fixzeit
+  `00:00` an den Anfang der Playlist.
+
+Auffüll-Musik vor einer Fixzeit plant genau bis dorthin. Der Editor warnt, wenn das
+Programm davor zu lang ist oder vor einem harten Schnitt eine Lücke lässt.
+
+### Container
+
+Ein Container ist ein wiederverwendbarer Block, z. B. Jingle + Nachrichten +
+Werbeunterbrechung, den du in beliebig viele Playlisten setzt. Du legst ihn unter
+**Playlisten → Neuer Container** an und bearbeitest ihn im selben Editor. Er kann alle
+Elementtypen enthalten, auch Auffüll- und Zufallselemente. Beim Erzeugen des Rundowns wird
+er an Ort und Stelle in seine Elemente aufgelöst. Container kommen nicht ins
+Wochenraster und lassen sich nicht ineinander verschachteln.
+
+### Reihenfolge & Bearbeiten
 
 - **Sortieren**: Elemente lassen sich per Drag & Drop umordnen.
-- **Relativer Offset (MM:SS)**: Optionaler zeitlicher Versatz eines Elements
-  innerhalb der Stunde – z. B. „dieser Beitrag soll möglichst bei 30:00 laufen".
-  Du kannst MM:SS oder reine Sekunden eingeben.
+- **Duplizieren**: Jedes Element hat einen Duplizieren-Knopf, die Kopie landet direkt
+  dahinter. Angekreuzte Elemente lassen sich gemeinsam duplizieren oder entfernen.
+- **Laufzeit der Stunde**: Jedes Element zeigt seine Startzeit ab Beginn der Playlist,
+  der Kopf die Gesamtlänge im Vergleich zur Stunde. Längen, die erst beim Senden
+  feststehen (Auffüllen, Zufall), sind als solche markiert.
 - **Auffüllen/Zufall bearbeiten**: Für Auffüll- und Zufallselemente lassen sich
-  Tags und (beim Auffüllen) die Maximaldauer (60–7200 s) nachträglich ändern.
+  Tags und (beim Auffüllen) die Maximaldauer (60–7200 s) nachträglich ändern; bei einer
+  Fixzeit die Minute (MM:SS) und weich/hart.
 
 ---
 
@@ -280,6 +366,15 @@ kannst du:
 - einzelne **Tracks entfernen**,
 - einen Track gegen einen anderen aus der Bibliothek **ersetzen**.
 
+Jede Zeile zeigt die geplante Uhrzeit und ein Badge für die Herkunft (Vorlage, Fill,
+Nachrichten, Werbung usw.). **Voicetracks** sind violett hinterlegt und mit einem Mikrofon
+markiert, damit du auf einen Blick siehst, wo jemand spricht. Fixzeiten erscheinen in
+ihrer Farbe.
+
+> Ein Rundown ist eingefroren. Änderst du danach eine Playlist, eine Fixzeit, die
+> Laufzeit oder ein Sendefenster einer Datei, wirkt das erst auf Stunden, die neu
+> generiert werden.
+
 > **Wichtig:** Tracks, die bereits gesendet wurden **oder gerade laufen bzw. schon
 > vorgeladen sind**, sind gesperrt und können nicht mehr geändert werden. Das
 > verhindert, dass dir der Stream „unter den Händen" wegbricht. Ein bereits
@@ -351,6 +446,9 @@ Das Dashboard zeigt den aktuell laufenden Titel mit Interpret, Fortschrittsbalke
 und – sofern verfügbar – die Position des Tracks im Rundown. Während einer
 Live-Übernahme erscheint stattdessen der Live-Status.
 
+Darunter folgen die nächsten Elemente mit voraussichtlicher Startzeit. Voicetracks
+tragen dort ein violettes Badge mit Mikrofon.
+
 ### Track überspringen
 
 **Nächster Track** überspringt den aktuell laufenden Titel sauber. RadioRing
@@ -367,7 +465,12 @@ was gelaufen ist:
 - gespielte **Playlist-Tracks**,
 - **Live-Tracks** (während einer Live-Übernahme),
 - **Live-An/Aus**-Wechsel,
-- **Rundown-Erzeugungen**.
+- **Rundown-Erzeugungen**,
+- **Underruns** (der Rundown lief leer, die Station sendete Stille),
+- **fehlende externe Elemente** (nicht rechtzeitig vorbereitet, übersprungen),
+- **Rotationsregeln**: ein Rundown verletzt die GVL-Wiederholungsregeln, meist weil der
+  Musikpool zu klein ist,
+- Beginn und Ende der **Notfallschleife**.
 
 Du kannst nach **Datum**, **Ereignisart** und per Freitext (**Titel/Interpret**)
 filtern. Das ist praktisch für Nachweise (z. B. GEMA/GVL-Meldungen) und zur
@@ -382,16 +485,23 @@ Fehlersuche („Was lief gestern um 14 Uhr?").
 - **Name** der Station.
 - **Status**: *Aktiv* oder *Pausiert*.
 - **Rundowns nächtlich neu generieren**: automatische Vorbereitung des Programms.
-- **Team**: Weitere Nutzer per **E-Mail-Adresse** als **Bearbeiter (editor)**
-  hinzufügen. Bearbeiter dürfen Inhalte pflegen; die Stationsverwaltung (diese
-  Seite, Team, Löschen) bleibt dem **Besitzer** vorbehalten.
-- **Station löschen**: Entfernt die Station unwiderruflich.
+- **Interpretenabstand** (Standard 45 Minuten): Mindestabstand zwischen zwei Titeln
+  desselben Interpreten bei Auffüll- und Zufallselementen. Zweimal hintereinander
+  derselbe Interpret kommt ohnehin nie vor, und die GVL-Regeln gelten immer. `0`
+  schaltet den Abstand ab.
+- **Team**: Weitere Nutzer per **E-Mail-Adresse** hinzufügen. Neue Mitglieder sind
+  **Bearbeiter**; die Rolle lässt sich jederzeit zwischen Bearbeiter und Besitzer
+  umschalten.
+- **Station löschen**: Entfernt die Station unwiderruflich (nur der Gründer).
 
 **Rollen kurz:**
 
-- **Besitzer (owner)** - voller Zugriff inkl. Verwaltung, Team und Loeschen.
+- **Gründer** - wer die Station angelegt hat. Darf alles, was ein Besitzer darf, und
+  als Einziger die Station löschen. Seine Rolle lässt sich nicht ändern.
+- **Besitzer (owner)** - voller Zugriff inkl. Verwaltung, Team, Medien ersetzen und
+  löschen.
 - **Bearbeiter (editor)** - darf Medien, Playlisten, Raster, Rundowns und Ausgaenge
-  pflegen, aber keine Medien loeschen und die Station nicht verwalten.
+  pflegen, aber keine Medien ersetzen oder loeschen und die Station nicht verwalten.
 
 > Zur gemeinsamen Bibliothek: Wen du als Bearbeiter in **eine** Station einlaedst, der
 > erhaelt damit auch Zugriff auf die Medienbibliothek deines **Kontos**, also auch auf
@@ -461,6 +571,11 @@ Nur für Nutzer mit Admin-Rechten sichtbar (Block **ADMINISTRATION**).
   herunterladen. Mediendateien sind bewusst nicht enthalten. Wiederherstellen läuft
   über die Kommandozeile, siehe `docs/de/betrieb.md`, Abschnitt 8.
 
+**Update-Hinweis:** Admins sehen am Versions-Badge in der Seitenleiste, wenn ein neues
+Release erschienen ist (auf dem Kanal `edge`: wenn `main` neue Commits hat). Ein Klick
+darauf zeigt, was neu ist. Abschalten lässt sich die Prüfung in der `.env`, siehe
+`docs/de/betrieb.md`.
+
 Welche Bedienelemente erscheinen, haengt vom Betriebsmodus ab. Im **Standalone**-Modus
 entfallen Stations-Quota, Impersonation und das Sperren von Konten, weil eine Installation
 mit einem einzigen Mandanten sie nicht braucht.
@@ -484,9 +599,25 @@ mit einem einzigen Mandanten sie nicht braucht.
 **Pünktliche Nachrichten zur vollen Stunde**
 
 1. Externe Quelle vom Typ *Nachrichten* (oder URL) anlegen.
-2. Eigene Playlist „Nachrichten" mit diesem Element, **Startmodus = Hart**.
-3. Diese Playlist in die entsprechenden Stundenslots legen.
-4. Rundowns generieren.
+2. In der Playlist ganz oben ein Element **Fixzeit** `00:00`, **hart**, dahinter die
+   Nachrichtenquelle. Wer das in vielen Playlisten braucht, packt beides in einen
+   **Container**.
+3. Rundowns generieren.
+
+**Weihnachtsjingle nur im Dezember**
+
+1. Jingle hochladen, Tag *Jingles* vergeben.
+2. Im Datei-Dialog die **Laufzeit** auf 1. Dezember bis 27. Dezember 0:00 setzen.
+3. In den Playlisten ein **Zufälliges Element** mit Tag *Jingles* verwenden. Vor und
+   nach der Laufzeit zieht es den Weihnachtsjingle nicht.
+
+**Moderierte Stunde mit Voicetracks**
+
+1. Moderationen als **Voicetrack** hochladen.
+2. Playlist bauen: Voicetrack, **Auffüllen mit Musik**, **Fixzeit** (z. B. `15:00`,
+   weich), nächster Voicetrack und so weiter. Die Musik plant sich bis zur Fixzeit.
+3. Für jede Sendung eine eigene Playlist (oder vor dem Generieren die Voicetracks
+   austauschen), denn Voicetracks sind für einen bestimmten Tag gesprochen.
 
 **Änderung an einem Ausgang übernehmen**
 
@@ -514,7 +645,12 @@ sind gesperrt. Ändere stattdessen spätere Tracks.
 
 **Zufalls-/Auffüll-Element bringt nichts.**
 Stelle sicher, dass es Mediendateien mit den passenden **Tags** gibt. Ohne
-passende Treffer kann nichts gezogen bzw. aufgefüllt werden.
+passende Treffer kann nichts gezogen bzw. aufgefüllt werden. Prüfe außerdem
+**Laufzeit** und **Sendefenster** der Dateien: Abgelaufene oder zu diesem Zeitpunkt
+gesperrte Dateien werden übergangen. Auffüllen nimmt nur Musik, Zufall nie Voicetracks.
+
+**Eine Änderung an Playlist, Laufzeit oder Sendefenster wirkt nicht.**
+Bereits generierte Rundowns sind eingefroren. Generiere die betroffenen Stunden neu.
 
 **Ich kann keine weitere Station anlegen.**
 Dein Stationskontingent ist erschoepft. Wende dich an einen Administrator. Im

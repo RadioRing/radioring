@@ -88,6 +88,7 @@ The installer writes all of this. The tables are for when you edit by hand.
 | `DB_CONNECTION` | `mysql` | |
 | `DB_HOST` / `DB_DATABASE` / `DB_USERNAME` / `DB_PASSWORD` | | |
 | `QUEUE_CONNECTION` | `redis` | Rundowns and container starts run as jobs. `database` works but deadlocks on the jobs table under load, which can stall the worker until it restarts. |
+| `APP_UPDATE_CHECK` | `true` | Asks GitHub once an hour for a new release (on `edge`: for new commits on `main`) and shows administrators a notice on the version badge. `false` switches the request off. |
 
 ### 3.2 Container control
 
@@ -112,9 +113,12 @@ For the legacy driver: `PORTAINER_ENDPOINT`, `PORTAINER_TOKEN`, `PORTAINER_ENVIR
 | Variable | Example | Purpose |
 |---|---|---|
 | `LIQUIDSOAP_API_URL` | `http://app:8080` | Base URL under which the container reaches the app. Empty means `APP_URL`. Locally `http://host.docker.internal:8000`. |
-| `DELIVERY_URL_TTL_SECONDS` | `21600` | Lifetime of the signed media URLs. Generous on purpose: the prefetch cursor runs ahead, and a hard start can hold items back. Too short means silence on air. |
+| `DELIVERY_URL_TTL_SECONDS` | `21600` | Lifetime of the signed media URLs. Generous on purpose: the prefetch cursor runs ahead, and a hard fixed time can hold items back. Too short means silence on air. |
 | `LOUDNESS_NORMALIZATION` | `true` | Offline EBU R128 measurement at upload time |
 | `LOUDNESS_TARGET_LUFS` | `-14` | |
+| `FFMPEG_PATH` | `ffmpeg` | ffmpeg for loudness measurement and for writing title, artist and album back into the files. Included in the app image. |
+| `ROTATION_TITLE_SEPARATION_SECONDS` | `28800` | Minimum gap before the same title airs again (8 hours). Shorter only when the pool leaves no other choice. The old name `ROTATION_TITLE_COOLDOWN_SECONDS` still works. |
+| `ROTATION_HISTORY_SECONDS` | `172800` | How far before and after an hour the rotation looks at airings (48 hours). Each station sets its own artist separation. |
 | `EMERGENCY_MAX_FILES` | `10` | Files a station may hold in its emergency loop |
 | `EMERGENCY_MAX_BYTES` | `209715200` | Total size of those files. They live in the container's writable layer. 0 means no limit. |
 | `EMERGENCY_SYNC_INTERVAL` | `900` | How often the container refetches its emergency files. A change in the panel is pushed at once; this is the safety net. |
@@ -205,7 +209,11 @@ environment variable. Playout is interrupted briefly, so it asks first.
 php artisan media:rescan-tags [--station=slug] [--force] [--dry-run]
 php artisan media:measure-loudness [--station=slug]
 php artisan media:prune-chunks [--hours=2]
+php artisan media:prune-replaced [--days=7] [--dry-run]
 ```
+
+`media:prune-replaced` deletes replaced versions of media files that no rundown points at
+any more.
 
 ### Backups
 
@@ -223,6 +231,7 @@ stored in the panel. Details in [section 8](#8-backups).
 ```sh
 php artisan radioring:schedule-status {station}   # cursor, now playing, current rundown
 php artisan radioring:enforce-hard-starts         # normally run by the scheduler
+php artisan radioring:check-updates               # normally run by the scheduler
 ```
 
 ### Local development
@@ -243,12 +252,14 @@ Registered in `routes/console.php`:
 | When | Job | Purpose |
 |---|---|---|
 | daily 22:00 | `GenerateDailyRundownsJob` | 24 rundowns for the next day from the weekly grid |
-| hourly at :55 | `PreloadNextRundownJob` | Make sure the next hour has a rundown |
-| every minute | `radioring:enforce-hard-starts` | Cut over to an hour marked as a hard start |
+| every 15 minutes | `PreloadNextRundownJob` | Make sure the next hour has a rundown |
+| every minute | `radioring:enforce-hard-starts` | Force the cut to elements with a hard fixed time |
 | every minute | `PrepareUpcomingHttpItemsJob` | Prefetch external sources shortly before airtime |
 | hourly | `media:prune-chunks` | Remove abandoned upload chunks |
+| daily 03:30 | `media:prune-replaced` | Delete replaced file versions no rundown points at any more |
 | daily, configurable | `backup:run --auto` | Configuration backup, only when enabled in the panel |
 | every minute | `radioring:check-alerts` | Alert mails to station owners. Sends directly, not through the queue. |
+| hourly at :17 | `radioring:check-updates` | Ask for a new release, see `APP_UPDATE_CHECK` |
 
 **Without a running scheduler and queue workers no rundowns are created**, and the station
 falls silent after the current hour. With `APP_MODE=all` all of them run inside the app
@@ -258,6 +269,10 @@ If you split them, add a cron entry:
 ```
 * * * * * cd /app && php artisan schedule:run >> /dev/null 2>&1
 ```
+
+If several app instances run the scheduler against the same database, only one of them
+runs each job. The lock lives in the cache, so all instances have to share the same cache
+(`CACHE_STORE`, Redis by default).
 
 ---
 
@@ -275,8 +290,8 @@ it.
 There are two workers, because the jobs have very different runtimes. The `default` worker
 takes the ones the programme depends on: rundown generation, external prefetching, the
 schedule files. Seconds each, but what waits here is missing on air. The `media` worker
-takes the long ones: loudness analysis, backups and container starts including the image
-pull, minutes to an hour. In one queue a ten minute image pull holds up everything behind
+takes the long ones: loudness analysis, writing tags back into the files, backups and
+container starts including the image pull, minutes to an hour. In one queue a ten minute image pull holds up everything behind
 it.
 
 ### Station containers

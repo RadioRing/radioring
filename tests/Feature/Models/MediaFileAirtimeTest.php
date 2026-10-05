@@ -96,3 +96,57 @@ test('the summary names the days and times', function () {
     expect($file->airtimeWindowsSummary())->toBe('Mon, Tue 06:00-10:00');
     expect(MediaFile::factory()->create(['airtime_windows' => null])->airtimeWindowsSummary())->toBeNull();
 });
+
+test('a run time includes its start and excludes its end', function () {
+    $file = MediaFile::factory()->create([
+        'airable_from' => '2026-12-01 00:00',
+        'airable_until' => '2026-12-27 00:00',
+    ]);
+
+    expect($file->isAirableAt(Carbon\Carbon::parse('2026-11-30 23:59')))->toBeFalse();
+    expect($file->isAirableAt(Carbon\Carbon::parse('2026-12-01 00:00')))->toBeTrue();
+    expect($file->isAirableAt(Carbon\Carbon::parse('2026-12-26 23:59')))->toBeTrue();
+    expect($file->isAirableAt(Carbon\Carbon::parse('2026-12-27 00:00')))->toBeFalse();
+});
+
+test('a run time with one open end only limits the other', function () {
+    $expiring = MediaFile::factory()->create(['airable_until' => '2026-09-14 20:00']);
+    $starting = MediaFile::factory()->create(['airable_from' => '2026-09-14 20:00']);
+
+    expect($expiring->isAirableAt(Carbon\Carbon::parse('2020-01-01 12:00')))->toBeTrue();
+    expect($expiring->isAirableAt(Carbon\Carbon::parse('2026-09-14 20:00')))->toBeFalse();
+    expect($starting->isAirableAt(Carbon\Carbon::parse('2026-09-14 19:59')))->toBeFalse();
+    expect($starting->isAirableAt(Carbon\Carbon::parse('2030-01-01 12:00')))->toBeTrue();
+});
+
+test('run time and windows must both allow the moment', function () {
+    $file = MediaFile::factory()->create([
+        'airable_from' => '2026-12-01 00:00',
+        'airable_until' => '2026-12-27 00:00',
+        'airtime_windows' => [['days' => [], 'from' => '06:00', 'to' => '10:00']],
+    ]);
+
+    expect($file->isAirableAt(Carbon\Carbon::parse('2026-12-10 07:00')))->toBeTrue();
+    expect($file->isAirableAt(Carbon\Carbon::parse('2026-12-10 12:00')))->toBeFalse();
+    expect($file->isAirableAt(Carbon\Carbon::parse('2026-11-10 07:00')))->toBeFalse();
+});
+
+test('the query scope honours the run time', function () {
+    $tenantId = Station::factory()->create()->tenant_id;
+    $open = MediaFile::factory()->create(['tenant_id' => $tenantId]);
+    $december = MediaFile::factory()->create(['tenant_id' => $tenantId, 'airable_from' => '2026-12-01 00:00', 'airable_until' => '2027-01-01 00:00']);
+    $expired = MediaFile::factory()->create(['tenant_id' => $tenantId, 'airable_until' => '2026-12-05 20:00']);
+
+    $airable = fn (string $at) => MediaFile::where('tenant_id', $tenantId)->airableAt(Carbon\Carbon::parse($at))->pluck('id')->sort()->values()->all();
+
+    expect($airable('2026-11-15 12:00'))->toBe([$open->id, $expired->id]);
+    expect($airable('2026-12-10 12:00'))->toBe([$open->id, $december->id]);
+});
+
+test('a run time that has passed counts as expired', function () {
+    $file = MediaFile::factory()->create(['airable_until' => '2026-09-14 20:00']);
+
+    expect($file->hasExpired(Carbon\Carbon::parse('2026-09-14 19:59')))->toBeFalse();
+    expect($file->hasExpired(Carbon\Carbon::parse('2026-09-14 20:00')))->toBeTrue();
+    expect(MediaFile::factory()->create()->hasExpired())->toBeFalse();
+});

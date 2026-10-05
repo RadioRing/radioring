@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Storage;
 
-#[Fillable(['tenant_id', 'title', 'artist', 'album', 'notes', 'type', 'fade_in', 'airtime_windows', 'file_path', 'duration_seconds', 'loudness_lufs', 'loudness_true_peak', 'loudness_measured_at'])]
+#[Fillable(['tenant_id', 'title', 'artist', 'album', 'notes', 'type', 'fade_in', 'airtime_windows', 'airable_from', 'airable_until', 'file_path', 'duration_seconds', 'loudness_lufs', 'loudness_true_peak', 'loudness_measured_at'])]
 class MediaFile extends Model
 {
     /** @use HasFactory<MediaFileFactory> */
@@ -50,6 +50,8 @@ class MediaFile extends Model
         return [
             'fade_in' => 'boolean',
             'airtime_windows' => 'array',
+            'airable_from' => 'datetime',
+            'airable_until' => 'datetime',
             'loudness_lufs' => 'float',
             'loudness_true_peak' => 'float',
             'loudness_measured_at' => 'datetime',
@@ -225,11 +227,15 @@ class MediaFile extends Model
     /**
      * Narrows a query to the files that may air at the given moment.
      *
-     * Only gated files are loaded and filtered in PHP: weekday lists and windows
-     * running past midnight do not translate into portable JSON SQL.
+     * The run time is plain SQL. Of the files left, only those with windows are loaded
+     * and filtered in PHP: weekday lists and windows running past midnight do not
+     * translate into portable JSON SQL.
      */
     public function scopeAirableAt(Builder $query, CarbonInterface $at): Builder
     {
+        $query->where(fn (Builder $q) => $q->whereNull('airable_from')->orWhere('airable_from', '<=', $at))
+            ->where(fn (Builder $q) => $q->whereNull('airable_until')->orWhere('airable_until', '>', $at));
+
         $blockedIds = (clone $query)
             ->whereNotNull('airtime_windows')
             ->get(['id', 'airtime_windows'])
@@ -241,11 +247,16 @@ class MediaFile extends Model
     }
 
     /**
-     * May this file be picked automatically for the given airtime? Windows are an
-     * OR-list: one match is enough, and no windows means no restriction.
+     * May this file be picked automatically for the given airtime? The run time comes
+     * first. Windows are an OR-list: one match is enough, and no windows means no
+     * restriction.
      */
     public function isAirableAt(CarbonInterface $at): bool
     {
+        if (! $this->isInRunTime($at)) {
+            return false;
+        }
+
         $windows = $this->airtime_windows;
 
         if (empty($windows)) {
@@ -259,6 +270,37 @@ class MediaFile extends Model
         }
 
         return false;
+    }
+
+    /** Inside the optional run time? The start counts, the end does not. */
+    public function isInRunTime(CarbonInterface $at): bool
+    {
+        if ($this->airable_from !== null && $at->lt($this->airable_from)) {
+            return false;
+        }
+
+        return $this->airable_until === null || $at->lt($this->airable_until);
+    }
+
+    /** The run time as one line, e.g. "2026-12-01 00:00 until 2026-12-27 00:00"; null when open. */
+    public function runTimeSummary(): ?string
+    {
+        $format = __('Y-m-d H:i');
+
+        return match (true) {
+            $this->airable_from !== null && $this->airable_until !== null => __(':from until :until', [
+                'from' => $this->airable_from->format($format), 'until' => $this->airable_until->format($format),
+            ]),
+            $this->airable_from !== null => __('from :from', ['from' => $this->airable_from->format($format)]),
+            $this->airable_until !== null => __('until :until', ['until' => $this->airable_until->format($format)]),
+            default => null,
+        };
+    }
+
+    /** Has the run time ended for good? */
+    public function hasExpired(?CarbonInterface $now = null): bool
+    {
+        return $this->airable_until !== null && ($now ?? now())->gte($this->airable_until);
     }
 
     /**

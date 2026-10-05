@@ -91,6 +91,7 @@ nacharbeitest.
 | `DB_CONNECTION` | `mysql` | |
 | `DB_HOST` / `DB_DATABASE` / `DB_USERNAME` / `DB_PASSWORD` | | |
 | `QUEUE_CONNECTION` | `redis` | Rundowns und Container-Starts laufen als Jobs. `database` funktioniert, läuft unter Last aber in Deadlocks auf der jobs-Tabelle, die den Worker bis zum Neustart lahmlegen können. |
+| `APP_UPDATE_CHECK` | `true` | Fragt stündlich bei GitHub nach einem neuen Release (auf `edge`: nach neuen Commits auf `main`) und zeigt Admins einen Hinweis am Versions-Badge. `false` schaltet die Abfrage ab. |
 
 ### 3.2 Container-Steuerung
 
@@ -115,9 +116,12 @@ Für den Legacy-Treiber: `PORTAINER_ENDPOINT`, `PORTAINER_TOKEN`, `PORTAINER_ENV
 | Variable | Beispiel | Zweck |
 |---|---|---|
 | `LIQUIDSOAP_API_URL` | `http://app:8080` | Basis-URL, unter der der Container die App erreicht. Leer = `APP_URL`. Lokal `http://host.docker.internal:8000`. |
-| `DELIVERY_URL_TTL_SECONDS` | `21600` | Gültigkeit der signierten Medien-URLs. Bewusst großzügig: der Pull-Cursor läuft voraus, ein Hard-Start kann Items zurückhalten. Zu kurz bedeutet Stille auf Sendung. |
+| `DELIVERY_URL_TTL_SECONDS` | `21600` | Gültigkeit der signierten Medien-URLs. Bewusst großzügig: der Pull-Cursor läuft voraus, eine harte Fixzeit kann Items zurückhalten. Zu kurz bedeutet Stille auf Sendung. |
 | `LOUDNESS_NORMALIZATION` | `true` | Offline-Messung nach EBU R128 beim Upload |
 | `LOUDNESS_TARGET_LUFS` | `-14` | |
+| `FFMPEG_PATH` | `ffmpeg` | ffmpeg für die Lautheitsmessung und das Zurückschreiben von Titel, Interpret und Album in die Dateien. Im App-Image enthalten. |
+| `ROTATION_TITLE_SEPARATION_SECONDS` | `28800` | Mindestabstand, bevor derselbe Titel wieder läuft (8 Stunden). Kürzer nur, wenn der Pool keine andere Wahl lässt. Der alte Name `ROTATION_TITLE_COOLDOWN_SECONDS` gilt weiter. |
+| `ROTATION_HISTORY_SECONDS` | `172800` | Wie weit die Rotation vor und nach einer Stunde auf Ausspielungen schaut (48 Stunden). Den Interpretenabstand stellt jede Station selbst ein. |
 | `EMERGENCY_MAX_FILES` | `10` | Dateien, die eine Station in ihrer Notfallschleife halten darf |
 | `EMERGENCY_MAX_BYTES` | `209715200` | Gesamtgröße dieser Dateien. Sie liegen im Writable Layer des Containers. 0 = ohne Grenze. |
 | `EMERGENCY_SYNC_INTERVAL` | `900` | Wie oft der Container seine Notfalldateien erneut holt. Eine Änderung im Panel wird sofort geschickt, das hier ist das Netz darunter. |
@@ -208,7 +212,11 @@ in ihm steckt. Die Ausspielung unterbricht dabei kurz, deshalb fragt der Befehl 
 php artisan media:rescan-tags [--station=slug] [--force] [--dry-run]
 php artisan media:measure-loudness [--station=slug]
 php artisan media:prune-chunks [--hours=2]
+php artisan media:prune-replaced [--days=7] [--dry-run]
 ```
+
+`media:prune-replaced` löscht ersetzte Fassungen von Mediendateien, auf die kein Rundown
+mehr zeigt.
 
 ### Sicherungen
 
@@ -226,6 +234,7 @@ verwendet die im Panel hinterlegte Passphrase. Details in [Abschnitt 8](#8-siche
 ```sh
 php artisan radioring:schedule-status {station}   # Cursor, laufender Track, Rundown
 php artisan radioring:enforce-hard-starts         # sonst vom Scheduler
+php artisan radioring:check-updates               # sonst vom Scheduler
 ```
 
 ### Lokale Entwicklung
@@ -247,12 +256,14 @@ Registriert in `routes/console.php`:
 | Wann | Job | Zweck |
 |---|---|---|
 | täglich 22:00 | `GenerateDailyRundownsJob` | 24 Rundowns für den Folgetag aus dem Wochenraster |
-| stündlich :55 | `PreloadNextRundownJob` | Rundown der Folgestunde sicherstellen |
-| minütlich | `radioring:enforce-hard-starts` | Umschalten auf eine Stunde mit hartem Start |
+| alle 15 Minuten | `PreloadNextRundownJob` | Rundown der Folgestunde sicherstellen |
+| minütlich | `radioring:enforce-hard-starts` | Harten Schnitt zu Elementen mit harter Fixzeit erzwingen |
 | minütlich | `PrepareUpcomingHttpItemsJob` | Externe Quellen kurz vor Ausspielung holen |
 | stündlich | `media:prune-chunks` | Verwaiste Upload-Chunks aufräumen |
+| täglich 03:30 | `media:prune-replaced` | Ersetzte Dateifassungen löschen, auf die kein Rundown mehr zeigt |
 | täglich, einstellbar | `backup:run --auto` | Konfigurations-Backup, nur wenn im Panel aktiviert |
 | minütlich | `radioring:check-alerts` | Alarm-Mails an die Stationsbesitzer. Sendet direkt, nicht über die Queue. |
+| stündlich :17 | `radioring:check-updates` | Nach neuem Release fragen, siehe `APP_UPDATE_CHECK` |
 
 **Ohne laufenden Scheduler und Queue-Worker entstehen keine Rundowns**, die Station fällt
 nach der aktuellen Stunde in Stille. Mit `APP_MODE=all` laufen alle im App-Container. Wer
@@ -261,6 +272,10 @@ sie aufteilt, braucht einen Cron-Eintrag:
 ```
 * * * * * cd /app && php artisan schedule:run >> /dev/null 2>&1
 ```
+
+Laufen mehrere App-Instanzen mit Scheduler gegen dieselbe Datenbank, führt nur eine davon
+jeden Job aus. Die Sperre liegt im Cache, alle Instanzen müssen also denselben Cache nutzen
+(`CACHE_STORE`, standardmäßig Redis).
 
 ---
 
@@ -277,8 +292,8 @@ in Neustart-Schleifen. Stirbt FrankenPHP, endet der Container und Docker startet
 Es sind zwei Worker, weil die Jobs sehr verschiedene Laufzeiten haben. Der `default`-Worker
 nimmt die programmkritischen: Rundown-Generierung, Vorabholen externer Quellen, die
 Zeitplan-Dateien. Jeweils Sekunden, aber was hier wartet, fehlt on air. Der `media`-Worker
-nimmt die langen: Lautheitsmessung, Backups und Container-Starts samt Image-Pull, also
-Minuten bis zu einer Stunde. In einer gemeinsamen Queue blockiert ein zehnminütiger
+nimmt die langen: Lautheitsmessung, das Zurückschreiben der Tags in die Dateien, Backups
+und Container-Starts samt Image-Pull, also Minuten bis zu einer Stunde. In einer gemeinsamen Queue blockiert ein zehnminütiger
 Image-Pull alles dahinter.
 
 ### Station-Container

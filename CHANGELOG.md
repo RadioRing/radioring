@@ -14,26 +14,40 @@ to stand on its own.
 
 ## [Unreleased]
 
+**New in this release: a better music rotation, voice tracks and run times.** Fills now
+spread the whole pool over the day and keep artists apart, with the GVL repeat rules first.
+Voice tracks show where a presenter speaks, and a file can be limited to a run time, such
+as a Christmas jingle in December. The new rotation applies to hours generated after the
+update.
+
 ### Added
-- **Update Checker** Checks if a new update is available and displays it in the UI.
 - **Voice tracks.** A third media type next to music and jingle. Mark a file as a voice
   track on upload or in the file dialog; rundown and dashboard highlight where a presenter
   speaks. Random elements never pick a voice track.
+- **Run time for media files.** An optional start and end (date and time) in the file
+  dialog, on top of the airtime windows: a Christmas jingle only in December, a trailer that
+  expires at eight tonight. Like the windows, it limits what fill and random elements pick;
+  elements you place in a playlist yourself always play. The library marks expired files.
 - **Title, artist and album are written back into the file** (mp3, flac, ogg, m4a) when
   they are edited in the panel, set in the upload form or a file is replaced. The audio is
   copied untouched, cover art and other tags stay. Runs on the media queue and needs the
   ffmpeg that loudness analysis already uses.
-- **Renaming tags** in the tag manager of the media library..
+- **Renaming tags** in the tag manager of the media library. Fill and random elements keep
+  working, they refer to tags by id.
+- **Update notice.** The version badge in the panel lights up when a new release is out
+  (or, on `edge`, when `main` has new commits). See *Upgrade* for switching it off.
+- **Artist separation per station** (default 45 minutes) under *Edit station*.
+- **Protocol entry when a rundown breaks the GVL rules**, usually because the music pool is
+  too small.
 
 ### Changed
 - **Better music rotation.** Fills spread the whole pool over the day, never play the same
   artist twice in a row and avoid repeating a title at the same time as yesterday. The GVL
   repeat rules always come first and are now also checked against the hours planned after.
-- **Artist separation per station** (default 45 minutes) under *Edit station*.
 - **The media library shows 50 files per page.** Filters and search start again on page
   one; a selection for bulk tagging carries across pages and can take in every match.
-- **Protocol entry when a rundown breaks the GVL rules**, usually because the music pool is
-  too small.
+- **Scheduled jobs run on one server only**, so several app instances behind one database
+  no longer generate the same rundowns twice.
 - `ROTATION_TITLE_COOLDOWN_SECONDS` is now `ROTATION_TITLE_SEPARATION_SECONDS` (the old name
   still works). `ROTATION_TITLE_PENALTY` is gone.
 
@@ -43,6 +57,30 @@ to stand on its own.
   Deleting a file that was still to come in the rundown could skip the rest of the hour.
 - **Renamed titles show up in the dashboard playlist and the rundown view.** Both showed the
   title from when the rundown was generated.
+- **The palette tabs of the playlist editor are English in the English interface.** *Media*,
+  *External* and *Upload new* showed in German.
+
+### Upgrade
+
+```sh
+cd /opt/radioring && ./update.sh
+```
+
+This release migrates the database. `update.sh` runs the migrations itself. The station
+containers are unchanged and need no restart.
+
+Rundowns that are already generated keep their music. The new rotation, the artist
+separation and run times apply to hours generated after the update.
+
+Tags are written back only for files uploaded or edited after the update; the existing
+library is left as it is.
+
+The update notice asks GitHub once an hour for the latest release. To switch it off, set
+`APP_UPDATE_CHECK=false` in your `.env` and run `docker compose up -d`.
+
+If your `.env` sets `ROTATION_TITLE_COOLDOWN_SECONDS`, it keeps working; rename it to
+`ROTATION_TITLE_SEPARATION_SECONDS` when convenient. `ROTATION_TITLE_PENALTY` has no effect
+any more and can go.
 
 ## [0.6.1] - 2026-09-30
 

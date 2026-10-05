@@ -129,3 +129,24 @@ test('a fill element leaves out music that may not air at that hour', function (
     expect($rundown->items)->not->toBeEmpty()
         ->and($rundown->items->pluck('media_file_id')->unique()->all())->toBe([$daytime->id]);
 });
+
+test('a random element skips a jingle outside its run time', function () {
+    $this->station->mediaFiles()->create([
+        'title' => 'Frohe Weihnachten',
+        'type' => 'jingle',
+        'file_path' => 'tenants/test/media/xmas.mp3',
+        'duration_seconds' => 10,
+        'airable_from' => '2026-12-01 00:00',
+        'airable_until' => '2026-12-27 00:00',
+    ]);
+    $evergreen = $this->station->mediaFiles()->create([
+        'title' => 'Station ID',
+        'type' => 'jingle',
+        'file_path' => 'tenants/test/media/id.mp3',
+        'duration_seconds' => 8,
+    ]);
+
+    $rundown = $this->service->generate($this->station, slotWithRandomItem($this->station, 7), $this->monday);
+
+    expect($rundown->items->pluck('media_file_id')->all())->toBe([$evergreen->id]);
+});

@@ -109,7 +109,7 @@
             <div class="card">
                 <div class="card-header py-2">
                     @php
-                        $tabs = ['media' => __('Medien'), 'container' => __('Container'), 'external' => __('Extern'), 'special' => __('Special')];
+                        $tabs = ['media' => __('Media'), 'container' => __('Container'), 'external' => __('External'), 'special' => __('Special')];
                         if ($playlist->isContainer()) { unset($tabs['container']); }
                     @endphp
                     <ul class="nav nav-pills nav-fill small gap-1">
@@ -147,7 +147,7 @@
                             </select>
                             <button class="btn btn-sm btn-outline-primary ms-auto"
                                     wire:click="$set('paletteForm', '{{ $paletteForm === 'upload' ? '' : 'upload' }}')">
-                                <i class="bi bi-cloud-upload me-1"></i>{{ __('Neu hochladen') }}
+                                <i class="bi bi-cloud-upload me-1"></i>{{ __('Upload new') }}
                             </button>
                         </div>
                     @endif

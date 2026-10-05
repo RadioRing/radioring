@@ -16,11 +16,8 @@ The only part with an order that holds. Reviewed with every release.
 
 1. **Authorization cleanup.** Founder, owner and editor exist, but only station settings
    and media deletion check the role (`Station::canBeManagedBy()`). Needs real policies,
-   plus a presenter role that may go live but not rebuild the programme.
-2. **A date range for airtime windows.** Weekday and time windows exist. Missing: a
-   Christmas jingle only in December, a trailer that expires at eight tonight. An optional
-   from/to date on the file, checked in `MediaFile::isAirableAt()` and edited in the file
-   dialog. The same mechanism later carries an ad campaign's run time.
+   plus a presenter role that may go live but not rebuild the programme. Presenters upload
+   their voice tracks themselves.
 
 ## Planned
 

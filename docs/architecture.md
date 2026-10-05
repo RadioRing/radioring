@@ -66,8 +66,8 @@ Consequences you must respect:
 - **A skip cannot simply advance the cursor**, because the cursor already points past the
   current track. `LiquidsoapStateService::prepareSkip()` rewinds it first, then the app
   sends `flush_and_skip` so Liquidsoap drops its prefetched queue too.
-- **A hard start** (an hour that must begin exactly on time) has to flush the queue for the
-  same reason. A soft start lets the previous hour finish.
+- **A hard fixed time** (an element that must start exactly on time) has to flush the queue
+  for the same reason. A soft one lets the running track finish.
 
 ## Rundowns are frozen snapshots
 
@@ -112,6 +112,11 @@ Three things are worth knowing:
 - **Loudness is applied per track** through the `liq_amplify` annotation, computed from an
   offline EBU R128 measurement taken at upload time. It is deliberately *not* measured live
   by Liquidsoap's autocue: a corrupt MP3 crashed the entire process that way.
+- **Files on disk change underneath running rundowns.** Title, artist and album are written
+  back into the audio file (`WriteMediaTagsJob`, ffmpeg stream copy). The new file is
+  written next to the old one and renamed over it, so a container that is downloading the
+  file keeps reading the old copy. The audio stays bit-identical, so the measured loudness
+  stays valid.
 
 ## Dynamic external sources
 

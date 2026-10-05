@@ -77,3 +77,50 @@ test('a malformed time is rejected', function () {
 
     expect($file->fresh()->airtime_windows)->toBeNull();
 });
+
+test('a run time is stored and loaded back into the form', function () {
+    $file = MediaFile::factory()->create(['tenant_id' => $this->station->tenant_id]);
+
+    Livewire::test(FileModal::class)
+        ->call('open', $file->id)
+        ->set('airableFrom', '2026-12-01T00:00')
+        ->set('airableUntil', '2026-12-27T06:30')
+        ->call('save')
+        ->assertHasNoErrors()
+        ->assertSet('airableFrom', '2026-12-01T00:00')
+        ->assertSet('airableUntil', '2026-12-27T06:30');
+
+    expect($file->fresh())
+        ->airable_from->toDateTimeString()->toBe('2026-12-01 00:00:00')
+        ->airable_until->toDateTimeString()->toBe('2026-12-27 06:30:00');
+});
+
+test('clearing the run time removes it', function () {
+    $file = MediaFile::factory()->create([
+        'tenant_id' => $this->station->tenant_id,
+        'airable_from' => '2026-12-01 00:00',
+        'airable_until' => '2026-12-27 00:00',
+    ]);
+
+    Livewire::test(FileModal::class)
+        ->call('open', $file->id)
+        ->set('airableFrom', '')
+        ->set('airableUntil', '')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($file->fresh())->airable_from->toBeNull()->airable_until->toBeNull();
+});
+
+test('a run time must end after it starts', function () {
+    $file = MediaFile::factory()->create(['tenant_id' => $this->station->tenant_id]);
+
+    Livewire::test(FileModal::class)
+        ->call('open', $file->id)
+        ->set('airableFrom', '2026-12-27T00:00')
+        ->set('airableUntil', '2026-12-01T00:00')
+        ->call('save')
+        ->assertHasErrors(['airableUntil' => 'after']);
+
+    expect($file->fresh()->airable_from)->toBeNull();
+});

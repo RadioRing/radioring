@@ -462,12 +462,22 @@
                                         </span>
                                     @endif
                                 </div>
-                                @php $airtimeSummary = $file->airtimeWindowsSummary(); @endphp
-                                @if($visibleTags->isNotEmpty() || $airtimeSummary)
+                                @php
+                                    $airtimeSummary = $file->airtimeWindowsSummary();
+                                    $runTimeSummary = $file->runTimeSummary();
+                                @endphp
+                                @if($visibleTags->isNotEmpty() || $airtimeSummary || $runTimeSummary)
                                     <div class="mt-1 d-flex flex-wrap gap-1">
                                         @foreach($visibleTags as $tag)
                                             <span class="badge bg-secondary" style="font-size:.7rem">{{ $tag->name }}</span>
                                         @endforeach
+                                        @if($runTimeSummary)
+                                            <span class="badge border {{ $file->hasExpired() ? 'text-bg-danger-subtle text-danger-emphasis border-danger-subtle' : 'text-bg-info-subtle text-info-emphasis border-info-subtle' }}"
+                                                  style="font-size:.7rem"
+                                                  title="{{ $file->hasExpired() ? __('The run time is over: fill and random elements no longer pick this file.') : __('Fill and random elements may only pick this file inside this run time.') }}">
+                                                <i class="bi {{ $file->hasExpired() ? 'bi-calendar-x' : 'bi-calendar-range' }} me-1"></i>{{ $runTimeSummary }}
+                                            </span>
+                                        @endif
                                         @if($airtimeSummary)
                                             <span class="badge text-bg-info-subtle text-info-emphasis border border-info-subtle"
                                                   style="font-size:.7rem"

@@ -8,6 +8,7 @@ use App\Models\MediaFile;
 use App\Models\PlaylistItem;
 use App\Models\Station;
 use App\Services\MediaReplacementService;
+use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
@@ -57,6 +58,12 @@ class FileModal extends Component
      * @var array<int, array{days: array<int, int|string>, from: string, to: string}>
      */
     public array $airtimeWindows = [];
+
+    /** Start of the run time as a datetime-local value (Y-m-d\TH:i), empty when open. */
+    public string $airableFrom = '';
+
+    /** End of the run time as a datetime-local value (Y-m-d\TH:i), empty when open. */
+    public string $airableUntil = '';
 
     // Replacing: an uploaded file that has not been adopted yet
     /** @var array{path: string, filename: string, title: ?string, artist: ?string, album: ?string, duration: ?int}|null */
@@ -129,6 +136,9 @@ class FileModal extends Component
             ])
             ->values()
             ->all();
+
+        $this->airableFrom = $this->file->airable_from?->format('Y-m-d\TH:i') ?? '';
+        $this->airableUntil = $this->file->airable_until?->format('Y-m-d\TH:i') ?? '';
     }
 
     #[Computed]
@@ -234,6 +244,10 @@ class FileModal extends Component
             'airtimeWindows.*.days.*' => 'in:1,2,3,4,5,6,7',
             'airtimeWindows.*.from' => 'required|date_format:H:i',
             'airtimeWindows.*.to' => 'required|date_format:H:i',
+            'airableFrom' => 'nullable|date_format:Y-m-d\TH:i',
+            'airableUntil' => ['nullable', 'date_format:Y-m-d\TH:i', ...($this->airableFrom !== '' ? ['after:airableFrom'] : [])],
+        ], [
+            'airableUntil.after' => __('The end of the run time must lie after its start.'),
         ]);
 
         $this->file->update([
@@ -244,6 +258,8 @@ class FileModal extends Component
             'type' => $this->type,
             'fade_in' => $this->fadeIn,
             'airtime_windows' => $this->normalizedAirtimeWindows(),
+            'airable_from' => $this->parseRunTime($this->airableFrom),
+            'airable_until' => $this->parseRunTime($this->airableUntil),
         ]);
 
         $tenantTagIds = $this->station->tags()->pluck('id')->all();
@@ -254,6 +270,12 @@ class FileModal extends Component
 
         $this->dispatch('media-library-changed');
         $this->dispatch('notify', message: __('Metadata saved.'), type: 'success');
+    }
+
+    /** A datetime-local value as a whole minute, null when the field is empty. */
+    private function parseRunTime(string $value): ?Carbon
+    {
+        return $value !== '' ? Carbon::createFromFormat('Y-m-d\TH:i', $value)->startOfMinute() : null;
     }
 
     /**
