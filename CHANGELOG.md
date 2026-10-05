@@ -16,6 +16,9 @@ to stand on its own.
 
 ### Added
 - **Update Checker** Checks if a new update is available and displays it in the UI.
+- **Voice tracks.** A third media type next to music and jingle. Mark a file as a voice
+  track on upload or in the file dialog; rundown and dashboard highlight where a presenter
+  speaks. Random elements never pick a voice track.
 
 ### Changed
 - **Better music rotation.** Fills spread the whole pool over the day, never play the same

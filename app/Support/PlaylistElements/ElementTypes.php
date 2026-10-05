@@ -22,7 +22,7 @@ class ElementTypes
             'url' => new UrlElement,
             'external' => new ExternalElement,
             'container' => new ContainerElement,
-            'music', 'jingle' => $addMode === 'upload'
+            'music', 'jingle', 'voicetrack' => $addMode === 'upload'
                 ? new UploadElement($type)
                 : new LibraryElement,
             default => throw new InvalidArgumentException("Unbekannter Element-Typ: {$type}"),

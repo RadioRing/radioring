@@ -147,7 +147,8 @@
                                         {{ $isPlaying ? 'list-group-item-primary' : '' }}
                                         {{ $isPlayed  ? 'opacity-50' : '' }}
                                         {{ ! $isPlaying && in_array($item->source_type, ['news', 'weather', 'news_weather']) ? 'bg-info bg-opacity-10' : '' }}
-                                        {{ ! $isPlaying && $item->source_type === 'adbreak' ? 'bg-danger bg-opacity-10' : '' }}">
+                                        {{ ! $isPlaying && $item->source_type === 'adbreak' ? 'bg-danger bg-opacity-10' : '' }}
+                                        {{ ! $isPlaying && $item->isVoiceTrack() ? 'bg-voicetrack-subtle' : '' }}">
 
                                 {{-- Spiel-Status --}}
                                 <span class="text-nowrap" style="width:18px;text-align:center">
@@ -170,7 +171,7 @@
 
                                 {{-- Source-Badge --}}
                                 @php
-                                    $sourceBadge = match($item->source_type) {
+                                    $sourceBadge = $item->isVoiceTrack() ? ['bg-voicetrack', 'bi-mic', __('Voice track')] : match($item->source_type) {
                                         'news'          => ['bg-info text-dark', 'bi-newspaper', __('News')],
                                         'weather'       => ['bg-info text-dark', 'bi-cloud-sun', __('Wetter')],
                                         'news_weather'  => ['bg-info text-dark', 'bi-newspaper', __('News+Wetter')],
@@ -246,8 +247,8 @@
                                                             wire:click="$set('selectedMediaFileId', {{ $file->id }})"
                                                             class="list-group-item list-group-item-action d-flex align-items-center gap-2 py-1 px-2 small
                                                                    {{ $selectedMediaFileId === $file->id ? 'active' : '' }}">
-                                                        <span class="badge bg-{{ $file->type === 'music' ? 'primary' : 'warning text-dark' }}">
-                                                            {{ $file->type === 'music' ? __('Musik') : __('Jingle') }}
+                                                        <span class="badge {{ \App\Models\MediaFile::typeBadgeClass($file->type) }}">
+                                                            {{ \App\Models\MediaFile::typeLabel($file->type) }}
                                                         </span>
                                                         <span class="text-truncate flex-grow-1">{{ $file->title }}</span>
                                                         @if($file->durationFormatted())

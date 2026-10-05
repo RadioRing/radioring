@@ -553,5 +553,6 @@
     "Update check is disabled for this build.": "Die Update-Prüfung ist für diesen Build deaktiviert.",
     "RadioRing is up to date.": "RadioRing ist aktuell.",
     "Update available: :version": "Update verfügbar: :version",
-    "Update available: :count new commit|Update available: :count new commits": "Update verfügbar: :count neuer Commit|Update verfügbar: :count neue Commits"
+    "Update available: :count new commit|Update available: :count new commits": "Update verfügbar: :count neuer Commit|Update verfügbar: :count neue Commits",
+    "Voice track": "Voicetrack"
 }

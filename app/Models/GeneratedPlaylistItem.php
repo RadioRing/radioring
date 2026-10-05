@@ -48,6 +48,12 @@ class GeneratedPlaylistItem extends Model
      * in the library apply without regenerating the rundown. Falls back to the title
      * frozen at generation for items without a file (external sources, deleted files).
      */
+    /** Is a presenter speaking here? */
+    public function isVoiceTrack(): bool
+    {
+        return $this->mediaFile?->type === 'voicetrack';
+    }
+
     public function displayTitle(): ?string
     {
         return $this->mediaFile?->title ?? $this->title;

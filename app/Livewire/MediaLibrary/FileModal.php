@@ -10,6 +10,7 @@ use App\Models\Station;
 use App\Services\MediaReplacementService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
@@ -226,7 +227,7 @@ class FileModal extends Component
             'artist' => 'nullable|string|max:200',
             'album' => 'nullable|string|max:200',
             'notes' => 'nullable|string|max:2000',
-            'type' => 'required|in:music,jingle',
+            'type' => ['required', Rule::in(MediaFile::TYPES)],
             'fadeIn' => 'boolean',
             'airtimeWindows' => 'array|max:20',
             'airtimeWindows.*.days' => 'array',

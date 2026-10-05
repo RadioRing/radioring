@@ -25,7 +25,7 @@ class PlaylistPalette
     public const TAB_SPECIAL = 'special';
 
     /**
-     * @param  string  $mediaType  '', 'music' or 'jingle' to narrow the media tab
+     * @param  string  $mediaType  '', 'music', 'jingle' or 'voicetrack' to narrow the media tab
      * @return Collection<int, PaletteEntry> up to $limit entries, ordered by name
      */
     public function entries(Station $station, string $tab, string $search = '', int $limit = 40, string $mediaType = ''): Collection
@@ -58,9 +58,9 @@ class PlaylistPalette
             title: $file->title,
             subtitle: $file->artist,
             durationSeconds: $file->duration_seconds,
-            badge: $file->type === 'jingle' ? __('Jingle') : __('Musik'),
-            badgeClass: $file->type === 'jingle' ? 'bg-warning text-dark' : 'bg-primary',
-            icon: 'bi-file-earmark-music',
+            badge: MediaFile::typeLabel($file->type),
+            badgeClass: MediaFile::typeBadgeClass($file->type),
+            icon: $file->type === 'voicetrack' ? 'bi-mic' : 'bi-file-earmark-music',
         ));
     }
 

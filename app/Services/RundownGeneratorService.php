@@ -390,12 +390,14 @@ class RundownGeneratorService
     /**
      * One file from the pool (optionally by tag) that may air now; skipped if none.
      *
+     * Voice tracks are left out: each one is spoken for its own spot in the hour.
+     *
      * @param  list<TimelineEntry>  $timeline
      * @return int next free position
      */
     private function resolveRandomItem(Station $station, PlaylistItem $item, GeneratedPlaylist $rundown, int $position, Carbon &$cursor, array &$timeline): int
     {
-        $query = $station->poolMediaFiles()->airableAt($cursor);
+        $query = $station->poolMediaFiles()->where('type', '!=', 'voicetrack')->airableAt($cursor);
 
         if (! empty($item->fill_tags)) {
             $query->whereHas('tags', fn ($q) => $q->whereIn('tags.id', $item->fill_tags));

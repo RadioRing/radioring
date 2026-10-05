@@ -92,7 +92,7 @@ class ElementLengths
         $key = implode(',', $tags);
 
         if (! array_key_exists($key, $this->poolAverages)) {
-            $query = $this->station->poolMediaFiles()->whereNotNull('duration_seconds');
+            $query = $this->station->poolMediaFiles()->where('type', '!=', 'voicetrack')->whereNotNull('duration_seconds');
 
             if ($tags !== []) {
                 $query->whereHas('tags', fn ($q) => $q->whereIn('tags.id', $tags));

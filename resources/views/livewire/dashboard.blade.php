@@ -427,14 +427,17 @@
 
                         {{-- Typ-Badge --}}
                         @php
-                            $badgeClass = match($item->source_type) {
+                            $badgeType = $item->isVoiceTrack() ? 'voicetrack' : $item->source_type;
+                            $badgeClass = match($badgeType) {
+                                'voicetrack'    => 'bg-voicetrack',
                                 'news', 'weather', 'news_weather' => 'bg-info text-dark',
                                 'adbreak'       => 'bg-danger',
                                 'resolved_fill' => 'bg-success',
                                 'manual'        => 'bg-warning text-dark',
                                 default         => 'bg-light text-dark border',
                             };
-                            $badgeIcon = match($item->source_type) {
+                            $badgeIcon = match($badgeType) {
+                                'voicetrack'    => 'bi-mic',
                                 'news'          => 'bi-newspaper',
                                 'weather'       => 'bi-cloud-sun',
                                 'news_weather'  => 'bi-newspaper',
@@ -446,7 +449,8 @@
                         @endphp
                         <span class="badge {{ $badgeClass }}" style="font-size:.6rem;min-width:52px">
                             <i class="bi {{ $badgeIcon }} me-1"></i>
-                            {{ match($item->source_type) {
+                            {{ match($badgeType) {
+                                'voicetrack'    => __('Voice track'),
                                 'news'          => __('News'),
                                 'weather'       => __('Wetter'),
                                 'news_weather'  => __('News+Wetter'),

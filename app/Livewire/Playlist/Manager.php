@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Playlist;
 
+use App\Models\MediaFile;
 use App\Models\Playlist;
 use App\Models\PlaylistItem;
 use App\Support\PlaylistElements\ElementDraft;
@@ -11,6 +12,7 @@ use App\Support\PlaylistElements\PlaylistPalette;
 use App\Support\PlaylistElements\PlaylistRuntime;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Validate;
@@ -205,7 +207,7 @@ class Manager extends Component
 
     public function submitUpload(): void
     {
-        $this->validate(['uploadType' => 'required|in:music,jingle']);
+        $this->validate(['uploadType' => ['required', Rule::in(MediaFile::TYPES)]]);
 
         $element = ElementTypes::for($this->uploadType, 'upload');
         $this->validate($element->rules());

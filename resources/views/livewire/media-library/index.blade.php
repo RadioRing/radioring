@@ -230,6 +230,7 @@
                                                             class="form-select form-select-sm">
                                                         <option value="music">{{ __('Musik') }}</option>
                                                         <option value="jingle">{{ __('Jingle') }}</option>
+                                                        <option value="voicetrack">{{ __('Voice track') }}</option>
                                                     </select>
                                                 </div>
                                             </div>
@@ -289,6 +290,7 @@
                 <option value="">{{ __('Alle Typen') }}</option>
                 <option value="music">{{ __('Musik') }}</option>
                 <option value="jingle">{{ __('Jingle') }}</option>
+                <option value="voicetrack">{{ __('Voice track') }}</option>
             </select>
         </div>
         <div class="col-sm-4 col-md-3">
@@ -386,9 +388,9 @@
                             </button>
 
                             {{-- Type badge --}}
-                            <span class="badge bg-{{ $file->type === 'music' ? 'primary' : 'warning text-dark' }} text-nowrap"
+                            <span class="badge {{ \App\Models\MediaFile::typeBadgeClass($file->type) }} text-nowrap"
                                   style="min-width:52px">
-                                {{ $file->type === 'music' ? __('Musik') : __('Jingle') }}
+                                {{ \App\Models\MediaFile::typeLabel($file->type) }}
                             </span>
 
                             {{-- Info --}}

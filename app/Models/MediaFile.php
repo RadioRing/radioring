@@ -19,6 +19,31 @@ class MediaFile extends Model
     /** @use HasFactory<MediaFileFactory> */
     use HasFactory;
 
+    /** @var list<string> */
+    public const TYPES = ['music', 'jingle', 'voicetrack'];
+
+    /** Display name of a media type. */
+    public static function typeLabel(string $type): string
+    {
+        return match ($type) {
+            'music' => __('Musik'),
+            'jingle' => __('Jingle'),
+            'voicetrack' => __('Voice track'),
+            default => $type,
+        };
+    }
+
+    /** Bootstrap badge classes of a media type. */
+    public static function typeBadgeClass(string $type): string
+    {
+        return match ($type) {
+            'music' => 'bg-primary',
+            'jingle' => 'bg-warning text-dark',
+            'voicetrack' => 'bg-voicetrack',
+            default => 'bg-secondary',
+        };
+    }
+
     protected function casts(): array
     {
         return [

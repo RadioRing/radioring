@@ -69,6 +69,7 @@
                                             <select wire:model="type" id="modal-type" @disabled(! $this->mayWrite) class="form-select form-select-sm">
                                                 <option value="music">{{ __('Musik') }}</option>
                                                 <option value="jingle">{{ __('Jingle') }}</option>
+                                                <option value="voicetrack">{{ __('Voice track') }}</option>
                                             </select>
                                         </div>
                                         <div class="col-12 col-sm-6 d-flex align-items-end">

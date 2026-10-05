@@ -9,6 +9,7 @@ use App\Models\Station;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
@@ -129,7 +130,7 @@ class Index extends Component
      *
      * They only reach into the library when the rundown is generated, so a file can go
      * on air without standing in any playlist. Fill takes music only, random takes any
-     * type, and without a tag filter the whole library qualifies.
+     * type but voice tracks, and without a tag filter the whole library qualifies.
      *
      * @return array{music: bool, any: bool, musicTagIds: array<int, int>, anyTagIds: array<int, int>}
      */
@@ -165,6 +166,10 @@ class Index extends Component
      */
     public function isReachableByFill(MediaFile $file): bool
     {
+        if ($file->type === 'voicetrack') {
+            return false;
+        }
+
         $pools = $this->fillPools;
         $tagIds = $file->tags->pluck('id')->map(fn ($id) => (int) $id)->all();
 
@@ -225,7 +230,7 @@ class Index extends Component
             'pendingUploads.*.title' => 'required|string|min:1|max:200',
             'pendingUploads.*.artist' => 'nullable|string|max:200',
             'pendingUploads.*.album' => 'nullable|string|max:200',
-            'pendingUploads.*.type' => 'required|in:music,jingle',
+            'pendingUploads.*.type' => ['required', Rule::in(MediaFile::TYPES)],
         ]);
 
         $uploadTagIds = $this->selectedUploadTagIds();

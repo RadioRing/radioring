@@ -143,6 +143,7 @@
                                 <option value="">{{ __('All types') }}</option>
                                 <option value="music">{{ __('Musik') }}</option>
                                 <option value="jingle">{{ __('Jingle') }}</option>
+                                <option value="voicetrack">{{ __('Voice track') }}</option>
                             </select>
                             <button class="btn btn-sm btn-outline-primary ms-auto"
                                     wire:click="$set('paletteForm', '{{ $paletteForm === 'upload' ? '' : 'upload' }}')">
@@ -168,6 +169,7 @@
                                     <select wire:model="uploadType" class="form-select form-select-sm">
                                         <option value="jingle">{{ __('Jingle') }}</option>
                                         <option value="music">{{ __('Musik') }}</option>
+                                        <option value="voicetrack">{{ __('Voice track') }}</option>
                                     </select>
                                 </div>
                                 <div class="col-7">
@@ -408,6 +410,7 @@
                                     $badgeClass = match($item->type) {
                                         'music'        => 'bg-primary',
                                         'jingle'       => 'bg-warning text-dark',
+                                        'voicetrack'   => 'bg-voicetrack',
                                         'url'          => 'bg-info text-dark',
                                         'external'     => 'bg-info text-dark',
                                         'fill'         => 'bg-success',
@@ -421,6 +424,7 @@
                                     $badgeLabel = match($item->type) {
                                         'music'        => __('Musik'),
                                         'jingle'       => __('Jingle'),
+                                        'voicetrack'   => __('Voice track'),
                                         'url'          => 'URL',
                                         'external'     => __('Extern'),
                                         'fill'         => __('Fill'),

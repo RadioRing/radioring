@@ -157,3 +157,13 @@
 [x-cloak] {
     display: none !important;
 }
+
+/* Voice tracks: Bootstrap has no purple utility, the variable exists though. */
+.bg-voicetrack {
+    background-color: var(--bs-purple) !important;
+    color: #fff !important;
+}
+
+.bg-voicetrack-subtle {
+    background-color: rgba(111, 66, 193, .08) !important;
+}
