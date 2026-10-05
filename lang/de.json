@@ -558,5 +558,11 @@
     "Tag name": "Tag-Name",
     "Cancel": "Abbrechen",
     "Rename": "Umbenennen",
-    "A tag with this name already exists.": "Ein Tag mit diesem Namen existiert bereits."
+    "A tag with this name already exists.": "Ein Tag mit diesem Namen existiert bereits.",
+    "Select page": "Seite auswählen",
+    "Select all :n matches": "Alle :n Treffer auswählen",
+    "Showing": "Zeige",
+    "to": "bis",
+    "of": "von",
+    "results": "Ergebnissen"
 }

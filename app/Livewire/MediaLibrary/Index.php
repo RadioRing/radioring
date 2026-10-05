@@ -6,6 +6,8 @@ use App\Jobs\AnalyzeMediaLoudnessJob;
 use App\Models\MediaFile;
 use App\Models\PlaylistItem;
 use App\Models\Station;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -15,10 +17,17 @@ use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use Livewire\WithPagination;
 
 #[Title('Media library')]
 class Index extends Component
 {
+    use WithPagination;
+
+    private const FILES_PER_PAGE = 50;
+
+    protected string $paginationTheme = 'bootstrap';
+
     #[Locked]
     public Station $station;
 
@@ -71,6 +80,14 @@ class Index extends Component
     {
         $this->station = auth()->user()->currentStation()
             ?? abort(403, __('No station selected.'));
+    }
+
+    /** A changed filter or search starts again on the first page. */
+    public function updated(string $property): void
+    {
+        if (in_array($property, ['filterType', 'filterTagId', 'search', 'filterDuplicates'], true)) {
+            $this->resetPage();
+        }
     }
 
     /**
@@ -380,12 +397,12 @@ class Index extends Component
     }
 
     /**
-     * Selects every visible file, or clears the selection when they are all
-     * selected already.
+     * Selects every file on the current page, or clears them when they are all
+     * selected already. Selections on other pages stay.
      */
     public function toggleSelectAll(): void
     {
-        $visibleIds = $this->filteredFiles()->pluck('id')->all();
+        $visibleIds = $this->currentPageFiles()->pluck('id')->all();
         $selected = array_map('intval', $this->selectedFileIds);
 
         if (empty(array_diff($visibleIds, $selected))) {
@@ -393,6 +410,17 @@ class Index extends Component
         } else {
             $this->selectedFileIds = array_values(array_unique(array_merge($selected, $visibleIds)));
         }
+    }
+
+    /** Selects every file matching the filters, across all pages. */
+    public function selectAllMatching(): void
+    {
+        $matchingIds = $this->filteredFilesQuery()->pluck('id')->all();
+
+        $this->selectedFileIds = array_values(array_unique(array_merge(
+            array_map('intval', $this->selectedFileIds),
+            $matchingIds,
+        )));
     }
 
     public function clearSelection(): void
@@ -451,13 +479,11 @@ class Index extends Component
     /**
      * The tenant library, narrowed by the active filters and search.
      *
-     * @return Collection<int, MediaFile>
+     * @return Builder<MediaFile>
      */
-    private function filteredFiles()
+    private function filteredFilesQuery(): Builder
     {
-        $query = $this->station->poolMediaFiles()
-            ->withCount('playlistItems')
-            ->with('tags');
+        $query = $this->station->poolMediaFiles();
 
         if ($this->filterType) {
             $query->where('type', $this->filterType);
@@ -481,13 +507,35 @@ class Index extends Component
         }
 
         // Ordered by artist/title so duplicates end up next to each other.
-        return $query->orderBy('artist')->orderBy('title')->get();
+        return $query->orderBy('artist')->orderBy('title')->orderBy('id');
+    }
+
+    /**
+     * One page of the filtered library. A page that ran empty (last file deleted, list
+     * shrunk) falls back to the last page that still has files.
+     *
+     * @return LengthAwarePaginator<int, MediaFile>
+     */
+    private function currentPageFiles(): LengthAwarePaginator
+    {
+        $files = $this->filteredFilesQuery()
+            ->withCount('playlistItems')
+            ->with('tags')
+            ->paginate(self::FILES_PER_PAGE);
+
+        if ($files->isEmpty() && $files->currentPage() > 1) {
+            $this->setPage($files->lastPage());
+
+            return $this->currentPageFiles();
+        }
+
+        return $files;
     }
 
     public function render()
     {
         return view('livewire.media-library.index', [
-            'files' => $this->filteredFiles(),
+            'files' => $this->currentPageFiles(),
             'tags' => $this->station->tags()->orderBy('name')->get(),
             'duplicateIds' => $this->duplicateFileIds,
         ])->layout('layouts.app');

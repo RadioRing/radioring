@@ -30,6 +30,8 @@ to stand on its own.
   artist twice in a row and avoid repeating a title at the same time as yesterday. The GVL
   repeat rules always come first and are now also checked against the hours planned after.
 - **Artist separation per station** (default 45 minutes) under *Edit station*.
+- **The media library shows 50 files per page.** Filters and search start again on page
+  one; a selection for bulk tagging carries across pages and can take in every match.
 - **Protocol entry when a rundown breaks the GVL rules**, usually because the music pool is
   too small.
 - `ROTATION_TITLE_COOLDOWN_SECONDS` is now `ROTATION_TITLE_SEPARATION_SECONDS` (the old name

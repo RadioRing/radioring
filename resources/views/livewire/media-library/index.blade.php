@@ -347,8 +347,14 @@
             <div class="form-check mb-0">
                 <input class="form-check-input" type="checkbox" id="select-all"
                        wire:click="toggleSelectAll" @checked($allVisibleSelected)>
-                <label class="form-check-label small" for="select-all">{{ __('Alle auswählen') }}</label>
+                <label class="form-check-label small" for="select-all">{{ $files->hasPages() ? __('Select page') : __('Alle auswählen') }}</label>
             </div>
+
+            @if($allVisibleSelected && $files->hasPages() && count($selectedFileIds) < $files->total())
+                <button class="btn btn-sm btn-link p-0 small" wire:click="selectAllMatching">
+                    {{ __('Select all :n matches', ['n' => $files->total()]) }}
+                </button>
+            @endif
 
             @if(count($selectedFileIds) > 0)
                 <span class="badge bg-primary">{{ __(':n selected', ['n' => count($selectedFileIds)]) }}</span>
@@ -508,6 +514,10 @@
                     </div>
                 @endforeach
             </div>
+        </div>
+
+        <div class="mt-3">
+            {{ $files->links() }}
         </div>
     @endif
 
