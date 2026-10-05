@@ -14,17 +14,10 @@ input has reordered this document before.
 
 The only part with an order that holds. Reviewed with every release.
 
-1. **Airplay export.** GEMA and GVL reporting needs a CSV/XML export over a date range, plus
-   ISRC, label, composer and publisher on the media file. Live shows are already logged:
-   encoder metadata lands in the protocol with `source = live`.
-2. **Writing metadata back into the file.** Panel edits live in the database only; the file
-   keeps the tags it was uploaded with. Saving a media file writes them back. The getid3
-   writer is already vendored. This is what lets the reporting fields, and later the cue
-   points, travel with the audio.
-3. **Authorization cleanup.** Founder, owner and editor exist, but only station settings
+1. **Authorization cleanup.** Founder, owner and editor exist, but only station settings
    and media deletion check the role (`Station::canBeManagedBy()`). Needs real policies,
    plus a presenter role that may go live but not rebuild the programme.
-4. **A date range for airtime windows.** Weekday and time windows exist. Missing: a
+2. **A date range for airtime windows.** Weekday and time windows exist. Missing: a
    Christmas jingle only in December, a trailer that expires at eight tonight. An optional
    from/to date on the file, checked in `MediaFile::isAirableAt()` and edited in the file
    dialog. The same mechanism later carries an ad campaign's run time.
@@ -115,6 +108,12 @@ Worth doing, but nobody has committed to them.
 
 - A listener request system, a station-facing API for scheduling from outside, silence
   detection on the output rather than the input, languages beyond German and English.
+- **Airplay export.** Small web radios in Germany are covered by flat-rate GEMA and GVL
+  licences, private and commercial alike, and report nothing. Per-track reporting only
+  starts at a size where a station usually broadcasts on FM as well. If RadioRing ends up
+  there: a CSV/XML export over a date range, plus ISRC, label, composer and publisher on the
+  media file. The protocol already logs every track with its start time, live shows
+  included (`source = live`, encoder metadata only).
 - **Metering for the processed signal.** A station using Stereo Tool hears the result
   without ever seeing it. Either read state out of Stereo Tool itself, which depends on what
   the Liquidsoap operator exposes and what Thimeo allows, or measure the output after

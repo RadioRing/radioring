@@ -19,6 +19,10 @@ to stand on its own.
 - **Voice tracks.** A third media type next to music and jingle. Mark a file as a voice
   track on upload or in the file dialog; rundown and dashboard highlight where a presenter
   speaks. Random elements never pick a voice track.
+- **Title, artist and album are written back into the file** (mp3, flac, ogg, m4a) when
+  they are edited in the panel, set in the upload form or a file is replaced. The audio is
+  copied untouched, cover art and other tags stay. Runs on the media queue and needs the
+  ffmpeg that loudness analysis already uses.
 
 ### Changed
 - **Better music rotation.** Fills spread the whole pool over the day, never play the same

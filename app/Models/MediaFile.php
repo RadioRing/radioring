@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Jobs\WriteMediaTagsJob;
 use Carbon\CarbonInterface;
 use Database\Factories\MediaFileFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -83,6 +84,17 @@ class MediaFile extends Model
 
     protected static function booted(): void
     {
+        // Panel edits, upload form values and replaced files all end up in the audio file.
+        static::created(function (MediaFile $file): void {
+            WriteMediaTagsJob::dispatch($file->id)->afterCommit();
+        });
+
+        static::updated(function (MediaFile $file): void {
+            if ($file->wasChanged(['title', 'artist', 'album', 'file_path'])) {
+                WriteMediaTagsJob::dispatch($file->id)->afterCommit();
+            }
+        });
+
         static::deleting(function (MediaFile $file): void {
             // Drop playlist and rundown items so no entry is left without its file.
             $file->playlistItems()->delete();
