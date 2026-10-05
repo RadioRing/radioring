@@ -14,6 +14,8 @@ to stand on its own.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-05
+
 **New in this release: a better music rotation, voice tracks and run times.** Fills now
 spread the whole pool over the day and keep artists apart, with the GVL repeat rules first.
 Voice tracks show where a presenter speaks, and a file can be limited to a run time, such
@@ -541,7 +543,8 @@ First public release. Media library, playlists, weekly grid and rundowns, extern
 live input, outputs to Icecast and laut.fm, per-station Liquidsoap containers, multi-tenant
 and standalone operation, installer and update script.
 
-[Unreleased]: https://github.com/RadioRing/radioring/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/RadioRing/radioring/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/RadioRing/radioring/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/RadioRing/radioring/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/RadioRing/radioring/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/RadioRing/radioring/compare/v0.4.0...v0.5.0
