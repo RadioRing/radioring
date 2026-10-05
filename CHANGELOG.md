@@ -23,6 +23,7 @@ to stand on its own.
   they are edited in the panel, set in the upload form or a file is replaced. The audio is
   copied untouched, cover art and other tags stay. Runs on the media queue and needs the
   ffmpeg that loudness analysis already uses.
+- **Renaming tags** in the tag manager of the media library..
 
 ### Changed
 - **Better music rotation.** Fills spread the whole pool over the day, never play the same

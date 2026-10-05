@@ -554,5 +554,9 @@
     "RadioRing is up to date.": "RadioRing ist aktuell.",
     "Update available: :version": "Update verfügbar: :version",
     "Update available: :count new commit|Update available: :count new commits": "Update verfügbar: :count neuer Commit|Update verfügbar: :count neue Commits",
-    "Voice track": "Voicetrack"
+    "Voice track": "Voicetrack",
+    "Tag name": "Tag-Name",
+    "Cancel": "Abbrechen",
+    "Rename": "Umbenennen",
+    "A tag with this name already exists.": "Ein Tag mit diesem Namen existiert bereits."
 }

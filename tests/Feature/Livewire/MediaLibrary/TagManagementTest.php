@@ -4,10 +4,12 @@ use App\Livewire\MediaLibrary\FileModal;
 use App\Livewire\MediaLibrary\Index;
 use App\Models\GeneratedPlaylist;
 use App\Models\LiquidsoapState;
+use App\Models\MediaFile;
 use App\Models\PlaylistItem;
 use App\Models\Station;
 use App\Models\Tag;
 use App\Models\User;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
@@ -37,6 +39,57 @@ test('duplicate tag names within same station are not created twice', function (
         ->call('createTag');
 
     expect($this->station->tags()->where('name', '80er')->count())->toBe(1);
+});
+
+test('user can rename a tag and its files keep it', function () {
+    $tag = $this->station->tags()->create(['name' => 'Oldies']);
+    $file = MediaFile::factory()->create(['tenant_id' => $this->station->tenant_id]);
+    $file->tags()->attach($tag);
+
+    Livewire::test(Index::class)
+        ->call('startRenamingTag', $tag->id)
+        ->assertSet('renamingTagName', 'Oldies')
+        ->set('renamingTagName', '  Goldies  ')
+        ->call('renameTag')
+        ->assertHasNoErrors()
+        ->assertSet('renamingTagId', null);
+
+    expect($tag->fresh()->name)->toBe('Goldies')
+        ->and($file->tags()->pluck('name')->all())->toBe(['Goldies']);
+});
+
+test('a tag cannot be renamed to a name that is taken', function () {
+    $this->station->tags()->create(['name' => '80er']);
+    $tag = $this->station->tags()->create(['name' => 'Oldies']);
+
+    Livewire::test(Index::class)
+        ->call('startRenamingTag', $tag->id)
+        ->set('renamingTagName', '80er')
+        ->call('renameTag')
+        ->assertHasErrors(['renamingTagName' => 'unique']);
+
+    expect($tag->fresh()->name)->toBe('Oldies');
+});
+
+test('renaming a tag only changes its case', function () {
+    $tag = $this->station->tags()->create(['name' => 'oldies']);
+
+    Livewire::test(Index::class)
+        ->call('startRenamingTag', $tag->id)
+        ->set('renamingTagName', 'Oldies')
+        ->call('renameTag')
+        ->assertHasNoErrors();
+
+    expect($tag->fresh()->name)->toBe('Oldies');
+});
+
+test('tags of another tenant cannot be renamed', function () {
+    $foreignTag = Station::factory()->create()->tags()->create(['name' => 'Fremd']);
+
+    expect(fn () => Livewire::test(Index::class)->call('startRenamingTag', $foreignTag->id))
+        ->toThrow(ModelNotFoundException::class);
+
+    expect($foreignTag->fresh()->name)->toBe('Fremd');
 });
 
 test('user can delete a tag', function () {

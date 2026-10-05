@@ -42,8 +42,30 @@
             <div class="card-body">
                 <div class="d-flex flex-wrap gap-2 mb-3">
                     @forelse($tags as $tag)
-                        <span class="badge bg-secondary d-flex align-items-center gap-1" style="font-size:.85rem">
+                        @if($renamingTagId === $tag->id)
+                            <form wire:submit="renameTag" wire:key="rename-tag-{{ $tag->id }}"
+                                  class="d-flex align-items-start gap-1" x-on:keydown.escape="$wire.cancelRenamingTag()">
+                                <div>
+                                    <input type="text" wire:model="renamingTagName" x-init="$el.focus(); $el.select()"
+                                           class="form-control form-control-sm @error('renamingTagName') is-invalid @enderror"
+                                           style="width:160px" aria-label="{{ __('Tag name') }}">
+                                    @error('renamingTagName') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                                </div>
+                                <button type="submit" class="btn btn-sm btn-primary" title="{{ __('Save') }}">
+                                    <i class="bi bi-check-lg"></i>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" wire:click="cancelRenamingTag" title="{{ __('Cancel') }}">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </form>
+                            @continue
+                        @endif
+                        <span class="badge bg-secondary d-flex align-items-center gap-1" style="font-size:.85rem" wire:key="tag-{{ $tag->id }}">
                             {{ $tag->name }}
+                            <button type="button" class="btn btn-link text-white p-0 ms-1 lh-1" style="font-size:.75rem"
+                                    wire:click="startRenamingTag({{ $tag->id }})" title="{{ __('Rename') }}">
+                                <i class="bi bi-pencil"></i>
+                            </button>
                             <button type="button" class="btn-close btn-close-white ms-1"
                                     style="font-size:.6rem"
                                     @click="$dispatch('confirm-dialog', { message: @js(__('Tag \':name\' löschen? Er wird von allen Dateien entfernt.', ['name' => $tag->name])), confirmText: @js(__('Löschen')), onConfirm: () => $wire.deleteTag({{ $tag->id }}) })"></button>

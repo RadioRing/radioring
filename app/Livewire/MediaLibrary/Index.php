@@ -46,6 +46,11 @@ class Index extends Component
 
     public string $newTagName = '';
 
+    #[Locked]
+    public ?int $renamingTagId = null;
+
+    public string $renamingTagName = '';
+
     /**
      * Tags handed to every file of the current upload batch, picked while the files
      * are still in the queue so nobody has to hunt for untagged files afterwards.
@@ -324,6 +329,47 @@ class Index extends Component
 
         $this->station->tags()->firstOrCreate(['name' => trim($this->newTagName)]);
         $this->reset('newTagName');
+    }
+
+    public function startRenamingTag(int $tagId): void
+    {
+        abort_unless($this->mayWrite, 403);
+
+        $tag = $this->station->tags()->findOrFail($tagId);
+
+        $this->resetValidation('renamingTagName');
+        $this->renamingTagId = $tag->id;
+        $this->renamingTagName = $tag->name;
+    }
+
+    public function cancelRenamingTag(): void
+    {
+        $this->resetValidation('renamingTagName');
+        $this->reset('renamingTagId', 'renamingTagName');
+    }
+
+    /**
+     * Fill and random elements reference tags by id, so a new name changes nothing about
+     * what they pick.
+     */
+    public function renameTag(): void
+    {
+        abort_unless($this->mayWrite, 403);
+
+        $tag = $this->station->tags()->findOrFail($this->renamingTagId);
+        $this->renamingTagName = trim($this->renamingTagName);
+
+        $this->validate([
+            'renamingTagName' => [
+                'required', 'string', 'min:1', 'max:50',
+                Rule::unique('tags', 'name')->where('tenant_id', $this->station->tenant_id)->ignore($tag->id),
+            ],
+        ], [
+            'renamingTagName.unique' => __('A tag with this name already exists.'),
+        ]);
+
+        $tag->update(['name' => $this->renamingTagName]);
+        $this->cancelRenamingTag();
     }
 
     public function deleteTag(int $tagId): void
