@@ -89,6 +89,7 @@ The installer writes all of this. The tables are for when you edit by hand.
 | `DB_HOST` / `DB_DATABASE` / `DB_USERNAME` / `DB_PASSWORD` | | |
 | `QUEUE_CONNECTION` | `redis` | Rundowns and container starts run as jobs. `database` works but deadlocks on the jobs table under load, which can stall the worker until it restarts. |
 | `APP_UPDATE_CHECK` | `true` | Asks GitHub once an hour for a new release (on `edge`: for new commits on `main`) and shows administrators a notice on the version badge. `false` switches the request off. |
+| `TELEMETRY_ENDPOINT` | `https://radioring.de/api/telemetry` | Target of the anonymous usage statistics. They stay off until an admin switches them on in the instance settings. Empty removes the option entirely. |
 
 ### 3.2 Container control
 
@@ -232,6 +233,7 @@ stored in the panel. Details in [section 8](#8-backups).
 php artisan radioring:schedule-status {station}   # cursor, now playing, current rundown
 php artisan radioring:enforce-hard-starts         # normally run by the scheduler
 php artisan radioring:check-updates               # normally run by the scheduler
+php artisan radioring:send-telemetry [--force]    # normally run by the scheduler, only when switched on
 ```
 
 ### Local development
@@ -260,6 +262,7 @@ Registered in `routes/console.php`:
 | daily, configurable | `backup:run --auto` | Configuration backup, only when enabled in the panel |
 | every minute | `radioring:check-alerts` | Alert mails to station owners. Sends directly, not through the queue. |
 | hourly at :17 | `radioring:check-updates` | Ask for a new release, see `APP_UPDATE_CHECK` |
+| hourly at :43 | `radioring:send-telemetry` | Anonymous usage statistics, at most once a day and only after opt-in |
 
 **Without a running scheduler and queue workers no rundowns are created**, and the station
 falls silent after the current hour. With `APP_MODE=all` all of them run inside the app

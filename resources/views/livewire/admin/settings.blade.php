@@ -217,4 +217,60 @@
             @endif
         </div>
     </div>
+
+    @if($this->telemetryAvailable())
+        <div class="card mt-4" style="max-width: 720px;">
+            <div class="card-header fw-medium">
+                <i class="bi bi-bar-chart me-1"></i>{{ __('Anonymous usage statistics') }}
+            </div>
+            <div class="card-body">
+                <p class="text-muted-sm">
+                    {{ __('Helps us decide what to develop next. Once a day this instance sends size ranges and yes/no details per station to radioring.de, for example how many media files and playlists there are, whether laut.fm or an external Icecast is used and whether Syndications4Radio is connected.') }}
+                </p>
+                <ul class="text-muted-sm ps-3">
+                    <li>{{ __('No names, addresses, URLs, content or credentials.') }}</li>
+                    <li>{{ __('Counts only as ranges such as 11-100, never exact numbers.') }}</li>
+                    <li>{{ __('The instance ID is random and is deleted when you switch this off.') }}</li>
+                    <li>{{ __('radioring.de keeps only the latest report and deletes it after 90 days without a new one.') }}</li>
+                </ul>
+
+                @if($this->telemetryEnabled())
+                    <div class="alert alert-success py-2">
+                        <i class="bi bi-check-circle me-1"></i>{{ __('Switched on.') }}
+                        @if($this->telemetryLastSent())
+                            {{ __('Last report: :date', ['date' => $this->telemetryLastSent()]) }}
+                        @else
+                            {{ __('No report has been sent yet.') }}
+                        @endif
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-2">
+                        <button class="btn btn-outline-danger btn-sm" wire:click="disableTelemetry">
+                            <i class="bi bi-x-lg me-1"></i>{{ __('Switch off') }}
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" wire:click="resetTelemetryId">
+                            <i class="bi bi-arrow-repeat me-1"></i>{{ __('New instance ID') }}
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" wire:click="$toggle('showTelemetryPreview')">
+                            <i class="bi bi-code me-1"></i>{{ __('Show what is sent') }}
+                        </button>
+                    </div>
+                @else
+                    <div class="d-flex flex-wrap gap-2">
+                        <button class="btn btn-primary btn-sm" wire:click="enableTelemetry"
+                                wire:loading.attr="disabled" wire:target="enableTelemetry">
+                            <i class="bi bi-check-lg me-1"></i>{{ __('Switch on') }}
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" wire:click="$toggle('showTelemetryPreview')">
+                            <i class="bi bi-code me-1"></i>{{ __('Show what would be sent') }}
+                        </button>
+                    </div>
+                @endif
+
+                @if($showTelemetryPreview)
+                    <pre class="bg-body-tertiary border rounded p-2 mt-3 mb-0 small" style="max-height: 360px; overflow: auto;">{{ $this->telemetryPreview() }}</pre>
+                @endif
+            </div>
+        </div>
+    @endif
 </div>

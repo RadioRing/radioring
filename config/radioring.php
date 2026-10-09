@@ -367,4 +367,17 @@ return [
         'repository' => env('APP_REPOSITORY', 'radioring/radioring'),
         'update_check' => (bool) env('APP_UPDATE_CHECK', true),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Telemetry
+    |--------------------------------------------------------------------------
+    |
+    | Anonymous usage statistics, off until an admin opts in under instance settings.
+    | An empty endpoint removes the option entirely, e.g. for air-gapped installations.
+    |
+    */
+    'telemetry' => [
+        'endpoint' => env('TELEMETRY_ENDPOINT', 'https://radioring.de/api/telemetry'),
+    ],
 ];

@@ -36,6 +36,9 @@ Schedule::job(new PrepareUpcomingHttpItemsJob)->everyMinute()->withoutOverlappin
 // only reads the stored answer.
 Schedule::command('radioring:check-updates')->hourlyAt(17)->runInBackground()->onOneServer();
 
+// Hourly check, but the report only goes out once a day and only after the admin opted in.
+Schedule::command('radioring:send-telemetry')->hourlyAt(43)->runInBackground()->onOneServer();
+
 // Nightly configuration backup. Time and retention come from the settings table, so the
 // operator can change them at runtime; the schedule is rebuilt on every `schedule:run`
 // and therefore picks the current value up without a redeploy.

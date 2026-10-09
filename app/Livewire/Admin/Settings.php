@@ -6,6 +6,9 @@ use App\Enums\AppMode;
 use App\Mail\TestMail;
 use App\Models\Tenant;
 use App\Services\Mail\MailSettings;
+use App\Services\Telemetry\TelemetryReport;
+use App\Services\Telemetry\TelemetrySender;
+use App\Services\Telemetry\TelemetrySettings;
 use App\Support\StereoToolTerms;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
@@ -47,6 +50,9 @@ class Settings extends Component
     public string $mailStationSenderDomain = '';
 
     public string $mailTestRecipient = '';
+
+    /** Builds the payload only when the admin asks to see it. */
+    public bool $showTelemetryPreview = false;
 
     public function mount(): void
     {
@@ -177,6 +183,79 @@ class Settings extends Component
         }
 
         return $this->mailForgetPassword ? '' : null;
+    }
+
+    #[Computed]
+    public function telemetryAvailable(): bool
+    {
+        return app(TelemetrySender::class)->isAvailable();
+    }
+
+    #[Computed]
+    public function telemetryEnabled(): bool
+    {
+        return TelemetrySettings::enabled();
+    }
+
+    #[Computed]
+    public function telemetryLastSent(): ?string
+    {
+        return TelemetrySettings::lastSentAt()?->isoFormat('LLL');
+    }
+
+    /**
+     * Exactly what would be sent, with a placeholder ID before the opt-in.
+     */
+    #[Computed]
+    public function telemetryPreview(): string
+    {
+        $report = TelemetryReport::build(TelemetrySettings::instanceId() ?? '00000000-0000-0000-0000-000000000000');
+
+        return (string) json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * Opting in sends the first report right away, so the admin sees whether it arrives.
+     */
+    public function enableTelemetry(): void
+    {
+        abort_unless($this->telemetryAvailable(), 404);
+
+        TelemetrySettings::enable();
+        $sent = app(TelemetrySender::class)->send();
+
+        $this->forgetTelemetryState();
+
+        $this->dispatch('notify',
+            message: $sent ? __('Telemetry switched on. Thank you!') : __('Telemetry switched on. The first report could not be sent yet and will be retried within the hour.'),
+            type: $sent ? 'success' : 'warning',
+        );
+    }
+
+    public function disableTelemetry(): void
+    {
+        TelemetrySettings::disable();
+
+        $this->forgetTelemetryState();
+
+        $this->dispatch('notify', message: __('Telemetry switched off. The instance ID has been deleted.'), type: 'success');
+    }
+
+    public function resetTelemetryId(): void
+    {
+        abort_unless(TelemetrySettings::enabled(), 404);
+
+        TelemetrySettings::resetInstanceId();
+        app(TelemetrySender::class)->send();
+
+        $this->forgetTelemetryState();
+
+        $this->dispatch('notify', message: __('A new instance ID has been created.'), type: 'success');
+    }
+
+    private function forgetTelemetryState(): void
+    {
+        unset($this->telemetryEnabled, $this->telemetryLastSent, $this->telemetryPreview);
     }
 
     #[Computed]

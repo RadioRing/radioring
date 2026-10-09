@@ -566,6 +566,12 @@ Nur für Nutzer mit Admin-Rechten sichtbar (Block **ADMINISTRATION**).
   *Stations-Mails mit eigenem Absender verschicken* sendet Alarme als
   `<slug>-noreply@<domain>` unter dem Stationsnamen. Nur einschalten, wenn dein Mailserver
   für jede Adresse dieser Domain senden darf.
+- **Anonyme Nutzungsstatistik** (in den Instanz-Einstellungen): standardmäßig aus.
+  Eingeschaltet sendet die Instanz einmal täglich je Station Größenklassen (etwa
+  „11-100 Mediendateien") und Ja/Nein-Angaben zu genutzten Funktionen an radioring.de,
+  zum Beispiel ob laut.fm, ein externer Icecast oder Syndications4Radio genutzt wird. Keine
+  Namen, URLs, Inhalte oder Zugangsdaten. *Anzeigen, was gesendet würde* zeigt den Bericht
+  vorab im Wortlaut. Beim Ausschalten wird die zufällige Instanz-Kennung gelöscht.
 - **Backups**: Sicherung der Konfiguration und der Datenbank, manuell oder jede Nacht,
   mit Aufbewahrungsgrenze und optionaler Passphrase. Das Archiv lässt sich hier
   herunterladen. Mediendateien sind bewusst nicht enthalten. Wiederherstellen läuft

@@ -515,6 +515,12 @@ Visible only to administrators.
   server* is off, the `MAIL_*` values from `.env` apply. *Send station mails with their own
   sender* sends alerts as `<slug>-noreply@<domain>` under the station name. Only switch it
   on if your mail server may send for every address of that domain.
+- **Anonymous usage statistics** (in the instance settings): off by default. Once switched
+  on, the instance sends size ranges per station (such as "11-100 media files") and yes/no
+  details on features in use to radioring.de once a day, for example whether laut.fm, an
+  external Icecast or Syndications4Radio is used. No names, URLs, content or credentials.
+  *Show what would be sent* displays the report word for word beforehand. Switching it off
+  deletes the random instance ID.
 - **Backups**: secure the configuration and the database, manually or every night, with a
   retention limit and an optional passphrase. The archive can be downloaded here. Media
   files are deliberately not included. Restoring runs on the command line, see
