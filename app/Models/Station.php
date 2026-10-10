@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\StationRole;
 use App\Services\SyndicationClient;
 use Database\Factories\StationFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -112,7 +113,7 @@ class Station extends Model
     public function alertRecipients(): Collection
     {
         return $this->members()
-            ->wherePivot('role', 'owner')
+            ->wherePivot('role', StationRole::Owner->value)
             ->get()
             ->push($this->owner)
             ->filter()
@@ -126,40 +127,10 @@ class Station extends Model
         return $this->hasMany(StationAlert::class);
     }
 
-    /**
-     * Die Rolle eines Nutzers an dieser Station oder null, wenn er keinen Zugriff hat.
-     */
-    public function roleFor(User $user): ?string
-    {
-        return $this->members()
-            ->where('users.id', $user->id)
-            ->first()
-            ?->pivot->role;
-    }
-
+    /** Founder check. Permissions live in StationPolicy. */
     public function isOwnedBy(User $user): bool
     {
         return $this->user_id === $user->id;
-    }
-
-    /**
-     * Darf der Nutzer die Station verwalten (Einstellungen, Team)?
-     *
-     * Der Gründer immer, dazu jeder, der an dieser Station die Rolle "owner" hat.
-     * Nur der Gründer darf die Station löschen; siehe canBeDeletedBy().
-     */
-    public function canBeManagedBy(User $user): bool
-    {
-        return $this->isOwnedBy($user) || $this->roleFor($user) === 'owner';
-    }
-
-    /**
-     * Darf der Nutzer die Station löschen? Nur der Gründer, nicht ein nachträglich
-     * beförderter Besitzer.
-     */
-    public function canBeDeletedBy(User $user): bool
-    {
-        return $this->isOwnedBy($user);
     }
 
     public function playlists(): HasMany
@@ -478,7 +449,7 @@ class Station extends Model
 
         static::created(function (Station $station) {
             $station->members()->syncWithoutDetaching([
-                $station->user_id => ['role' => 'owner'],
+                $station->user_id => ['role' => StationRole::Owner->value],
             ]);
         });
 

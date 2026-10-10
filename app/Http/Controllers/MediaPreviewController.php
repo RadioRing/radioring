@@ -23,22 +23,11 @@ class MediaPreviewController extends Controller
     ];
 
     /**
-     * Streamt eine Mediendatei zum Vorhören in der Medienbibliothek.
-     *
-     * Liefert eine BinaryFileResponse, die Range-Anfragen (Springen/Seeking im
-     * Audio-Player) automatisch unterstützt. Zugriff hat der angemeldete Nutzer
-     * nur auf Dateien, die seine aktuelle Station nutzen darf oder die zu einer
-     * für ihn zugänglichen Station gehören (z. B. beim Durchstöbern vor dem Verlinken).
+     * Streams a media file for preview. BinaryFileResponse handles range requests (seeking).
      */
     public function __invoke(Request $request, MediaFile $mediaFile): BinaryFileResponse
     {
-        $user = $request->user();
-        $station = $user->currentStation();
-
-        $mayAccess = ($station !== null && $station->canUseMedia($mediaFile))
-            || $user->accessibleStations()->whereKey($mediaFile->station_id)->exists();
-
-        abort_unless($mayAccess, 403);
+        abort_unless($request->user()->can('view', $mediaFile), 403);
 
         abort_unless(Storage::disk('local')->exists($mediaFile->file_path), 404);
 

@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Playlist;
 
+use App\Concerns\AuthorizesCurrentStation;
 use App\Models\Playlist;
 use App\Models\Station;
 use Illuminate\Database\Eloquent\Builder;
@@ -16,6 +17,8 @@ use Livewire\Component;
 #[Title('Playlisten')]
 class Index extends Component
 {
+    use AuthorizesCurrentStation;
+
     #[Locked]
     public Station $station;
 
@@ -49,10 +52,14 @@ class Index extends Component
     #[Validate('required|in:sequential,random')]
     public string $newPlaybackMode = 'sequential';
 
+    protected function stationAbility(): string
+    {
+        return 'program';
+    }
+
     public function mount(): void
     {
-        $this->station = auth()->user()->currentStation()
-            ?? abort(403, 'Keine Station ausgewählt.');
+        $this->station = $this->authorizedCurrentStation();
     }
 
     public function switchTab(string $tab): void

@@ -2,6 +2,7 @@
 
 namespace App\Livewire\HourGrid;
 
+use App\Concerns\AuthorizesCurrentStation;
 use App\Models\GeneratedPlaylist;
 use App\Models\HourGridSlot;
 use App\Models\Station;
@@ -15,6 +16,8 @@ use Livewire\Component;
 #[Title('Wochenraster')]
 class Index extends Component
 {
+    use AuthorizesCurrentStation;
+
     #[Locked]
     public Station $station;
 
@@ -34,10 +37,14 @@ class Index extends Component
     /** @var array<string> */
     public array $generateLog = [];
 
+    protected function stationAbility(): string
+    {
+        return 'program';
+    }
+
     public function mount(): void
     {
-        $this->station = auth()->user()->currentStation()
-            ?? abort(403, 'Keine Station ausgewählt.');
+        $this->station = $this->authorizedCurrentStation();
     }
 
     public function editSlot(int $weekday, int $hour): void

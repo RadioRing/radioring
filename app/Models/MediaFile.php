@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Storage;
 
-#[Fillable(['tenant_id', 'title', 'artist', 'album', 'notes', 'type', 'fade_in', 'airtime_windows', 'airable_from', 'airable_until', 'file_path', 'duration_seconds', 'loudness_lufs', 'loudness_true_peak', 'loudness_measured_at'])]
+#[Fillable(['tenant_id', 'uploaded_by', 'title', 'artist', 'album', 'notes', 'type', 'fade_in', 'airtime_windows', 'airable_from', 'airable_until', 'file_path', 'duration_seconds', 'loudness_lufs', 'loudness_true_peak', 'loudness_measured_at'])]
 class MediaFile extends Model
 {
     /** @use HasFactory<MediaFileFactory> */
@@ -48,6 +48,7 @@ class MediaFile extends Model
     protected function casts(): array
     {
         return [
+            'uploaded_by' => 'integer',
             'fade_in' => 'boolean',
             'airtime_windows' => 'array',
             'airable_from' => 'datetime',

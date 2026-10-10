@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Output;
 
+use App\Concerns\AuthorizesCurrentStation;
 use App\Models\Station;
 use App\Services\IcecastStatusService;
 use Livewire\Attributes\Locked;
@@ -11,6 +12,8 @@ use Livewire\Component;
 #[Title('Stream-Ausgänge')]
 class Index extends Component
 {
+    use AuthorizesCurrentStation;
+
     #[Locked]
     public Station $station;
 
@@ -35,10 +38,14 @@ class Index extends Component
 
     public bool $enabled = true;
 
+    protected function stationAbility(): string
+    {
+        return 'manage';
+    }
+
     public function mount(): void
     {
-        $this->station = auth()->user()->currentStation()
-            ?? abort(403, 'Keine Station ausgewählt.');
+        $this->station = $this->authorizedCurrentStation();
     }
 
     /**

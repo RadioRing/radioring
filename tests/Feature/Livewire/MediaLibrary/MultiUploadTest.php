@@ -77,7 +77,9 @@ test('save creates DB records, dispatches loudness analysis and clears the pendi
     expect($this->station->mediaFiles()->count())->toBe(2);
 
     $a = $this->station->mediaFiles()->where('title', 'Track A')->first();
-    expect($a->type)->toBe('music')->and($a->duration_seconds)->toBe(200);
+    expect($a->type)->toBe('music')
+        ->and($a->duration_seconds)->toBe(200)
+        ->and($a->uploaded_by)->toBe($this->user->id);
 
     $b = $this->station->mediaFiles()->where('title', 'Track B')->first();
     expect($b->type)->toBe('jingle');

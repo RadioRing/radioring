@@ -21,7 +21,7 @@
                                 <i class="bi bi-broadcast-pin me-1 text-primary"></i>{{ $existingStation->name }}
                             </span>
                             <span class="badge bg-secondary">
-                                {{ $existingStation->pivot->role === 'owner' ? __('Owner') : __('Editor') }}
+                                {{ \App\Enums\StationRole::tryFrom($existingStation->pivot->role)?->label() }}
                             </span>
                         </button>
                     @endforeach

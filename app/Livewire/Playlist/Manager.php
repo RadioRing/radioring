@@ -90,10 +90,17 @@ class Manager extends Component
     {
         $station = auth()->user()->currentStation();
         abort_unless($station && $playlist->station_id === $station->id, 403);
+        $this->authorize('program', $station);
 
         $this->playlist = $playlist;
         $this->name = $playlist->name;
         $this->playbackMode = $playlist->playback_mode;
+    }
+
+    /** Re-checked on every request; see AuthorizesCurrentStation. */
+    public function hydrate(): void
+    {
+        $this->authorize('program', $this->playlist->station);
     }
 
     public function saveSettings(): void

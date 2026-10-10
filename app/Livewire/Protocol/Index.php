@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Protocol;
 
+use App\Concerns\AuthorizesCurrentStation;
 use App\Models\Station;
 use App\Models\StationLog;
 use Illuminate\Contracts\Database\Eloquent\Builder;
@@ -13,7 +14,7 @@ use Livewire\WithPagination;
 #[Title('Protokoll')]
 class Index extends Component
 {
-    use WithPagination;
+    use AuthorizesCurrentStation, WithPagination;
 
     protected string $paginationTheme = 'bootstrap';
 
@@ -32,8 +33,7 @@ class Index extends Component
 
     public function mount(): void
     {
-        $this->station = auth()->user()->currentStation()
-            ?? abort(403, 'Keine Station ausgewählt.');
+        $this->station = $this->authorizedCurrentStation();
 
         $this->date = today()->toDateString();
     }

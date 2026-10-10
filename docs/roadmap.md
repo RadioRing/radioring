@@ -12,12 +12,6 @@ input has reordered this document before.
 
 ## Next up
 
-The only part with an order that holds. Reviewed with every release.
-
-1. **Authorization cleanup.** Founder, owner and editor exist, but only station settings
-   and media deletion check the role (`Station::canBeManagedBy()`). Needs real policies,
-   plus a presenter role that may go live but not rebuild the programme. Presenters upload
-   their voice tracks themselves.
 
 ## Planned
 
@@ -25,10 +19,6 @@ Grouped by topic, not by date. Within a group, the first item is the likeliest n
 
 ### Running operation
 
-- **Pulling affected rundowns forward.** Rundowns are generated ahead and frozen, so a
-  change to a playlist, a fixed time or an airtime window never reaches hours that are
-  already generated. Changing them regenerates the future rundowns they touch and leaves
-  played ones alone. Special days (below) need it too.
 - **Intervening in the running hour.** Watching something go wrong in the dashboard and
   having nothing to do about it but regenerate the rundown, which throws away the hour. An
   element should be draggable into the programme that is on air, right behind the track

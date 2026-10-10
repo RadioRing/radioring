@@ -284,7 +284,7 @@
                 <div class="card-body">
                     <h6 class="fw-semibold">{{ __('Team / Zugriff') }}</h6>
                     <p class="text-muted-sm">{{ __('Erteile anderen registrierten Nutzern Zugriff, um die Station gemeinsam zu verwalten.') }}</p>
-                    <p class="text-muted-sm">{{ __('Editors build and air shows. Owners can do that too, plus delete media and manage the station and its team. Only the founder can delete the station.') }}</p>
+                    <p class="text-muted-sm">{{ __('Presenters go live and upload their own voice tracks. Editors also build the programme. Owners also delete media, run the container and manage the station and its team. Only the founder can delete the station.') }}</p>
 
                     <ul class="list-group list-group-flush mb-3">
                         @foreach ($members as $member)
@@ -300,8 +300,9 @@
                                         <select class="form-select form-select-sm w-auto"
                                                 aria-label="{{ __('Role') }}"
                                                 wire:change="changeMemberRole({{ $member->id }}, $event.target.value)">
-                                            <option value="editor" @selected($member->pivot->role === 'editor')>{{ __('Editor') }}</option>
-                                            <option value="owner" @selected($member->pivot->role === 'owner')>{{ __('Owner') }}</option>
+                                            @foreach (\App\Enums\StationRole::cases() as $role)
+                                                <option value="{{ $role->value }}" @selected($member->pivot->role === $role->value)>{{ $role->label() }}</option>
+                                            @endforeach
                                         </select>
                                         <button type="button" class="btn btn-outline-danger btn-sm"
                                                 @click="$dispatch('confirm-dialog', { message: @js(__('Zugriff für :name entziehen?', ['name' => $member->name])), confirmText: @js(__('Entziehen')), onConfirm: () => $wire.removeMember({{ $member->id }}) })">
@@ -321,8 +322,9 @@
                                    placeholder="email@example.com">
                             <select class="form-select flex-grow-0 w-auto" wire:model="memberRole"
                                     aria-label="{{ __('Role') }}">
-                                <option value="editor">{{ __('Editor') }}</option>
-                                <option value="owner">{{ __('Owner') }}</option>
+                                @foreach (\App\Enums\StationRole::cases() as $role)
+                                    <option value="{{ $role->value }}">{{ $role->label() }}</option>
+                                @endforeach
                             </select>
                             <button type="submit" class="btn btn-primary">
                                 <i class="bi bi-person-plus me-1"></i>{{ __('Hinzufügen') }}
@@ -336,7 +338,7 @@
             </div>
         </div>
 
-        @if ($station->canBeDeletedBy(auth()->user()))
+        @can('delete', $station)
         <div class="col-12 col-xl-6 col-xxl-4">
             <div class="card border-danger">
                 <div class="card-body">
@@ -349,10 +351,10 @@
                 </div>
             </div>
         </div>
-        @endif
+        @endcan
     </div>
 
-    @if ($station->canBeDeletedBy(auth()->user()))
+    @can('delete', $station)
     <div class="modal fade" id="deleteStationModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -372,5 +374,5 @@
             </div>
         </div>
     </div>
-    @endif
+    @endcan
 </div>

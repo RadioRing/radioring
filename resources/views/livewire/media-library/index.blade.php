@@ -17,6 +17,8 @@
                         <span class="badge bg-secondary ms-1">{{ $tags->count() }}</span>
                     @endif
                 </button>
+            @endif
+            @if($this->mayUpload)
                 <button class="btn btn-primary btn-sm" wire:click="$set('showUploadForm', true)">
                     <i class="bi bi-cloud-upload me-1"></i>{{ __('Upload') }}
                 </button>
@@ -24,11 +26,10 @@
         </div>
     </div>
 
-    {{-- The library belongs to the tenant, so every station of the tenant sees it. --}}
     @unless($this->mayWrite)
         <div class="alert alert-secondary d-flex align-items-center gap-2 py-2">
             <i class="bi bi-eye fs-5"></i>
-            <div>{{ __('You can use this library in your playlists, but not change it.') }}</div>
+            <div>{{ __('You can upload files and edit your own uploads.') }}</div>
         </div>
     @endunless
 
@@ -88,7 +89,7 @@
     @endif
 
     {{-- Upload area --}}
-    @if($showUploadForm && $this->mayWrite)
+    @if($showUploadForm && $this->mayUpload)
         <div class="card mb-4" x-data="chunkUploader">
             <div class="card-header fw-medium d-flex align-items-center justify-content-between">
                 <span><i class="bi bi-cloud-upload me-1"></i>{{ __('Dateien hochladen') }}</span>
@@ -138,6 +139,7 @@
                         </div>
                     @endif
 
+                    @if($this->mayWrite)
                     <form wire:submit="createUploadTag" class="input-group input-group-sm" style="max-width:320px">
                         <input type="text" wire:model="newUploadTagName"
                                class="form-control @error('newUploadTagName') is-invalid @enderror"
@@ -149,6 +151,7 @@
                             <div class="invalid-feedback">{{ $message }}</div>
                         @enderror
                     </form>
+                    @endif
                 </div>
 
                 {{-- Uploads in progress --}}
@@ -506,8 +509,8 @@
                             {{-- Everything about a file is edited in the dialog. --}}
                             <button type="button" class="btn btn-sm btn-outline-secondary"
                                     wire:click="$dispatch('open-media-file', { fileId: {{ $file->id }} })"
-                                    title="{{ $this->mayWrite ? __('Edit element') : __('Details') }}">
-                                <i class="bi {{ $this->mayWrite ? 'bi-pencil' : 'bi-info-circle' }}"></i>
+                                    title="{{ $this->mayWrite || $file->uploaded_by === auth()->id() ? __('Edit element') : __('Details') }}">
+                                <i class="bi {{ $this->mayWrite || $file->uploaded_by === auth()->id() ? 'bi-pencil' : 'bi-info-circle' }}"></i>
                             </button>
 
                             @if($this->mayDelete)

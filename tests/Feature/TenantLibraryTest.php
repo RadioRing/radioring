@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\StationRole;
 use App\Models\MediaFile;
 use App\Models\Station;
 use App\Models\User;
@@ -50,7 +51,7 @@ test('an invited editor reaches the library of the station they were invited to'
     $file = MediaFile::factory()->create(['tenant_id' => $this->stationA->tenant_id]);
 
     expect($this->stationA->canUseMedia($file))->toBeTrue()
-        ->and($guest->roleOn($this->stationA))->toBe('editor');
+        ->and($guest->roleOn($this->stationA))->toBe(StationRole::Editor);
 });
 
 test('a user only reaches libraries of tenants they hold a station in', function () {
@@ -67,24 +68,6 @@ test('a user only reaches libraries of tenants they hold a station in', function
         ->and($this->stationA->canUseMedia($theirFile))->toBeFalse()
         ->and($guestStation->canUseMedia($theirFile))->toBeTrue()
         ->and($guestStation->canUseMedia($ourFile))->toBeFalse();
-});
-
-test('editors may add to the library but only owners may delete', function () {
-    $editor = User::factory()->create();
-    $this->stationA->members()->attach($editor->id, ['role' => 'editor']);
-
-    expect($editor->mayWriteMediaOn($this->stationA))->toBeTrue()
-        ->and($editor->mayDeleteMediaOn($this->stationA))->toBeFalse()
-        ->and($this->owner->mayWriteMediaOn($this->stationA))->toBeTrue()
-        ->and($this->owner->mayDeleteMediaOn($this->stationA))->toBeTrue();
-});
-
-test('a stranger holds no role and may not write', function () {
-    $stranger = User::factory()->create();
-
-    expect($stranger->roleOn($this->stationA))->toBeNull()
-        ->and($stranger->mayWriteMediaOn($this->stationA))->toBeFalse()
-        ->and($stranger->mayDeleteMediaOn($this->stationA))->toBeFalse();
 });
 
 test('the station quota lives on the tenant and covers all its stations', function () {

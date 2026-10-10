@@ -191,6 +191,7 @@ different stations.
 |---|---|
 | **Founder**, **owner** | Upload, edit, tag, replace, delete |
 | **Editor** | Upload, edit, tag. **Not** replace or delete. |
+| **Presenter** | Upload, edit own uploads |
 
 Deleting and replacing reach every station of the account, which is why they stay with the
 owners.
@@ -443,16 +444,19 @@ Under **Edit station**, available to the owner:
   same artist in fill and random elements. The same artist never plays twice in a row
   anyway, and the GVL rules always apply. `0` turns the gap off.
 - **Team**: add users by **email address**. New members are **editors**; the role can be
-  switched between editor and owner at any time.
+  switched at any time.
 - **Delete station**: irreversible, founder only
 
 **Roles:**
 
 - **Founder**: whoever created the station. May do everything an owner may, and is the
   only one who can delete the station. The founder's role cannot be changed.
-- **Owner**: full access including settings, team, and replacing and deleting media.
-- **Editor**: may maintain media, playlists, the grid, rundowns and outputs, but not
-  replace or delete media or manage the station.
+- **Owner**: full access including settings, team, outputs, starting and stopping the
+  container, and replacing and deleting media.
+- **Editor**: may maintain media, playlists, the grid, rundowns and external sources, and
+  skip tracks. No replacing or deleting media, no outputs, no station management.
+- **Presenter**: goes live, uploads files and edits their own uploads. Sees dashboard,
+  rundown and protocol, but does not change the programme.
 
 > Note on the shared library: inviting someone as an editor into one station also gives
 > them access to the media library of your **account**, including material of your other

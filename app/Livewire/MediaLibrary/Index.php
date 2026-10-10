@@ -2,6 +2,7 @@
 
 namespace App\Livewire\MediaLibrary;
 
+use App\Concerns\AuthorizesCurrentStation;
 use App\Jobs\AnalyzeMediaLoudnessJob;
 use App\Models\MediaFile;
 use App\Models\PlaylistItem;
@@ -22,7 +23,7 @@ use Livewire\WithPagination;
 #[Title('Media library')]
 class Index extends Component
 {
-    use WithPagination;
+    use AuthorizesCurrentStation, WithPagination;
 
     private const FILES_PER_PAGE = 50;
 
@@ -78,8 +79,7 @@ class Index extends Component
 
     public function mount(): void
     {
-        $this->station = auth()->user()->currentStation()
-            ?? abort(403, __('No station selected.'));
+        $this->station = $this->authorizedCurrentStation();
     }
 
     /** A changed filter or search starts again on the first page. */
@@ -100,23 +100,22 @@ class Index extends Component
         unset($this->fillPools, $this->duplicateFileIds);
     }
 
-    /**
-     * May the current user add to or edit the tenant library through this station?
-     * Owners and editors may; see User::mayWriteMediaOn().
-     */
+    #[Computed]
+    public function mayUpload(): bool
+    {
+        return auth()->user()->can('uploadMedia', $this->station);
+    }
+
     #[Computed]
     public function mayWrite(): bool
     {
-        return auth()->user()->mayWriteMediaOn($this->station);
+        return auth()->user()->can('writeMedia', $this->station);
     }
 
-    /**
-     * Deleting reaches every station of the tenant, so it stays with the owner.
-     */
     #[Computed]
     public function mayDelete(): bool
     {
-        return auth()->user()->mayDeleteMediaOn($this->station);
+        return auth()->user()->can('deleteMedia', $this->station);
     }
 
     /**
@@ -212,7 +211,7 @@ class Index extends Component
      */
     public function addPendingUpload(string $path, ?string $title, ?int $duration, string $clientName, ?string $artist = null, ?string $album = null): void
     {
-        abort_unless($this->mayWrite, 403);
+        abort_unless($this->mayUpload, 403);
 
         // The path must belong to this tenant's library.
         $expectedPrefix = "tenants/{$this->station->tenant_id}/media/";
@@ -242,7 +241,7 @@ class Index extends Component
 
     public function save(): void
     {
-        abort_unless($this->mayWrite, 403);
+        abort_unless($this->mayUpload, 403);
 
         if (empty($this->pendingUploads)) {
             return;
@@ -260,6 +259,7 @@ class Index extends Component
 
         foreach ($this->pendingUploads as $upload) {
             $file = $this->station->mediaFiles()->create([
+                'uploaded_by' => auth()->id(),
                 'title' => $upload['title'],
                 'artist' => $upload['artist'] !== '' ? $upload['artist'] : null,
                 'album' => ($upload['album'] ?? '') !== '' ? $upload['album'] : null,

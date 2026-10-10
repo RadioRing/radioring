@@ -14,7 +14,7 @@
         @endif
     </div>
     <div class="d-flex gap-2">
-        @if($station && $station->canBeManagedBy(auth()->user()))
+        @if($station && auth()->user()->can('manage', $station))
             <a href="{{ route('station.edit', $station) }}" class="btn btn-sm btn-outline-secondary" wire:navigate>
                 <i class="bi bi-pencil me-1"></i>{{ __('Station bearbeiten') }}
             </a>
@@ -225,6 +225,7 @@
             </div>
             {{-- Steuerung --}}
             <div class="d-flex gap-2">
+                @can('operate', $station)
                 <button class="btn btn-sm btn-outline-light py-1 px-2"
                         wire:click="startStation"
                         title="{{ __('Station starten') }}"
@@ -232,12 +233,16 @@
                         @if($isRunning || $isStarting) disabled @endif>
                     <i class="bi bi-play-fill"></i>
                 </button>
+                @endcan
+                @can('skip', $station)
                 <button class="btn btn-sm btn-outline-light py-1 px-2"
                         wire:click="skipTrack"
                         title="{{ __('Nächster Track') }}"
                         @if(! $isRunning) disabled @endif>
                     <i class="bi bi-skip-end-fill"></i>
                 </button>
+                @endcan
+                @can('operate', $station)
                 <button class="btn btn-sm btn-outline-warning py-1 px-2"
                         wire:click="stopStation"
                         title="{{ __('Station stoppen') }}"
@@ -252,6 +257,7 @@
                         @if(! $isRunning) disabled @endif>
                     <i class="bi bi-arrow-clockwise"></i>
                 </button>
+                @endcan
             </div>
         </div>
 

@@ -46,7 +46,7 @@ class Dashboard extends Component
 
     public function startStation(ContainerServiceInterface $containers): void
     {
-        $station = $this->requireStation();
+        $station = $this->requireStation('operate');
 
         if (! $containers->isConfigured()) {
             $this->dispatch('notify', message: __('The container service is not configured.'), type: 'info');
@@ -64,7 +64,7 @@ class Dashboard extends Component
 
     public function stopStation(ContainerServiceInterface $containers): void
     {
-        $station = $this->requireStation();
+        $station = $this->requireStation('operate');
 
         if (! $containers->isConfigured()) {
             $this->dispatch('notify', message: __('The container service is not configured.'), type: 'info');
@@ -84,7 +84,7 @@ class Dashboard extends Component
 
     public function restartStation(ContainerServiceInterface $containers): void
     {
-        $station = $this->requireStation();
+        $station = $this->requireStation('operate');
 
         if (! $containers->isConfigured()) {
             $this->dispatch('notify', message: __('The container service is not configured.'), type: 'info');
@@ -106,7 +106,7 @@ class Dashboard extends Component
 
     public function skipTrack(LiquidsoapCommandService $commands, LiquidsoapStateService $state): void
     {
-        $station = $this->requireStation();
+        $station = $this->requireStation('skip');
 
         // Cursor auf den Track nach dem laufenden zurückspulen, sonst springt der Skip
         // durch den vorausgeeilten prefetch-Cursor über mehrere Tracks.
@@ -139,10 +139,14 @@ class Dashboard extends Component
         ];
     }
 
-    private function requireStation(): Station
+    private function requireStation(string $ability): Station
     {
-        return auth()->user()->currentStation()
+        $station = auth()->user()->currentStation()
             ?? abort(403, 'Keine Station ausgewählt.');
+
+        $this->authorize($ability, $station);
+
+        return $station;
     }
 
     public function render(PlaylistProjectionService $projection, IcecastStatusService $icecast)

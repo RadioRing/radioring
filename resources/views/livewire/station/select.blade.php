@@ -32,12 +32,12 @@
                                         {{ $station->status === 'active' ? __('Aktiv') : __('Pausiert') }}
                                     </span>
                                 </div>
-                                @if ($station->canBeManagedBy(auth()->user()))
+                                @can('manage', $station)
                                     <a href="{{ route('station.edit', $station) }}"
                                        class="btn btn-sm btn-outline-secondary" wire:navigate>
                                         <i class="bi bi-pencil"></i>
                                     </a>
-                                @endif
+                                @endcan
                             </div>
                         </div>
                         <div class="card-footer bg-transparent">

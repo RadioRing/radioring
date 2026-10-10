@@ -41,6 +41,7 @@ class UploadElement implements PlaylistElementType
         );
 
         $mediaFile = $station->mediaFiles()->create([
+            'uploaded_by' => auth()->id(),
             'title' => $draft->title,
             'artist' => $metadata['artist'],
             'album' => $metadata['album'],

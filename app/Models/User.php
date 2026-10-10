@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\StationRole;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -11,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
@@ -103,30 +105,17 @@ class User extends Authenticatable
     }
 
     /**
-     * The role this user holds on the given station: 'owner' or 'editor', null if none.
+     * Role on the given station, null if not a member. Not memoised: a removal must
+     * take effect on the next request, even in a component that stays open.
      */
-    public function roleOn(Station $station): ?string
+    public function roleOn(Station $station): ?StationRole
     {
-        $pivot = $this->accessibleStations()->find($station->id)?->pivot;
+        $role = DB::table('station_users')
+            ->where('station_id', $station->id)
+            ->where('user_id', $this->id)
+            ->value('role');
 
-        return $pivot?->role;
-    }
-
-    /**
-     * May this user modify the tenant's media library through the given station?
-     *
-     * Owners may do everything. Editors may add and tag material so they can build
-     * their own shows, but may not delete: the library is shared across every station
-     * of the tenant, so a delete would reach far beyond the station they were invited to.
-     */
-    public function mayWriteMediaOn(Station $station): bool
-    {
-        return in_array($this->roleOn($station), ['owner', 'editor'], true);
-    }
-
-    public function mayDeleteMediaOn(Station $station): bool
-    {
-        return $this->roleOn($station) === 'owner';
+        return $role !== null ? StationRole::tryFrom($role) : null;
     }
 
     public function initials(): string

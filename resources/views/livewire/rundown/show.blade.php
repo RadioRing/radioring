@@ -38,9 +38,11 @@
             <div class="card-body text-center py-5">
                 <i class="bi bi-calendar-x display-4 text-muted"></i>
                 <p class="mt-3 text-muted">{{ __('Für diese Stunde wurde noch kein Rundown generiert.') }}</p>
-                <button class="btn btn-primary" wire:click="regenerate">
-                    <i class="bi bi-lightning-charge me-1"></i>{{ __('Jetzt generieren') }}
-                </button>
+                @if($this->mayProgram)
+                    <button class="btn btn-primary" wire:click="regenerate">
+                        <i class="bi bi-lightning-charge me-1"></i>{{ __('Jetzt generieren') }}
+                    </button>
+                @endif
             </div>
         </div>
     @else
@@ -78,7 +80,7 @@
                         ON AIR
                     </span>
                 @endif
-                @if(! $rundown->isPlayed())
+                @if($this->mayProgram && ! $rundown->isPlayed())
                     @if($lockedBelowPosition >= 0)
                         <span class="text-muted small">
                             <i class="bi bi-lock me-1"></i>{{ __('Aktiver Rundown – gespielte Tracks sind gesperrt') }}
@@ -207,7 +209,7 @@
                                     </div>
                                 </div>
 
-                                @if(! $rundown->isPlayed() && ! $isLocked)
+                                @if($this->mayProgram && ! $rundown->isPlayed() && ! $isLocked)
                                     {{-- Ersetzen --}}
                                     <button class="btn btn-sm btn-outline-secondary"
                                             wire:click="startReplacing({{ $item->id }})"

@@ -4,6 +4,7 @@
         @include('partials.head')
     </head>
     <body>
+        @php($navStation = auth()->user()->currentStation())
         <div class="d-flex">
 
             {{-- ── Desktop Sidebar ─────────────────────────────────── --}}
@@ -25,6 +26,7 @@
                             <i class="bi bi-speedometer2 me-2"></i>{{ __('Dashboard') }}
                         </a>
                     </li>
+                    @can('program', $navStation)
                     <li class="nav-item">
                         <a href="{{ route('playlist.index') }}"
                            class="nav-link {{ request()->routeIs('playlist.*') ? 'active' : '' }}"
@@ -32,6 +34,7 @@
                             <i class="bi bi-music-note-list me-2"></i>{{ __('Playlisten') }}
                         </a>
                     </li>
+                    @endcan
                     <li class="nav-item">
                         <a href="{{ route('media.index') }}"
                            class="nav-link {{ request()->routeIs('media.*') ? 'active' : '' }}"
@@ -39,6 +42,7 @@
                             <i class="bi bi-collection-play me-2"></i>{{ __('Medienbibliothek') }}
                         </a>
                     </li>
+                    @can('program', $navStation)
                     <li class="nav-item">
                         <a href="{{ route('external-source.index') }}"
                            class="nav-link {{ request()->routeIs('external-source.*') ? 'active' : '' }}"
@@ -46,10 +50,12 @@
                             <i class="bi bi-rss me-2"></i>{{ __('Externe Quellen') }}
                         </a>
                     </li>
+                    @endcan
 
                     <li class="nav-item mt-2">
                         <span class="nav-link text-muted disabled" style="font-size:.7rem;letter-spacing:.05em">{{ __('PROGRAMMPLANUNG') }}</span>
                     </li>
+                    @can('program', $navStation)
                     <li class="nav-item">
                         <a href="{{ route('hour-grid.index') }}"
                            class="nav-link {{ request()->routeIs('hour-grid.*') ? 'active' : '' }}"
@@ -57,6 +63,7 @@
                             <i class="bi bi-grid-3x3-gap me-2"></i>{{ __('Wochenraster') }}
                         </a>
                     </li>
+                    @endcan
                     <li class="nav-item">
                         <a href="{{ route('rundown.show', [today()->toDateString(), now()->hour]) }}"
                            class="nav-link {{ request()->routeIs('rundown.*') ? 'active' : '' }}"
@@ -68,6 +75,7 @@
                     <li class="nav-item mt-2">
                         <span class="nav-link text-muted disabled" style="font-size:.7rem;letter-spacing:.05em">{{ __('STREAMING') }}</span>
                     </li>
+                    @can('manage', $navStation)
                     <li class="nav-item">
                         <a href="{{ route('output.index') }}"
                            class="nav-link {{ request()->routeIs('output.*') ? 'active' : '' }}"
@@ -75,6 +83,7 @@
                             <i class="bi bi-broadcast me-2"></i>{{ __('Ausgänge') }}
                         </a>
                     </li>
+                    @endcan
                     <li class="nav-item">
                         <a href="{{ route('protocol.index') }}"
                            class="nav-link {{ request()->routeIs('protocol.*') ? 'active' : '' }}"
@@ -224,6 +233,7 @@
                             <i class="bi bi-speedometer2 me-2"></i>{{ __('Dashboard') }}
                         </a>
                     </li>
+                    @can('program', $navStation)
                     <li class="nav-item">
                         <a href="{{ route('playlist.index') }}"
                            class="nav-link {{ request()->routeIs('playlist.*') ? 'active' : '' }}"
@@ -231,6 +241,7 @@
                             <i class="bi bi-music-note-list me-2"></i>{{ __('Playlisten') }}
                         </a>
                     </li>
+                    @endcan
                     <li class="nav-item">
                         <a href="{{ route('media.index') }}"
                            class="nav-link {{ request()->routeIs('media.*') ? 'active' : '' }}"
@@ -238,6 +249,7 @@
                             <i class="bi bi-collection-play me-2"></i>{{ __('Medienbibliothek') }}
                         </a>
                     </li>
+                    @can('program', $navStation)
                     <li class="nav-item">
                         <a href="{{ route('external-source.index') }}"
                            class="nav-link {{ request()->routeIs('external-source.*') ? 'active' : '' }}"
@@ -245,9 +257,11 @@
                             <i class="bi bi-rss me-2"></i>{{ __('Externe Quellen') }}
                         </a>
                     </li>
+                    @endcan
                     <li class="nav-item mt-2">
                         <span class="nav-link text-muted disabled" style="font-size:.7rem;letter-spacing:.05em">{{ __('PROGRAMMPLANUNG') }}</span>
                     </li>
+                    @can('program', $navStation)
                     <li class="nav-item">
                         <a href="{{ route('hour-grid.index') }}"
                            class="nav-link {{ request()->routeIs('hour-grid.*') ? 'active' : '' }}"
@@ -255,6 +269,7 @@
                             <i class="bi bi-grid-3x3-gap me-2"></i>{{ __('Wochenraster') }}
                         </a>
                     </li>
+                    @endcan
                     <li class="nav-item">
                         <a href="{{ route('rundown.show', [today()->toDateString(), now()->hour]) }}"
                            class="nav-link {{ request()->routeIs('rundown.*') ? 'active' : '' }}"
@@ -265,6 +280,7 @@
                     <li class="nav-item mt-2">
                         <span class="nav-link text-muted disabled" style="font-size:.7rem;letter-spacing:.05em">{{ __('STREAMING') }}</span>
                     </li>
+                    @can('manage', $navStation)
                     <li class="nav-item">
                         <a href="{{ route('output.index') }}"
                            class="nav-link {{ request()->routeIs('output.*') ? 'active' : '' }}"
@@ -272,6 +288,7 @@
                             <i class="bi bi-broadcast me-2"></i>{{ __('Ausgänge') }}
                         </a>
                     </li>
+                    @endcan
                     <li class="nav-item">
                         <a href="{{ route('protocol.index') }}"
                            class="nav-link {{ request()->routeIs('protocol.*') ? 'active' : '' }}"

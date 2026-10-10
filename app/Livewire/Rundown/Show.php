@@ -2,12 +2,14 @@
 
 namespace App\Livewire\Rundown;
 
+use App\Concerns\AuthorizesCurrentStation;
 use App\Models\GeneratedPlaylist;
 use App\Models\GeneratedPlaylistItem;
 use App\Models\LiquidsoapState;
 use App\Models\Station;
 use App\Services\RundownGeneratorService;
 use Carbon\Carbon;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -15,6 +17,8 @@ use Livewire\Component;
 #[Title('Rundown')]
 class Show extends Component
 {
+    use AuthorizesCurrentStation;
+
     #[Locked]
     public Station $station;
 
@@ -33,12 +37,18 @@ class Show extends Component
 
     public function mount(string $date, int $hour): void
     {
-        $this->station = auth()->user()->currentStation()
-            ?? abort(403, 'Keine Station ausgewählt.');
+        $this->station = $this->authorizedCurrentStation();
 
         $this->date = $date;
         $this->hour = $hour;
         $this->loadRundown();
+    }
+
+    /** Presenters see the rundown but do not change it. */
+    #[Computed]
+    public function mayProgram(): bool
+    {
+        return auth()->user()->can('program', $this->station);
     }
 
     private function loadRundown(): void
@@ -52,6 +62,8 @@ class Show extends Component
 
     public function regenerate(): void
     {
+        $this->authorize('program', $this->station);
+
         if ($this->rundown?->isPlayed()) {
             $this->dispatch('notify', message: __('Dieser Rundown wurde bereits gespielt.'), type: 'error');
 
@@ -130,6 +142,8 @@ class Show extends Component
 
     public function removeItem(int $itemId): void
     {
+        $this->authorize('program', $this->station);
+
         abort_unless($this->rundown && ! $this->rundown->isPlayed(), 403);
 
         $item = $this->rundown->items()->findOrFail($itemId);
@@ -147,6 +161,8 @@ class Show extends Component
 
     public function startReplacing(int $itemId): void
     {
+        $this->authorize('program', $this->station);
+
         $item = $this->rundown?->items()->find($itemId);
 
         if ($item && $item->position < $this->lockedBelowPosition()) {
@@ -162,6 +178,8 @@ class Show extends Component
 
     public function replaceItem(): void
     {
+        $this->authorize('program', $this->station);
+
         abort_unless($this->rundown && ! $this->rundown->isPlayed(), 403);
 
         $item = $this->rundown->items()->findOrFail($this->replacingItemId);

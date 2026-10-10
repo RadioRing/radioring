@@ -33,6 +33,7 @@
                         <span wire:loading wire:target="startImport" class="spinner-border spinner-border-sm me-1"></span>
                         <i wire:loading.remove wire:target="startImport" class="bi bi-cloud-download me-1"></i>{{ __('Syndications importieren') }}
                     </button>
+                    @can('manage', $station)
                     <button type="button" class="btn btn-outline-primary btn-sm dropdown-toggle dropdown-toggle-split"
                             data-bs-toggle="dropdown" aria-expanded="false" title="{{ __('Syndications4Radio') }}">
                         <span class="visually-hidden">{{ __('Syndications4Radio') }}</span>
@@ -47,8 +48,9 @@
                             </button>
                         </li>
                     </ul>
+                    @endcan
                 </div>
-            @else
+            @elseif(auth()->user()->can('manage', $station))
                 <button class="btn btn-outline-primary btn-sm" wire:click="startConnect">
                     <i class="bi bi-broadcast me-1"></i>{{ __('Syndications4Radio verbinden') }}
                 </button>

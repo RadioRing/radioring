@@ -204,6 +204,7 @@ Dasselbe gilt fuer Tags: ein in einer Station angelegter Tag steht in allen zur 
 |---|---|
 | **Gründer**, **Besitzer** | hochladen, bearbeiten, taggen, ersetzen, loeschen |
 | **Bearbeiter** | hochladen, bearbeiten, taggen. **Kein** Ersetzen und Loeschen. |
+| **Moderator** | hochladen, eigene Uploads bearbeiten |
 
 Loeschen und Ersetzen wirken in allen Stationen des Kontos, deshalb bleiben sie den
 Besitzern vorbehalten.
@@ -490,18 +491,20 @@ Fehlersuche („Was lief gestern um 14 Uhr?").
   derselbe Interpret kommt ohnehin nie vor, und die GVL-Regeln gelten immer. `0`
   schaltet den Abstand ab.
 - **Team**: Weitere Nutzer per **E-Mail-Adresse** hinzufügen. Neue Mitglieder sind
-  **Bearbeiter**; die Rolle lässt sich jederzeit zwischen Bearbeiter und Besitzer
-  umschalten.
+  **Bearbeiter**; die Rolle lässt sich jederzeit umschalten.
 - **Station löschen**: Entfernt die Station unwiderruflich (nur der Gründer).
 
 **Rollen kurz:**
 
 - **Gründer** - wer die Station angelegt hat. Darf alles, was ein Besitzer darf, und
   als Einziger die Station löschen. Seine Rolle lässt sich nicht ändern.
-- **Besitzer (owner)** - voller Zugriff inkl. Verwaltung, Team, Medien ersetzen und
-  löschen.
-- **Bearbeiter (editor)** - darf Medien, Playlisten, Raster, Rundowns und Ausgaenge
-  pflegen, aber keine Medien ersetzen oder loeschen und die Station nicht verwalten.
+- **Besitzer (owner)** - voller Zugriff inkl. Verwaltung, Team, Ausgänge, Container
+  starten/stoppen, Medien ersetzen und löschen.
+- **Bearbeiter (editor)** - darf Medien, Playlisten, Raster, Rundowns und externe Quellen
+  pflegen und Tracks überspringen. Keine Medien ersetzen oder löschen, keine Ausgänge,
+  keine Verwaltung.
+- **Moderator (presenter)** - geht live, lädt Dateien hoch und bearbeitet seine eigenen
+  Uploads. Sieht Dashboard, Rundown und Protokoll, ändert aber nichts am Programm.
 
 > Zur gemeinsamen Bibliothek: Wen du als Bearbeiter in **eine** Station einlaedst, der
 > erhaelt damit auch Zugriff auf die Medienbibliothek deines **Kontos**, also auch auf

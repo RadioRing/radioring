@@ -2,6 +2,7 @@
 
 namespace App\Livewire\MediaLibrary;
 
+use App\Concerns\AuthorizesCurrentStation;
 use App\Models\GeneratedPlaylist;
 use App\Models\GeneratedPlaylistItem;
 use App\Models\MediaFile;
@@ -26,6 +27,8 @@ use Livewire\Component;
  */
 class FileModal extends Component
 {
+    use AuthorizesCurrentStation;
+
     #[Locked]
     public Station $station;
 
@@ -73,8 +76,7 @@ class FileModal extends Component
 
     public function mount(): void
     {
-        $this->station = auth()->user()->currentStation()
-            ?? abort(403, __('No station selected.'));
+        $this->station = $this->authorizedCurrentStation();
 
         if ($this->openFileId !== null) {
             $this->open($this->openFileId);
@@ -144,18 +146,13 @@ class FileModal extends Component
     #[Computed]
     public function mayWrite(): bool
     {
-        return auth()->user()->mayWriteMediaOn($this->station);
+        return $this->file !== null && auth()->user()->can('update', [$this->file, $this->station]);
     }
 
-    /**
-     * Deleting and replacing reach every station of the tenant and therefore stay with
-     * the owner: an editor could otherwise quietly swap the content of a file that
-     * other stations have scheduled.
-     */
     #[Computed]
     public function mayReplace(): bool
     {
-        return auth()->user()->mayDeleteMediaOn($this->station);
+        return auth()->user()->can('deleteMedia', $this->station);
     }
 
     /**

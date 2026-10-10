@@ -29,7 +29,7 @@ class MediaUploadController extends Controller
             return response()->json(['message' => __('No station selected.')], 422);
         }
 
-        abort_unless(auth()->user()->mayWriteMediaOn($station), 403);
+        abort_unless(auth()->user()->can('uploadMedia', $station), 403);
 
         $fileId = $request->input('file_id');
         $chunkIndex = (int) $request->input('chunk_index');

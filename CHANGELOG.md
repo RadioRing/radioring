@@ -14,6 +14,18 @@ to stand on its own.
 
 ## [Unreleased]
 
+### Added
+- **Telemitry** A complete anonymous and optional way to send us telemitry in the way how you use the Radioring Panel.
+  This helps us figuring out where to put development effort in. All data is anonymized prior to sending and not even 
+  IPs are being saved.
+- **Presenter role.** Presenters go live, upload files and edit their own uploads. They do
+  not change the programme.
+
+### Changed
+- **Editors no longer start or stop the container,** manage outputs or connect
+  Syndications4Radio. That is up to owners now. Removing someone from the team takes effect
+  on their next click, even in a tab that is still open.
+
 ## [0.7.0] - 2026-10-05
 
 **New in this release: a better music rotation, voice tracks and run times.** Fills now

@@ -2,6 +2,7 @@
 
 namespace App\Livewire\ExternalSource;
 
+use App\Concerns\AuthorizesCurrentStation;
 use App\Models\ExternalSource;
 use App\Models\GeneratedPlaylistItem;
 use App\Models\Station;
@@ -17,6 +18,8 @@ use Livewire\Component;
 #[Title('Externe Quellen')]
 class Index extends Component
 {
+    use AuthorizesCurrentStation;
+
     /** How many prepared copies of a source are listed at most. */
     private const PREPARED_FILES_SHOWN = 10;
 
@@ -97,10 +100,14 @@ class Index extends Component
     /** Informational message of the wizard, for example when nothing was left to import. */
     public ?string $importNotice = null;
 
+    protected function stationAbility(): string
+    {
+        return 'program';
+    }
+
     public function mount(): void
     {
-        $this->station = auth()->user()->currentStation()
-            ?? abort(403, 'Keine Station ausgewählt.');
+        $this->station = $this->authorizedCurrentStation();
     }
 
     /**
@@ -265,6 +272,8 @@ class Index extends Component
 
     public function startConnect(): void
     {
+        $this->authorize('manage', $this->station);
+
         $this->reset('s4rTokenInput');
         $this->resetValidation('s4rTokenInput');
         $this->showConnect = true;
@@ -285,6 +294,8 @@ class Index extends Component
      */
     public function connectS4r(): void
     {
+        $this->authorize('manage', $this->station);
+
         $this->validate(
             ['s4rTokenInput' => 'required|string|min:10|max:200'],
             ['s4rTokenInput.required' => __('Bitte einen Token eingeben.')],
@@ -298,6 +309,8 @@ class Index extends Component
 
     public function disconnectS4r(): void
     {
+        $this->authorize('manage', $this->station);
+
         $this->station->update(['s4r_partner_token' => null]);
         $this->reset('showImport', 'importStep', 'importShows', 'importSelectedShow', 'importVariant', 'importError', 'importNotice');
         $this->dispatch('source-import-closed');

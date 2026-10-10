@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Station;
 
+use App\Enums\StationRole;
 use App\Models\Station;
 use App\Models\User;
 use App\Services\LiquidsoapCommandService;
@@ -54,7 +55,7 @@ class Edit extends Component
 
     public function mount(Station $station): void
     {
-        abort_unless($station->canBeManagedBy(auth()->user()), 403);
+        $this->authorize('manage', $station);
 
         $this->station = $station;
         $this->name = $station->name;
@@ -64,6 +65,12 @@ class Edit extends Component
         $this->alertEmailsEnabled = (bool) $station->alert_emails_enabled;
         $this->stereoToolLicenseKey = (string) $station->stereo_tool_license_key;
         $this->stereoToolPreset = (string) $station->stereo_tool_preset;
+    }
+
+    /** Re-checked on every request: a demoted owner must not keep managing. */
+    public function hydrate(): void
+    {
+        $this->authorize('manage', $this->station);
     }
 
     public function save(): void
@@ -243,7 +250,7 @@ class Edit extends Component
     {
         $this->validate([
             'memberEmail' => 'required|email',
-            'memberRole' => 'required|in:editor,owner',
+            'memberRole' => ['required', Rule::enum(StationRole::class)],
         ]);
 
         $user = User::where('email', $this->memberEmail)->first();
@@ -273,24 +280,19 @@ class Edit extends Component
     }
 
     /**
-     * Promote an editor to owner or demote an owner back to editor.
-     *
-     * The founder's own row is untouchable: their role is what keeps the station
-     * manageable if every promoted owner is later demoted or removed.
+     * The founder's row is untouchable: it keeps the station manageable.
      */
     public function changeMemberRole(int $userId, string $role): void
     {
-        abort_unless(in_array($role, ['owner', 'editor'], true), 422);
+        $stationRole = StationRole::tryFrom($role) ?? abort(422);
 
         if ($userId === $this->station->user_id) {
             return;
         }
 
-        $this->station->members()->updateExistingPivot($userId, ['role' => $role]);
+        $this->station->members()->updateExistingPivot($userId, ['role' => $stationRole->value]);
 
-        $this->dispatch('notify', message: $role === 'owner'
-            ? __('Member promoted to owner.')
-            : __('Member set back to editor.'), type: 'success');
+        $this->dispatch('notify', message: __('Role changed to :role.', ['role' => $stationRole->label()]), type: 'success');
     }
 
     public function removeMember(int $userId): void
@@ -308,7 +310,7 @@ class Edit extends Component
     {
         $user = auth()->user();
 
-        abort_unless($this->station->canBeDeletedBy($user), 403);
+        $this->authorize('delete', $this->station);
 
         if ($user->currentStation()?->id === $this->station->id) {
             session()->forget('current_station_id');

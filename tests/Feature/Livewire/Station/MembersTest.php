@@ -1,5 +1,7 @@
 <?php
 
+use App\Enums\StationRole;
+use App\Livewire\Playlist\Index as PlaylistIndex;
 use App\Livewire\Station\Edit;
 use App\Livewire\Station\Select;
 use App\Models\Station;
@@ -15,7 +17,7 @@ beforeEach(function () {
 });
 
 test('creating a station gives the owner an owner pivot row', function () {
-    expect($this->station->roleFor($this->owner))->toBe('owner');
+    expect($this->owner->roleOn($this->station))->toBe(StationRole::Owner);
     expect($this->owner->accessibleStations()->pluck('stations.id'))->toContain($this->station->id);
 });
 
@@ -75,7 +77,7 @@ test('owner can grant a registered user access by email', function () {
         ->call('addMember')
         ->assertHasNoErrors();
 
-    expect($this->station->fresh()->roleFor($colleague))->toBe('editor');
+    expect($colleague->roleOn($this->station))->toBe(StationRole::Editor);
     expect($colleague->accessibleStations()->pluck('stations.id'))->toContain($this->station->id);
 });
 
@@ -107,7 +109,7 @@ test('owner can revoke access', function () {
         ->call('removeMember', $colleague->id)
         ->assertHasNoErrors();
 
-    expect($this->station->fresh()->roleFor($colleague))->toBeNull();
+    expect($colleague->roleOn($this->station))->toBeNull();
 });
 
 test('the owner cannot be removed', function () {
@@ -115,7 +117,7 @@ test('the owner cannot be removed', function () {
         ->test(Edit::class, ['station' => $this->station])
         ->call('removeMember', $this->owner->id);
 
-    expect($this->station->fresh()->roleFor($this->owner))->toBe('owner');
+    expect($this->owner->roleOn($this->station))->toBe(StationRole::Owner);
 });
 
 test('a non-owner editor cannot open the station management screen', function () {
@@ -148,16 +150,12 @@ test('the founder can promote an editor to owner', function () {
         ->call('changeMemberRole', $colleague->id, 'owner')
         ->assertHasNoErrors();
 
-    expect($this->station->fresh()->roleFor($colleague))->toBe('owner');
-    expect($colleague->mayDeleteMediaOn($this->station))->toBeTrue();
+    expect($colleague->roleOn($this->station))->toBe(StationRole::Owner);
 });
 
 test('a promoted owner may manage the station but not delete it', function () {
     $colleague = User::factory()->create();
     $this->station->members()->attach($colleague->id, ['role' => 'owner']);
-
-    expect($this->station->canBeManagedBy($colleague))->toBeTrue();
-    expect($this->station->canBeDeletedBy($colleague))->toBeFalse();
 
     Livewire::actingAs($colleague)
         ->test(Edit::class, ['station' => $this->station])
@@ -172,18 +170,30 @@ test('the founder role cannot be changed', function () {
         ->test(Edit::class, ['station' => $this->station])
         ->call('changeMemberRole', $this->owner->id, 'editor');
 
-    expect($this->station->fresh()->roleFor($this->owner))->toBe('owner');
+    expect($this->owner->roleOn($this->station))->toBe(StationRole::Owner);
 });
 
-test('a member can be added as owner right away', function () {
+test('a member can be added as presenter right away', function () {
     $colleague = User::factory()->create();
 
     Livewire::actingAs($this->owner)
         ->test(Edit::class, ['station' => $this->station])
         ->set('memberEmail', $colleague->email)
-        ->set('memberRole', 'owner')
+        ->set('memberRole', 'presenter')
         ->call('addMember')
         ->assertHasNoErrors();
 
-    expect($this->station->fresh()->roleFor($colleague))->toBe('owner');
+    expect($colleague->roleOn($this->station))->toBe(StationRole::Presenter);
+});
+
+test('a demoted member loses access on the next request of an open tab', function () {
+    $colleague = User::factory()->create();
+    $this->station->members()->attach($colleague->id, ['role' => 'editor']);
+    session(['current_station_id' => $this->station->id]);
+
+    $component = Livewire::actingAs($colleague)->test(PlaylistIndex::class);
+
+    $this->station->members()->updateExistingPivot($colleague->id, ['role' => 'presenter']);
+
+    $component->call('switchTab', 'containers')->assertForbidden();
 });
