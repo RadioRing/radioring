@@ -907,7 +907,10 @@ class LiquidsoapStateService
             }
 
             // 2. Längere Downtime oder Kaltstart: den Rundown der aktuellen Stunde laden.
-            $target = $this->findRundownForNow($station);
+            // A playlist longer than an hour has a single rundown at its start hour and
+            // empty grid hours after it: restarting at 17:44 inside a 15:00 three-hour
+            // rundown must land in that rundown, not in "nothing scheduled".
+            $target = $this->findRundownForNow($station) ?? $this->findRunningEarlierRundown($station);
 
             if (! $target) {
                 $state->update([
@@ -927,8 +930,12 @@ class LiquidsoapStateService
             // davon noch nichts gesendet worden → von vorne (Position 0). Wurde er regulär
             // vorab geplant (Nacht-Job / :55-Preload), an der Wanduhr ausrichten: bereits
             // fällige Items überspringen, statt die schon vergangene Stunde zu wiederholen.
+            // Only for the current hour: a rundown of an earlier hour that is still running has
+            // been on air for a while, starting it from the top would repeat hours.
             $hourStart = today()->setTime($target->broadcast_hour, 0, 0);
-            $freshlyGenerated = $target->generated_at && $target->generated_at->gte($hourStart);
+            $freshlyGenerated = $target->broadcast_hour === now()->hour
+                && $target->generated_at
+                && $target->generated_at->gte($hourStart);
 
             if ($freshlyGenerated) {
                 $position = 0;
@@ -1236,6 +1243,32 @@ class LiquidsoapStateService
     /**
      * Findet den Rundown für die aktuelle Stunde (oder die letzte vergangene).
      */
+    /**
+     * The latest rundown of an earlier hour today that is still on air by its planned times,
+     * for playlists longer than an hour. Null when its last element has ended: then the
+     * gap in the grid is real.
+     */
+    private function findRunningEarlierRundown(Station $station): ?GeneratedPlaylist
+    {
+        $candidate = GeneratedPlaylist::where('station_id', $station->id)
+            ->where('status', 'ready')
+            ->where('broadcast_date', today())
+            ->where('broadcast_hour', '<', now()->hour)
+            ->orderByDesc('broadcast_hour')
+            ->first();
+
+        $last = $candidate?->items()
+            ->whereNotNull('absolute_broadcast_at')
+            ->reorder('absolute_broadcast_at', 'desc')
+            ->first();
+
+        if (! $last || $last->absolute_broadcast_at->copy()->addSeconds((int) ($last->duration_seconds ?? 0))->lt(now())) {
+            return null;
+        }
+
+        return $candidate;
+    }
+
     private function findRundownForNow(Station $station): ?GeneratedPlaylist
     {
         return GeneratedPlaylist::where('station_id', $station->id)

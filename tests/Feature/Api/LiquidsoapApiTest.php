@@ -7,6 +7,7 @@ use App\Models\MediaFile;
 use App\Models\Station;
 use App\Models\StationLog;
 use App\Models\User;
+use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 
@@ -855,6 +856,78 @@ test('connect clears a stale cursor so the next pull resolves fresh', function (
     expect($state->current_rundown_id)->toBeNull()
         ->and($state->current_item_position)->toBe(0)
         ->and($state->now_playing_item_id)->toBeNull();
+});
+
+/**
+ * A three hour playlist: one rundown at 15:00 with an element every 20 minutes up to 18:00,
+ * and nothing in the grid at 16:00 and 17:00.
+ */
+function threeHourRundown(Station $station, ?CarbonInterface $generatedAt): GeneratedPlaylist
+{
+    $rundown = GeneratedPlaylist::factory()->create([
+        'station_id' => $station->id,
+        'broadcast_date' => today(),
+        'broadcast_hour' => 15,
+        'status' => 'ready',
+        'generated_at' => $generatedAt,
+    ]);
+
+    foreach (range(0, 8) as $pos) {
+        GeneratedPlaylistItem::factory()->create([
+            'generated_playlist_id' => $rundown->id,
+            'media_file_id' => MediaFile::factory()->create(['tenant_id' => $station->tenant_id, 'type' => 'music', 'file_path' => "tenants/{$station->tenant_id}/media/l{$pos}.mp3", 'title' => "L{$pos}"])->id,
+            'position' => $pos,
+            'source_type' => 'template_item',
+            'title' => "L{$pos}",
+            'duration_seconds' => 1200,
+            'absolute_broadcast_at' => today()->setTime(15, 0)->addMinutes(20 * $pos),
+        ]);
+    }
+
+    return $rundown;
+}
+
+test('connect resumes a playlist longer than an hour in its later hours', function (string $generatedAt) {
+    Storage::fake('local');
+    $this->travelTo(today()->setTime(17, 44));
+
+    // Generated before the hour or only once it was running: both have been on air for hours.
+    $rundown = threeHourRundown($this->station, today()->setTimeFromTimeString($generatedAt));
+
+    // The element on air when the player restarted is long over by its planned length.
+    LiquidsoapState::create([
+        'station_id' => $this->station->id,
+        'current_rundown_id' => $rundown->id,
+        'current_item_position' => 8,
+        'now_playing_item_id' => $rundown->items()->where('position', 1)->value('id'),
+        'now_playing_started_at' => today()->setTime(15, 20),
+    ]);
+
+    $this->withToken($this->token)
+        ->postJson("/api/liquidsoap/{$this->station->slug}/connect")
+        ->assertStatus(200);
+
+    // 17:40 is the element at position 8 (15:00 + 8 x 20 min).
+    $state = LiquidsoapState::where('station_id', $this->station->id)->first();
+    expect($state->current_rundown_id)->toBe($rundown->id)
+        ->and($state->current_item_position)->toBe(8);
+})->with([
+    'planned ahead' => ['14:55'],
+    'generated during its first hour' => ['15:05'],
+]);
+
+test('connect leaves a gap after a long playlist that has ended', function () {
+    Storage::fake('local');
+    $this->travelTo(today()->setTime(18, 30));
+
+    threeHourRundown($this->station, today()->setTime(14, 55));
+    LiquidsoapState::create(['station_id' => $this->station->id, 'current_item_position' => 0]);
+
+    $this->withToken($this->token)
+        ->postJson("/api/liquidsoap/{$this->station->slug}/connect")
+        ->assertStatus(200);
+
+    expect(LiquidsoapState::where('station_id', $this->station->id)->value('current_rundown_id'))->toBeNull();
 });
 
 // ── /api/liquidsoap/{slug}/now-playing ──────────────────────────────────────
