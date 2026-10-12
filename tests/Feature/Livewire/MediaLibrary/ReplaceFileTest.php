@@ -1,6 +1,7 @@
 <?php
 
 use App\Jobs\AnalyzeMediaLoudnessJob;
+use App\Jobs\GenerateMediaWaveformJob;
 use App\Livewire\MediaLibrary\FileModal;
 use App\Models\GeneratedPlaylist;
 use App\Models\GeneratedPlaylistItem;
@@ -71,6 +72,7 @@ test('replacing swaps the file, archives the old version and re-measures the lou
         'loudness_true_peak' => -1.5,
         'loudness_measured_at' => now(),
         'duration_seconds' => 200,
+        'waveform_path' => "tenants/{$this->station->tenant_id}/waveforms/1.json",
     ]);
 
     $newPath = "tenants/{$this->station->tenant_id}/media/neu.mp3";
@@ -87,7 +89,8 @@ test('replacing swaps the file, archives the old version and re-measures the lou
         ->file_path->toBe($newPath)
         ->loudness_lufs->toBeNull()
         ->loudness_true_peak->toBeNull()
-        ->loudness_measured_at->toBeNull();
+        ->loudness_measured_at->toBeNull()
+        ->waveform_path->toBeNull();
 
     $version = MediaFileVersion::where('media_file_id', $file->id)->sole();
 
@@ -101,6 +104,7 @@ test('replacing swaps the file, archives the old version and re-measures the lou
     Storage::disk('local')->assertExists($version->file_path);
 
     Queue::assertPushed(AnalyzeMediaLoudnessJob::class);
+    Queue::assertPushed(GenerateMediaWaveformJob::class, fn (GenerateMediaWaveformJob $job): bool => $job->mediaFileId === $file->id);
 });
 
 test('an editor may not replace files', function () {
@@ -182,12 +186,38 @@ test('a restored version becomes the current file again', function () {
 
     $version = MediaFileVersion::where('media_file_id', $file->id)->sole();
 
+    $file->update(['waveform_path' => "tenants/{$this->station->tenant_id}/waveforms/{$file->id}.json"]);
+    Queue::fake();
+
     $component->call('restoreVersion', $version->id);
 
     expect($file->fresh())
         ->file_path->toBe("tenants/{$this->station->tenant_id}/media/alt.mp3")
-        ->duration_seconds->toBe(200);
+        ->duration_seconds->toBe(200)
+        ->waveform_path->toBeNull();
+
+    Queue::assertPushed(GenerateMediaWaveformJob::class);
 
     // The version that was current in between is archived now.
     expect(MediaFileVersion::where('media_file_id', $file->id)->sole()->file_path)->toBe($newPath);
+});
+
+test('opening a file without waveform queues its generation', function () {
+    $file = mediaFileOnDisk($this->station->tenant_id);
+
+    Livewire::test(FileModal::class)->call('open', $file->id);
+
+    Queue::assertPushed(GenerateMediaWaveformJob::class, fn (GenerateMediaWaveformJob $job): bool => $job->mediaFileId === $file->id);
+});
+
+test('opening a file that has its waveform queues nothing', function () {
+    $file = mediaFileOnDisk($this->station->tenant_id, 'alt.mp3', [
+        'waveform_path' => "tenants/{$this->station->tenant_id}/waveforms/1.json",
+    ]);
+
+    Livewire::test(FileModal::class)
+        ->call('open', $file->id)
+        ->assertSeeHtml('wire:key="waveform-'.$file->id.'-'.substr(md5($file->file_path), 0, 12).'"');
+
+    Queue::assertNotPushed(GenerateMediaWaveformJob::class);
 });

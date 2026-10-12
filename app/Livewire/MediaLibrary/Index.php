@@ -4,6 +4,7 @@ namespace App\Livewire\MediaLibrary;
 
 use App\Concerns\AuthorizesCurrentStation;
 use App\Jobs\AnalyzeMediaLoudnessJob;
+use App\Jobs\GenerateMediaWaveformJob;
 use App\Models\MediaFile;
 use App\Models\PlaylistItem;
 use App\Models\Station;
@@ -274,6 +275,7 @@ class Index extends Component
             }
 
             AnalyzeMediaLoudnessJob::dispatch($file->id);
+            GenerateMediaWaveformJob::dispatch($file->id);
 
             $count++;
         }

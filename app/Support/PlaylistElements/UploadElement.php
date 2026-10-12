@@ -3,6 +3,7 @@
 namespace App\Support\PlaylistElements;
 
 use App\Jobs\AnalyzeMediaLoudnessJob;
+use App\Jobs\GenerateMediaWaveformJob;
 use App\Models\Playlist;
 use App\Services\AudioMetadataService;
 use Illuminate\Support\Facades\Storage;
@@ -52,6 +53,7 @@ class UploadElement implements PlaylistElementType
 
         // Lautheit offline (per ffmpeg) messen – einmalig, asynchron.
         AnalyzeMediaLoudnessJob::dispatch($mediaFile->id);
+        GenerateMediaWaveformJob::dispatch($mediaFile->id);
 
         $playlist->items()->create([
             'position' => $position,

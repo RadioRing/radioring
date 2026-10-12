@@ -602,5 +602,11 @@
     "Switch on": "Einschalten",
     "New instance ID": "Neue Instanz-Kennung",
     "Show what is sent": "Anzeigen, was gesendet wird",
-    "Show what would be sent": "Anzeigen, was gesendet würde"
+    "Show what would be sent": "Anzeigen, was gesendet würde",
+    "The waveform could not be loaded.": "Die Wellenform konnte nicht geladen werden.",
+    "Zoom": "Zoom",
+    "Generating waveform...": "Wellenform wird erzeugt...",
+    "generated: #:id :title": "erzeugt: #:id :title",
+    ":count waveform(s) generated.": ":count Wellenform(en) erzeugt.",
+    ":count file(s) queued for waveform generation.": ":count Datei(en) zur Wellenform-Erzeugung eingereiht."
 }

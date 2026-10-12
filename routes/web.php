@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\BackupDownloadController;
 use App\Http\Controllers\Admin\ImpersonationController;
 use App\Http\Controllers\MediaPreviewController;
 use App\Http\Controllers\MediaUploadController;
+use App\Http\Controllers\MediaWaveformController;
 use App\Livewire\Admin\Backups as AdminBackups;
 use App\Livewire\Admin\InviteCodes as AdminInviteCodes;
 use App\Livewire\Admin\Settings as AdminSettings;
@@ -39,6 +40,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('media', MediaLibraryIndex::class)->name('media.index');
     Route::post('/media/upload-chunk', [MediaUploadController::class, 'store'])->name('media.upload.chunk');
     Route::get('/media/{mediaFile}/preview', MediaPreviewController::class)->name('media.preview');
+    Route::get('/media/{mediaFile}/waveform', MediaWaveformController::class)->name('media.waveform');
     // The file dialog lives inside the library list; the old detail URL keeps working
     // as a deep link into it.
     Route::get('media/{mediaFile}', fn (MediaFile $mediaFile) => redirect()->route('media.index', ['file' => $mediaFile->id]))

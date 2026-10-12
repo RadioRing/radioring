@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Jobs\AnalyzeMediaLoudnessJob;
+use App\Jobs\GenerateMediaWaveformJob;
 use App\Models\MediaFile;
 use App\Models\MediaFileVersion;
 use App\Models\User;
@@ -54,6 +55,7 @@ class MediaReplacementService
             'loudness_lufs' => null,
             'loudness_true_peak' => null,
             'loudness_measured_at' => null,
+            'waveform_path' => null,
         ];
 
         if ($adoptMetadata) {
@@ -66,6 +68,7 @@ class MediaReplacementService
 
         // Lautheit der neuen Fassung offline messen – bis dahin spielt sie ohne Gain-Korrektur.
         AnalyzeMediaLoudnessJob::dispatch($file->id);
+        GenerateMediaWaveformJob::dispatch($file->id);
 
         return $version;
     }
@@ -99,6 +102,7 @@ class MediaReplacementService
             'loudness_lufs' => $version->loudness_lufs,
             'loudness_true_peak' => $version->loudness_true_peak,
             'loudness_measured_at' => $version->loudness_lufs !== null ? now() : null,
+            'waveform_path' => null,
         ]);
 
         $version->delete();
@@ -106,5 +110,8 @@ class MediaReplacementService
         if ($version->loudness_lufs === null) {
             AnalyzeMediaLoudnessJob::dispatch($file->id);
         }
+
+        // The waveform is not archived with a version; it is cheap to compute again.
+        GenerateMediaWaveformJob::dispatch($file->id);
     }
 }

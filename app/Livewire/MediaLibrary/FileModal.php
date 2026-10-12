@@ -3,6 +3,7 @@
 namespace App\Livewire\MediaLibrary;
 
 use App\Concerns\AuthorizesCurrentStation;
+use App\Jobs\GenerateMediaWaveformJob;
 use App\Models\GeneratedPlaylist;
 use App\Models\GeneratedPlaylistItem;
 use App\Models\MediaFile;
@@ -20,8 +21,8 @@ use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /**
- * Everything that can be configured on a single media file, in one dialog: metadata,
- * tags, airtime windows, replacing the file and its version history. It sits next to
+ * Everything that can be configured on a single media file, in one dialog: waveform,
+ * metadata, tags, airtime windows, replacing the file and its version history. It sits next to
  * the library list so the dialog opens where the user is, no matter how far the list
  * is scrolled.
  */
@@ -101,6 +102,12 @@ class FileModal extends Component
         $this->openFileId = $file->id;
         $this->resetValidation();
         $this->fillForm();
+
+        // Files from before the waveform existed get theirs the first time they are opened.
+        // The job is unique per file, so reopening the dialog does not queue it twice.
+        if ($file->waveform_path === null) {
+            GenerateMediaWaveformJob::dispatch($file->id);
+        }
 
         $this->dispatch('media-file-modal-opened');
     }

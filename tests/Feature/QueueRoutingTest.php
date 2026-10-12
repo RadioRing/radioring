@@ -2,6 +2,7 @@
 
 use App\Jobs\AnalyzeMediaLoudnessJob;
 use App\Jobs\CreateBackupJob;
+use App\Jobs\GenerateMediaWaveformJob;
 use App\Jobs\PrepareUpcomingHttpItemsJob;
 use App\Jobs\StartStationContainer;
 use Illuminate\Support\Facades\Queue;
@@ -14,6 +15,7 @@ it('keeps long running jobs off the default queue', function (object $job) {
     Queue::assertPushed($job::class, fn (object $pushed): bool => $pushed->connection === 'media');
 })->with([
     'loudness analysis' => fn () => new AnalyzeMediaLoudnessJob(1),
+    'waveform generation' => fn () => new GenerateMediaWaveformJob(1),
     'backup' => fn () => new CreateBackupJob(1),
     'container start' => fn () => new StartStationContainer(1),
 ]);

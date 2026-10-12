@@ -39,6 +39,40 @@
                             </div>
                         @endunless
 
+                        {{-- Waveform --}}
+                        <div class="card mb-4">
+                            <div class="card-body p-2">
+                                @if($file->waveform_path)
+                                    @php $fileHash = substr(md5($file->file_path), 0, 12); @endphp
+                                    <div wire:ignore wire:key="waveform-{{ $file->id }}-{{ $fileHash }}"
+                                         x-data="mediaWaveform(@js(route('media.waveform', ['mediaFile' => $file, 'v' => $fileHash])), @js(route('media.preview', $file)))">
+                                        <div x-ref="waveform"></div>
+                                        <div class="d-flex flex-wrap align-items-center gap-2 mt-2 small">
+                                            <span class="font-monospace">
+                                                <span x-text="formatTime(currentTime)">0:00.0</span>
+                                                <span class="text-muted">/ <span x-text="formatTime(duration)">0:00.0</span></span>
+                                            </span>
+                                            <span x-show="failed" x-cloak class="text-danger">
+                                                <i class="bi bi-exclamation-triangle me-1"></i>{{ __('The waveform could not be loaded.') }}
+                                            </span>
+                                            <div class="d-flex align-items-center gap-2 ms-auto">
+                                                <i class="bi bi-zoom-out text-muted"></i>
+                                                <input type="range" class="form-range" style="width:10rem"
+                                                       min="0" max="300" step="5" x-model.number="zoom" @input="applyZoom()"
+                                                       aria-label="{{ __('Zoom') }}">
+                                                <i class="bi bi-zoom-in text-muted"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                @else
+                                    <div wire:poll.5s class="d-flex align-items-center justify-content-center gap-2 text-muted small py-4">
+                                        <span class="spinner-border spinner-border-sm"></span>
+                                        {{ __('Generating waveform...') }}
+                                    </div>
+                                @endif
+                            </div>
+                        </div>
+
                         <div class="row g-4">
                             <div class="col-12 col-lg-7">
                                 {{-- Metadata --}}
@@ -451,24 +485,126 @@ Alpine.data('mediaFileModal', () => ({
         this.loading = false;
     },
 
-    togglePreview(url) {
+    /**
+     * One audio element for the play button and the waveform, so both stay in sync:
+     * clicking into the waveform seeks the same playback the button controls.
+     */
+    ensureAudio() {
         if (! this.audio) {
             this.audio = new Audio();
+            this.audio.preload = 'metadata';
+            this.audio.addEventListener('play', () => { this.playing = true; });
+            this.audio.addEventListener('pause', () => { this.playing = false; });
             this.audio.addEventListener('ended', () => { this.playing = false; });
             this.audio.addEventListener('error', () => { this.playing = false; this.loading = false; });
         }
 
+        return this.audio;
+    },
+
+    togglePreview(url) {
+        const audio = this.ensureAudio();
+
         if (this.playing) {
-            this.audio.pause();
-            this.playing = false;
+            audio.pause();
             return;
         }
 
+        // Keep the position when the waveform already loaded this file.
+        if (audio.src !== url) {
+            audio.src = url;
+        }
+
         this.loading = true;
-        this.audio.src = url;
-        this.audio.play()
-            .then(() => { this.loading = false; this.playing = true; })
-            .catch(() => { this.loading = false; this.playing = false; });
+        audio.play()
+            .then(() => { this.loading = false; })
+            .catch(() => { this.loading = false; });
+    },
+}));
+
+/**
+ * Read-only waveform of the open file. The peaks are precomputed on the server, so the
+ * browser never decodes the audio itself; it only streams it for playback.
+ */
+Alpine.data('mediaWaveform', (waveformUrl, previewUrl) => ({
+    wavesurfer: null,
+    currentTime: 0,
+    duration: 0,
+    zoom: 0,
+    failed: false,
+    destroyed: false,
+
+    async init() {
+        let data;
+
+        try {
+            const response = await fetch(waveformUrl, { headers: { Accept: 'application/json' } });
+            if (! response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            data = await response.json();
+        } catch (e) {
+            this.failed = true;
+            return;
+        }
+
+        // The dialog may have closed while the peaks were loading.
+        if (this.destroyed) {
+            return;
+        }
+
+        const css = getComputedStyle(document.documentElement);
+        const color = (name) => css.getPropertyValue(name).trim();
+
+        this.duration = data.duration;
+        this.wavesurfer = WaveSurfer.create({
+            container: this.$refs.waveform,
+            media: this.ensureAudio(),
+            url: previewUrl,
+            peaks: [data.peaks.map((peak) => peak / 255)],
+            duration: data.duration,
+            normalize: true,
+            height: 96,
+            waveColor: color('--bs-secondary-color'),
+            progressColor: color('--bs-primary'),
+            cursorColor: color('--bs-emphasis-color'),
+            cursorWidth: 1,
+            dragToSeek: true,
+            autoScroll: true,
+            autoCenter: true,
+            plugins: [
+                WaveSurferTimeline.create({
+                    height: 16,
+                    style: { fontSize: '10px', color: color('--bs-secondary-color') },
+                }),
+                WaveSurferHover.create({
+                    lineColor: color('--bs-primary'),
+                    labelBackground: color('--bs-dark'),
+                    labelColor: '#fff',
+                    labelSize: '10px',
+                }),
+            ],
+        });
+
+        this.wavesurfer.on('timeupdate', (time) => { this.currentTime = time; });
+    },
+
+    applyZoom() {
+        this.wavesurfer?.zoom(this.zoom);
+    },
+
+    formatTime(seconds) {
+        const tenths = Math.round(Math.max(0, seconds || 0) * 10);
+        const minutes = Math.floor(tenths / 600);
+        const rest = ((tenths % 600) / 10).toFixed(1).padStart(4, '0');
+
+        return `${minutes}:${rest}`;
+    },
+
+    destroy() {
+        this.destroyed = true;
+        this.wavesurfer?.destroy();
+        this.wavesurfer = null;
     },
 }));
 

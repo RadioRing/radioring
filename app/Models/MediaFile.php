@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Storage;
 
-#[Fillable(['tenant_id', 'uploaded_by', 'title', 'artist', 'album', 'notes', 'type', 'fade_in', 'airtime_windows', 'airable_from', 'airable_until', 'file_path', 'duration_seconds', 'loudness_lufs', 'loudness_true_peak', 'loudness_measured_at'])]
+#[Fillable(['tenant_id', 'uploaded_by', 'title', 'artist', 'album', 'notes', 'type', 'fade_in', 'airtime_windows', 'airable_from', 'airable_until', 'file_path', 'duration_seconds', 'loudness_lufs', 'loudness_true_peak', 'loudness_measured_at', 'waveform_path'])]
 class MediaFile extends Model
 {
     /** @use HasFactory<MediaFileFactory> */
@@ -107,7 +107,17 @@ class MediaFile extends Model
             $file->versions->each(function (MediaFileVersion $version): void {
                 Storage::disk('local')->delete($version->file_path);
             });
+
+            if ($file->waveform_path !== null) {
+                Storage::disk('local')->delete($file->waveform_path);
+            }
         });
+    }
+
+    /** Where the precomputed waveform peaks of a file live on the local disk. */
+    public function waveformStoragePath(): string
+    {
+        return "tenants/{$this->tenant_id}/waveforms/{$this->id}.json";
     }
 
     /**
