@@ -237,7 +237,9 @@ test('never places the same artist directly after each other while alternatives 
     foreach (range(1, 4) as $n) {
         $pool->push(track('X', 'X-Album-'.$n));
     }
-    foreach (range(1, 12) as $n) {
+    // More fillers than slots: 15 picks out of 24 always leave an alternative. With fewer
+    // fillers the random picks could use them all up and leave two X titles for the end.
+    foreach (range(1, 20) as $n) {
         $pool->push(track('Filler'.$n, 'F'.$n));
     }
 
