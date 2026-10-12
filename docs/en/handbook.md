@@ -129,7 +129,11 @@ that file is edited:
   cue in and out up to cue out. Drag the markers in the waveform, type the seconds, or set
   cue in and cue out to the playhead with a button. Rundowns and fill planning use the
   trimmed length. Cue points belong to one version of the file: a replaced file starts
-  without them, and restoring a version brings its cue points back.
+  with freshly detected ones, and restoring a version brings its cue points back.
+- **Cue points from silence**: on upload, RadioRing sets cue in at the end of the silence
+  at the start and cue out at the beginning of the silence at the end (below -50 dB). It
+  never overwrites cue points set by hand. "Detect from silence" in the dialog suggests the
+  values again for an existing file; they are stored only when you save.
 - **Title**, **artist**, **album** and **type**.
 - **Notes** and **tags**.
 - **Run time** and **airtime windows**, see below.

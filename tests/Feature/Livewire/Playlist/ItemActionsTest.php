@@ -157,7 +157,7 @@ test('an upload from the editor lands in the tenant library and is analysed', fu
         ->and($mediaFile->type)->toBe('jingle');
 
     Storage::disk('local')->assertExists($mediaFile->file_path);
-    Queue::assertPushed(AnalyzeMediaLoudnessJob::class);
+    Queue::assertPushed(AnalyzeMediaLoudnessJob::class, fn (AnalyzeMediaLoudnessJob $job): bool => $job->applyCuePoints);
 
     expect($this->playlist->items()->first()->media_file_id)->toBe($mediaFile->id);
 });

@@ -49,6 +49,7 @@ class MediaFile extends Model
     {
         return [
             'uploaded_by' => 'integer',
+            'duration_seconds' => 'float',
             'cue_in_seconds' => 'float',
             'cue_out_seconds' => 'float',
             'fade_in_seconds' => 'float',
@@ -464,11 +465,14 @@ class MediaFile extends Model
 
     public function durationFormatted(): ?string
     {
-        if (! $this->duration_seconds) {
+        // Exact to the millisecond once the waveform job measured it, shown in whole seconds.
+        $seconds = $this->duration_seconds !== null ? (int) round($this->duration_seconds) : 0;
+
+        if (! $seconds) {
             return null;
         }
 
-        return sprintf('%d:%02d', intdiv($this->duration_seconds, 60), $this->duration_seconds % 60);
+        return sprintf('%d:%02d', intdiv($seconds, 60), $seconds % 60);
     }
 
     /** How many playlists use this file. */

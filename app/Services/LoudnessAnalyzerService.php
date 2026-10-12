@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Process;
 
 class LoudnessAnalyzerService
 {
+    public function __construct(private readonly CuePointDetectorService $cuePoints) {}
+
     /**
      * Misst die EBU-R128-Lautheit einer Audiodatei offline per ffmpeg.
      *
@@ -33,6 +35,33 @@ class LoudnessAnalyzerService
 
         // loudnorm schreibt den JSON-Block nach stderr.
         return $this->parse($result->errorOutput().$result->output());
+    }
+
+    /**
+     * Loudness and cue point suggestions from ONE decoding pass: silencedetect passes the
+     * audio through unchanged, so it sits in front of loudnorm and sees the original signal.
+     *
+     * @return array{loudness: array{lufs: float, true_peak: float}|null, cue_points: array{cue_in: ?float, cue_out: ?float}|null}
+     */
+    public function measure(string $absolutePath): array
+    {
+        $result = Process::timeout(300)->run([
+            config('radioring.loudness.ffmpeg_path', 'ffmpeg'),
+            '-hide_banner',
+            '-nostats',
+            '-progress', 'pipe:1',
+            '-i', $absolutePath,
+            '-af', $this->cuePoints->filter().',loudnorm=I=-16:print_format=json',
+            '-f', 'null',
+            '-',
+        ]);
+
+        $output = $result->errorOutput().$result->output();
+
+        return [
+            'loudness' => $this->parse($output),
+            'cue_points' => $result->successful() ? $this->cuePoints->parse($output) : null,
+        ];
     }
 
     /**

@@ -52,7 +52,7 @@ class UploadElement implements PlaylistElementType
         ]);
 
         // Lautheit offline (per ffmpeg) messen – einmalig, asynchron.
-        AnalyzeMediaLoudnessJob::dispatch($mediaFile->id);
+        AnalyzeMediaLoudnessJob::dispatch($mediaFile->id, applyCuePoints: true);
         GenerateMediaWaveformJob::dispatch($mediaFile->id);
 
         $playlist->items()->create([

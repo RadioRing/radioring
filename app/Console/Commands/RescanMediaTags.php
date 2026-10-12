@@ -105,7 +105,11 @@ class RescanMediaTags extends Command
             }
         }
 
-        if ($meta['duration'] !== null && ($force || $file->duration_seconds === null)) {
+        // getID3 reports whole seconds: --force must not overwrite the exact length the
+        // waveform job measured with its own rounded value.
+        $differs = $file->duration_seconds === null || (int) round($file->duration_seconds) !== $meta['duration'];
+
+        if ($meta['duration'] !== null && ($force ? $differs : $file->duration_seconds === null)) {
             $changes['duration_seconds'] = $meta['duration'];
         }
 

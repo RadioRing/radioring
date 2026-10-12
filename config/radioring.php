@@ -114,6 +114,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Cue point suggestions from silence
+    |--------------------------------------------------------------------------
+    | The media analysis (upload, `media:measure-loudness --cue-points`, the analysis
+    | button in the file dialog) suggests cue in at the end of the leading silence and
+    | cue out at the start of the trailing silence (ffmpeg silencedetect). threshold_db:
+    | level below which audio counts as silence. min_silence_seconds: shorter quiet
+    | stretches are ignored.
+    |
+    */
+    'cue_detection' => [
+        'threshold_db' => (float) env('CUE_DETECTION_THRESHOLD_DB', -50.0),
+        'min_silence_seconds' => (float) env('CUE_DETECTION_MIN_SILENCE_SECONDS', 0.1),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Hard hourly cut: fade out before the cut
     |--------------------------------------------------------------------------
     | A hard start (and a manual skip) cuts the running track off via a telnet

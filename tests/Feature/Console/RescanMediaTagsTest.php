@@ -47,7 +47,7 @@ test('it fills empty fields from id3 tags', function () {
     expect($file->fresh())
         ->artist->toBe('Tag Artist')
         ->album->toBe('Tag Album')
-        ->duration_seconds->toBe(222);
+        ->duration_seconds->toBe(222.0);
 });
 
 test('it does not overwrite existing values without force', function () {
@@ -59,7 +59,7 @@ test('it does not overwrite existing values without force', function () {
 
     expect($file->fresh())
         ->artist->toBe('Vorhanden')
-        ->duration_seconds->toBe(100);
+        ->duration_seconds->toBe(100.0);
 });
 
 test('force overwrites existing values', function () {
@@ -70,6 +70,26 @@ test('force overwrites existing values', function () {
     $this->artisan('media:rescan-tags --force')->assertSuccessful();
 
     expect($file->fresh()->artist)->toBe('Neu');
+});
+
+test('force keeps the exact length when the tag only rounds it', function () {
+    $exact = mediaWithFile($this->station, ['duration_seconds' => 221.73]);
+
+    mockMeta(['duration' => 222]);
+
+    $this->artisan('media:rescan-tags --force')->assertSuccessful();
+
+    expect($exact->fresh()->duration_seconds)->toBe(221.73);
+});
+
+test('force still corrects a length that is off by more than rounding', function () {
+    $wrong = mediaWithFile($this->station, ['duration_seconds' => 180.5]);
+
+    mockMeta(['duration' => 222]);
+
+    $this->artisan('media:rescan-tags --force')->assertSuccessful();
+
+    expect($wrong->fresh()->duration_seconds)->toBe(222.0);
 });
 
 test('dry run changes nothing', function () {

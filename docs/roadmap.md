@@ -29,15 +29,6 @@ Grouped by topic, not by date. Within a group, the first item is the likeliest n
 - **More alert channels.** Alert mails exist. Missing: a webhook per station, and a
   heartbeat that notices stalled queue workers.
 
-### Sound
-
-What a station coming from mAirList or RadioDJ notices in the first hour on air.
-
-- **Transitions.** Cue in, cue out and fades per file are set in the waveform editor (peaks
-  computed on the server). Still missing: a mix point ("start next") where the next element
-  starts while the current one fades out underneath, and cue points suggested by analysis
-  (silence detection in the same ffmpeg pass) instead of set by hand.
-
 ### Programme planning
 
 - **A special grid for individual dates.** Christmas Eve and New Year's Eve do not run the

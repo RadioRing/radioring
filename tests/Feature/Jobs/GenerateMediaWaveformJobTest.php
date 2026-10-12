@@ -85,6 +85,19 @@ test('the job stores the waveform and remembers its path', function () {
     expect($stored['peaks'])->toBe([128, 128]);
 });
 
+test('the job replaces the rounded length with the exact decoded one', function () {
+    $file = waveformMediaFile($this->station);
+    $file->update(['duration_seconds' => 1]);
+
+    // 10 000 samples at 8 kHz: 1.25 s, which getID3 would have stored as 1.
+    fakeFfmpegPcm(array_fill(0, 10_000, 100));
+
+    (new GenerateMediaWaveformJob($file->id))->handle(app(WaveformGeneratorService::class));
+
+    expect($file->refresh()->duration_seconds)->toBe(1.25)
+        ->and($file->durationFormatted())->toBe('0:01');
+});
+
 test('the job discards its result when the file was replaced meanwhile', function () {
     $file = waveformMediaFile($this->station);
     $newPath = "tenants/{$this->station->tenant_id}/media/new.mp3";
@@ -93,7 +106,8 @@ test('the job discards its result when the file was replaced meanwhile', functio
 
     (new GenerateMediaWaveformJob($file->id))->handle(app(WaveformGeneratorService::class));
 
-    expect($file->refresh()->waveform_path)->toBeNull();
+    expect($file->refresh()->waveform_path)->toBeNull()
+        ->and($file->duration_seconds)->not->toBe(0.0);
     Storage::disk('local')->assertMissing($file->waveformStoragePath());
 });
 

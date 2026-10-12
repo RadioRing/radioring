@@ -211,10 +211,16 @@ in ihm steckt. Die Ausspielung unterbricht dabei kurz, deshalb fragt der Befehl 
 
 ```sh
 php artisan media:rescan-tags [--station=slug] [--force] [--dry-run]
-php artisan media:measure-loudness [--station=slug]
+php artisan media:measure-loudness [--station=slug] [--force] [--cue-points] [--sync]
+php artisan media:generate-waveforms [--station=slug] [--force] [--sync]
 php artisan media:prune-chunks [--hours=2]
 php artisan media:prune-replaced [--days=7] [--dry-run]
 ```
+
+`media:measure-loudness --cue-points` setzt bei Dateien ohne Cue-Punkte zusätzlich Cue-In
+und Cue-Out aus der Stille am Anfang und Ende (Schwelle: `CUE_DETECTION_THRESHOLD_DB`,
+Standard -50). `media:generate-waveforms --force` misst dabei auch die exakte Länge
+bestehender Dateien neu.
 
 `media:prune-replaced` löscht ersetzte Fassungen von Mediendateien, auf die kein Rundown
 mehr zeigt.

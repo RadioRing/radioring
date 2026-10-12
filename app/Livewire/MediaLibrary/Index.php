@@ -269,12 +269,12 @@ class Index extends Component
                 'duration_seconds' => $upload['duration'],
             ]);
 
-            // Measure loudness offline with ffmpeg: once, asynchronously.
+            // Measure loudness and suggest cue points offline with ffmpeg: once, asynchronously.
             if ($uploadTagIds !== []) {
                 $file->tags()->sync($uploadTagIds);
             }
 
-            AnalyzeMediaLoudnessJob::dispatch($file->id);
+            AnalyzeMediaLoudnessJob::dispatch($file->id, applyCuePoints: true);
             GenerateMediaWaveformJob::dispatch($file->id);
 
             $count++;

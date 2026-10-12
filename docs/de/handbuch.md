@@ -135,8 +135,12 @@ alles zu dieser Datei bearbeitet wird:
   ab dem Cue-In ein- bzw. bis zum Cue-Out ausgeblendet werden. Du ziehst die Marker in
   der Wellenform, tippst die Sekunden ein oder setzt Cue-In und Cue-Out per Knopf auf die
   Abspielposition. Rundown und Füllplanung rechnen mit der gekürzten Länge. Cue-Punkte
-  gehören zur jeweiligen Fassung: Eine ersetzte Datei startet ohne sie, beim
-  Wiederherstellen einer Fassung kommen ihre Cue-Punkte zurück.
+  gehören zur jeweiligen Fassung: Eine ersetzte Datei startet mit neu ermittelten
+  Cue-Punkten, beim Wiederherstellen einer Fassung kommen ihre Cue-Punkte zurück.
+- **Cue-Punkte aus Stille**: Beim Hochladen setzt RadioRing Cue-In ans Ende der Stille am
+  Anfang und Cue-Out an den Beginn der Stille am Ende (unter -50 dB). Von Hand gesetzte
+  Cue-Punkte überschreibt es nicht. „Aus Stille ermitteln“ im Dialog schlägt die Werte
+  für eine vorhandene Datei neu vor; gespeichert wird erst mit „Speichern“.
 - **Titel**, **Interpret**, **Album** und **Typ**.
 - **Notizen** und **Tags**.
 - **Laufzeit** und **Sendefenster** (siehe unten).

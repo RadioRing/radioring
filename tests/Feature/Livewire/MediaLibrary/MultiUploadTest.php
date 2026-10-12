@@ -78,7 +78,7 @@ test('save creates DB records, dispatches loudness analysis and clears the pendi
 
     $a = $this->station->mediaFiles()->where('title', 'Track A')->first();
     expect($a->type)->toBe('music')
-        ->and($a->duration_seconds)->toBe(200)
+        ->and($a->duration_seconds)->toBe(200.0)
         ->and($a->uploaded_by)->toBe($this->user->id);
 
     $b = $this->station->mediaFiles()->where('title', 'Track B')->first();
@@ -86,6 +86,7 @@ test('save creates DB records, dispatches loudness analysis and clears the pendi
 
     // Jede neue Datei wird zur Offline-Lautheitsmessung eingeplant.
     Bus::assertDispatchedTimes(AnalyzeMediaLoudnessJob::class, 2);
+    Bus::assertNotDispatched(AnalyzeMediaLoudnessJob::class, fn (AnalyzeMediaLoudnessJob $job): bool => ! $job->applyCuePoints);
 });
 
 test('save validates that title is not empty', function () {

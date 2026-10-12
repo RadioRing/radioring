@@ -20,6 +20,9 @@ to stand on its own.
   IPs are being saved.
 - **Presenter role.** Presenters go live, upload files and edit their own uploads. They do
   not change the programme.
+- **Waveform and cue points.** The waveform shows the loudness of the file as it plays,
+  and the cue points show where the programme cuts. You can set cue in, cue out, fade in, fade out to decide where the
+  programme cuts.
 
 ### Changed
 - **Editors no longer start or stop the container,** manage outputs or connect

@@ -72,7 +72,8 @@ class MediaReplacementService
         $file->update($attributes);
 
         // Lautheit der neuen Fassung offline messen – bis dahin spielt sie ohne Gain-Korrektur.
-        AnalyzeMediaLoudnessJob::dispatch($file->id);
+        // The cue points were reset above, so the new version gets suggested ones.
+        AnalyzeMediaLoudnessJob::dispatch($file->id, applyCuePoints: true);
         GenerateMediaWaveformJob::dispatch($file->id);
 
         return $version;

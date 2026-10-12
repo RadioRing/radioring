@@ -11,7 +11,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Precomputes the waveform peaks of a media file for the editor in the FileModal.
+ * Precomputes the waveform peaks of a media file for the editor in the FileModal, and
+ * stores the exact file length found on the way.
  *
  * Unique per file: opening the dialog of a file without waveform queues it as well, and
  * reopening the dialog must not pile up copies while the first one waits.
@@ -72,6 +73,11 @@ class GenerateMediaWaveformJob implements ShouldBeUnique, ShouldQueue
         $waveformPath = $file->waveformStoragePath();
         $disk->put($waveformPath, json_encode($waveform, JSON_THROW_ON_ERROR));
 
-        $file->update(['waveform_path' => $waveformPath]);
+        // Decoding the whole file gives the exact length, unlike getID3's whole seconds or a
+        // header estimate. Segues need it as cue out.
+        $file->update([
+            'waveform_path' => $waveformPath,
+            'duration_seconds' => $waveform['duration'],
+        ]);
     }
 }

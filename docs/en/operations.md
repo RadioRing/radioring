@@ -208,10 +208,16 @@ environment variable. Playout is interrupted briefly, so it asks first.
 
 ```sh
 php artisan media:rescan-tags [--station=slug] [--force] [--dry-run]
-php artisan media:measure-loudness [--station=slug]
+php artisan media:measure-loudness [--station=slug] [--force] [--cue-points] [--sync]
+php artisan media:generate-waveforms [--station=slug] [--force] [--sync]
 php artisan media:prune-chunks [--hours=2]
 php artisan media:prune-replaced [--days=7] [--dry-run]
 ```
+
+`media:measure-loudness --cue-points` also sets cue in and cue out from the silence at the
+start and end for files without cue points (threshold: `CUE_DETECTION_THRESHOLD_DB`,
+default -50). `media:generate-waveforms --force` also measures the exact length of existing
+files again.
 
 `media:prune-replaced` deletes replaced versions of media files that no rundown points at
 any more.

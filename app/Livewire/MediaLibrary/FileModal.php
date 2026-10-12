@@ -9,6 +9,7 @@ use App\Models\GeneratedPlaylistItem;
 use App\Models\MediaFile;
 use App\Models\PlaylistItem;
 use App\Models\Station;
+use App\Services\CuePointDetectorService;
 use App\Services\MediaReplacementService;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -295,6 +296,39 @@ class FileModal extends Component
         $this->dispatch('notify', message: __('Metadata saved.'), type: 'success');
     }
 
+    /**
+     * Fills cue in and cue out with what the silence detection suggests. Nothing is stored:
+     * the markers move, the user checks them and saves.
+     */
+    public function analyzeCuePoints(CuePointDetectorService $detector): void
+    {
+        abort_unless($this->mayWrite, 403);
+
+        if (! $this->file) {
+            return;
+        }
+
+        $disk = Storage::disk('local');
+
+        $suggestion = $disk->exists($this->file->file_path)
+            ? $detector->detect($disk->path($this->file->file_path))
+            : null;
+
+        if ($suggestion === null) {
+            $this->dispatch('notify', message: __('The file could not be analysed.'), type: 'error');
+
+            return;
+        }
+
+        $this->resetValidation(['cueIn', 'cueOut']);
+        $this->cueIn = self::secondsField($suggestion['cue_in']);
+        $this->cueOut = self::secondsField($suggestion['cue_out']);
+
+        $this->dispatch('notify', message: $suggestion['cue_in'] === null && $suggestion['cue_out'] === null
+            ? __('No silence found at the start or end.')
+            : __('Cue points suggested from silence. Check them and save.'), type: 'info');
+    }
+
     /** Seconds for an input field: two decimals at most, empty when not set. */
     private static function secondsField(?float $seconds): string
     {
@@ -324,7 +358,8 @@ class FileModal extends Component
             $errors['cueIn'] = __('Cue in must lie within the file.');
         }
 
-        // The stored length is rounded to whole seconds, so allow up to one second more.
+        // Until the waveform job measured the exact length, the stored one is rounded to whole
+        // seconds, so allow up to one second more.
         if ($length !== null && $cueOut !== null && $cueOut > $length + 1) {
             $errors['cueOut'] = __('Cue out must lie within the file.');
         }

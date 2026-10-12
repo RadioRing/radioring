@@ -97,13 +97,13 @@ test('replacing swaps the file, archives the old version and re-measures the lou
     expect($version)
         ->file_path->toBe("tenants/{$this->station->tenant_id}/media/alt.mp3")
         ->loudness_lufs->toBe(-12.5)
-        ->duration_seconds->toBe(200)
+        ->duration_seconds->toBe(200.0)
         ->replaced_by_user_id->toBe($this->user->id);
 
     // The old version stays: running rundowns play it out.
     Storage::disk('local')->assertExists($version->file_path);
 
-    Queue::assertPushed(AnalyzeMediaLoudnessJob::class);
+    Queue::assertPushed(AnalyzeMediaLoudnessJob::class, fn (AnalyzeMediaLoudnessJob $job): bool => $job->applyCuePoints);
     Queue::assertPushed(GenerateMediaWaveformJob::class, fn (GenerateMediaWaveformJob $job): bool => $job->mediaFileId === $file->id);
 });
 
@@ -193,7 +193,7 @@ test('a restored version becomes the current file again', function () {
 
     expect($file->fresh())
         ->file_path->toBe("tenants/{$this->station->tenant_id}/media/alt.mp3")
-        ->duration_seconds->toBe(200)
+        ->duration_seconds->toBe(200.0)
         ->waveform_path->toBeNull();
 
     Queue::assertPushed(GenerateMediaWaveformJob::class);

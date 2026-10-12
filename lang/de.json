@@ -626,5 +626,10 @@
     "Where the file ends on air.": "Wo die Datei im Programm endet.",
     "End": "Ende",
     "Set to the playhead position": "Auf die Abspielposition setzen",
-    "Drag the markers in the waveform or type the seconds. Cue points belong to this version of the file: a replaced file starts without them.": "Ziehe die Marker in der Wellenform oder tippe die Sekunden ein. Cue-Punkte gehören zu dieser Fassung der Datei: Eine ersetzte Datei startet ohne sie."
+    "Drag the markers in the waveform or type the seconds. Cue points belong to this version of the file: a replaced file starts without them.": "Ziehe die Marker in der Wellenform oder tippe die Sekunden ein. Cue-Punkte gehören zu dieser Fassung der Datei: Eine ersetzte Datei startet ohne sie.",
+    "The file could not be analysed.": "Die Datei konnte nicht analysiert werden.",
+    "No silence found at the start or end.": "Am Anfang und am Ende wurde keine Stille gefunden.",
+    "Cue points suggested from silence. Check them and save.": "Cue-Punkte aus der Stille vorgeschlagen. Bitte prüfen und speichern.",
+    "Suggest cue in and cue out from the silence at the start and end": "Cue-In und Cue-Out anhand der Stille am Anfang und Ende vorschlagen",
+    "Detect from silence": "Aus Stille ermitteln"
 }

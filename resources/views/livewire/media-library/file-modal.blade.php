@@ -111,9 +111,20 @@
                                         </div>
                                     @endforeach
                                 </div>
-                                <p class="text-muted mb-0 mt-2" style="font-size:.75rem">
-                                    {{ __('Drag the markers in the waveform or type the seconds. Cue points belong to this version of the file: a replaced file starts without them.') }}
-                                </p>
+                                <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+                                    <p class="text-muted mb-0 flex-grow-1" style="font-size:.75rem">
+                                        {{ __('Drag the markers in the waveform or type the seconds. Cue points belong to this version of the file: a replaced file starts without them.') }}
+                                    </p>
+                                    @if($this->mayWrite)
+                                        <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap"
+                                                wire:click="analyzeCuePoints" wire:loading.attr="disabled" wire:target="analyzeCuePoints"
+                                                title="{{ __('Suggest cue in and cue out from the silence at the start and end') }}">
+                                            <span wire:loading.remove wire:target="analyzeCuePoints"><i class="bi bi-magic me-1"></i></span>
+                                            <span wire:loading wire:target="analyzeCuePoints" class="spinner-border spinner-border-sm me-1"></span>
+                                            {{ __('Detect from silence') }}
+                                        </button>
+                                    @endif
+                                </div>
                             </div>
                         </div>
 
