@@ -79,7 +79,13 @@ class LiquidsoapScriptGenerator
         // memoize) und ignoriert jeden Trackwechsel – die liq_fade_in-Annotation lief damit
         // ins Leere. Mit true hängt der Fade an source.on_track und liest die Annotation
         // des jeweils startenden Elements.
-        $lines[] = "faded = fade.in(track_sensitive=true, override_duration=\"liq_fade_in\", duration=0., {$programSource})";
+        $lines[] = "faded_in = fade.in(track_sensitive=true, override_duration=\"liq_fade_in\", duration=0., {$programSource})";
+
+        // Per-element fade-out from the waveform editor (liq_fade_out), ending at the
+        // element's end, which is its cue out: liq_cue_in/liq_cue_out are applied by
+        // request.create when the element is resolved, so the track already ends there.
+        // track_sensitive=true for the same reason as fade.in above.
+        $lines[] = 'faded = fade.out(track_sensitive=true, override_duration="liq_fade_out", duration=0., faded_in)';
         $programSource = 'faded';
 
         // Adjustable overall volume of the programme, which flush_and_skip fades out with

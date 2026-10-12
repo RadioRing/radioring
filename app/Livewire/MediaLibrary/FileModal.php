@@ -14,6 +14,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
@@ -50,7 +51,17 @@ class FileModal extends Component
 
     public string $type = 'music';
 
-    public bool $fadeIn = false;
+    /**
+     * Cue and fade points as edited in the waveform editor, in seconds. An empty string
+     * means "not set": cue in at the start, cue out at the end, no fade.
+     */
+    public string $cueIn = '';
+
+    public string $cueOut = '';
+
+    public string $fadeIn = '';
+
+    public string $fadeOut = '';
 
     /** @var array<int|string> */
     public array $tagIds = [];
@@ -134,7 +145,10 @@ class FileModal extends Component
         $this->album = $this->file->album ?? '';
         $this->notes = $this->file->notes ?? '';
         $this->type = $this->file->type;
-        $this->fadeIn = $this->file->fade_in;
+        $this->cueIn = self::secondsField($this->file->cue_in_seconds);
+        $this->cueOut = self::secondsField($this->file->cue_out_seconds);
+        $this->fadeIn = self::secondsField($this->file->fade_in_seconds);
+        $this->fadeOut = self::secondsField($this->file->fade_out_seconds);
         $this->tagIds = $this->file->tags()->pluck('tags.id')->map(fn ($id) => (string) $id)->all();
 
         $this->airtimeWindows = collect($this->file->airtime_windows ?? [])
@@ -242,7 +256,10 @@ class FileModal extends Component
             'album' => 'nullable|string|max:200',
             'notes' => 'nullable|string|max:2000',
             'type' => ['required', Rule::in(MediaFile::TYPES)],
-            'fadeIn' => 'boolean',
+            'cueIn' => 'nullable|numeric|min:0',
+            'cueOut' => 'nullable|numeric|min:0',
+            'fadeIn' => 'nullable|numeric|min:0|max:60',
+            'fadeOut' => 'nullable|numeric|min:0|max:60',
             'airtimeWindows' => 'array|max:20',
             'airtimeWindows.*.days' => 'array',
             'airtimeWindows.*.days.*' => 'in:1,2,3,4,5,6,7',
@@ -254,13 +271,15 @@ class FileModal extends Component
             'airableUntil.after' => __('The end of the run time must lie after its start.'),
         ]);
 
+        $cuePoints = $this->validatedCuePoints();
+
         $this->file->update([
             'title' => trim($this->title),
             'artist' => trim($this->artist) !== '' ? trim($this->artist) : null,
             'album' => trim($this->album) !== '' ? trim($this->album) : null,
             'notes' => trim($this->notes) !== '' ? trim($this->notes) : null,
             'type' => $this->type,
-            'fade_in' => $this->fadeIn,
+            ...$cuePoints,
             'airtime_windows' => $this->normalizedAirtimeWindows(),
             'airable_from' => $this->parseRunTime($this->airableFrom),
             'airable_until' => $this->parseRunTime($this->airableUntil),
@@ -274,6 +293,62 @@ class FileModal extends Component
 
         $this->dispatch('media-library-changed');
         $this->dispatch('notify', message: __('Metadata saved.'), type: 'success');
+    }
+
+    /** Seconds for an input field: two decimals at most, empty when not set. */
+    private static function secondsField(?float $seconds): string
+    {
+        return $seconds === null ? '' : rtrim(rtrim(number_format($seconds, 2, '.', ''), '0'), '.');
+    }
+
+    /**
+     * The cue and fade fields as they are stored, checked against each other and the file
+     * length. Values that mean "nothing to do" (cue in at 0, cue out at the very end, a
+     * fade of 0 s) are stored as null, so an untouched file stays plainly untouched.
+     *
+     * @return array{cue_in_seconds: ?float, cue_out_seconds: ?float, fade_in_seconds: ?float, fade_out_seconds: ?float}
+     */
+    private function validatedCuePoints(): array
+    {
+        $parse = fn (string $value): ?float => trim($value) === '' ? null : round((float) $value, 2);
+
+        $cueIn = $parse($this->cueIn);
+        $cueOut = $parse($this->cueOut);
+        $fadeIn = $parse($this->fadeIn);
+        $fadeOut = $parse($this->fadeOut);
+        $length = $this->file->duration_seconds;
+
+        $errors = [];
+
+        if ($length !== null && $cueIn !== null && $cueIn >= $length) {
+            $errors['cueIn'] = __('Cue in must lie within the file.');
+        }
+
+        // The stored length is rounded to whole seconds, so allow up to one second more.
+        if ($length !== null && $cueOut !== null && $cueOut > $length + 1) {
+            $errors['cueOut'] = __('Cue out must lie within the file.');
+        }
+
+        if ($cueOut !== null && $cueOut <= ($cueIn ?? 0.0)) {
+            $errors['cueOut'] = __('Cue out must lie after cue in.');
+        }
+
+        $playable = ($cueOut ?? $length) !== null ? ($cueOut ?? $length) - ($cueIn ?? 0.0) : null;
+
+        if ($playable !== null && ($fadeIn ?? 0.0) + ($fadeOut ?? 0.0) > $playable) {
+            $errors['fadeOut'] = __('Fade in and fade out together are longer than what plays.');
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
+
+        return [
+            'cue_in_seconds' => $cueIn !== null && $cueIn > 0.0 ? $cueIn : null,
+            'cue_out_seconds' => $cueOut !== null && ($length === null || $cueOut < $length) ? $cueOut : null,
+            'fade_in_seconds' => $fadeIn !== null && $fadeIn > 0.0 ? $fadeIn : null,
+            'fade_out_seconds' => $fadeOut !== null && $fadeOut > 0.0 ? $fadeOut : null,
+        ];
     }
 
     /** A datetime-local value as a whole minute, null when the field is empty. */

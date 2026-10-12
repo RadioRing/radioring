@@ -128,9 +128,16 @@ automatisch – du musst nichts tun.
 Ein Klick auf den Titel einer Datei (oder auf das Stift-Symbol) öffnet den Dialog, in dem
 alles zu dieser Datei bearbeitet wird:
 
+- **Wellenform** mit Vorhören: Klicken oder Ziehen springt an die Stelle, der Regler
+  zoomt hinein.
+- **Cue-In** und **Cue-Out**: wo die Datei im Programm beginnt und endet, etwa um Stille
+  oder ein langes Intro abzuschneiden. **Fade-In** und **Fade-Out**: wie viele Sekunden
+  ab dem Cue-In ein- bzw. bis zum Cue-Out ausgeblendet werden. Du ziehst die Marker in
+  der Wellenform, tippst die Sekunden ein oder setzt Cue-In und Cue-Out per Knopf auf die
+  Abspielposition. Rundown und Füllplanung rechnen mit der gekürzten Länge. Cue-Punkte
+  gehören zur jeweiligen Fassung: Eine ersetzte Datei startet ohne sie, beim
+  Wiederherstellen einer Fassung kommen ihre Cue-Punkte zurück.
 - **Titel**, **Interpret**, **Album** und **Typ**.
-- **Fade-In**: Die Datei wird beim Start sanft eingeblendet (nützlich z. B. bei
-  Aufnahmen mit hartem Anfang).
 - **Notizen** und **Tags**.
 - **Laufzeit** und **Sendefenster** (siehe unten).
 - **Datei ersetzen** (nur Besitzer): Eine neue Fassung tritt an die Stelle der alten. Playlisten, Tags

@@ -38,24 +38,99 @@ test('a file title and artist can be edited', function () {
         ->artist->toBe('Neuer Interpret');
 });
 
-test('fade-in can be toggled on and is loaded back into the form', function () {
+test('cue and fade points are saved and loaded back into the form', function () {
     $file = MediaFile::factory()->create([
         'tenant_id' => $this->station->tenant_id,
-        'fade_in' => false,
+        'duration_seconds' => 200,
     ]);
 
     Livewire::test(FileModal::class)
         ->call('open', $file->id)
-        ->assertSet('fadeIn', false)
-        ->set('fadeIn', true)
+        ->assertSet('cueIn', '')
+        ->assertSet('cueOut', '')
+        ->set('cueIn', '3.256')
+        ->set('cueOut', '190.5')
+        ->set('fadeIn', '2')
+        ->set('fadeOut', '4.25')
         ->call('save')
         ->assertHasNoErrors();
 
-    expect($file->fresh()->fade_in)->toBeTrue();
+    expect($file->fresh())
+        ->cue_in_seconds->toBe(3.26)
+        ->cue_out_seconds->toBe(190.5)
+        ->fade_in_seconds->toBe(2.0)
+        ->fade_out_seconds->toBe(4.25)
+        ->playbackDuration()->toBe(187);
 
     Livewire::test(FileModal::class)
         ->call('open', $file->id)
-        ->assertSet('fadeIn', true);
+        ->assertSet('cueIn', '3.26')
+        ->assertSet('cueOut', '190.5')
+        ->assertSet('fadeIn', '2')
+        ->assertSet('fadeOut', '4.25');
+});
+
+test('cue points that change nothing are stored as null', function () {
+    $file = MediaFile::factory()->withCuePoints()->create([
+        'tenant_id' => $this->station->tenant_id,
+        'duration_seconds' => 200,
+    ]);
+
+    Livewire::test(FileModal::class)
+        ->call('open', $file->id)
+        ->set('cueIn', '0')
+        ->set('cueOut', '200')
+        ->set('fadeIn', '')
+        ->set('fadeOut', '0')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($file->fresh())
+        ->cue_in_seconds->toBeNull()
+        ->cue_out_seconds->toBeNull()
+        ->fade_in_seconds->toBeNull()
+        ->fade_out_seconds->toBeNull();
+});
+
+test('cue points are checked against each other and the file length', function (array $fields, string $errorField) {
+    $file = MediaFile::factory()->create([
+        'tenant_id' => $this->station->tenant_id,
+        'duration_seconds' => 200,
+    ]);
+
+    $component = Livewire::test(FileModal::class)->call('open', $file->id);
+
+    foreach ($fields as $field => $value) {
+        $component->set($field, $value);
+    }
+
+    $component->call('save')->assertHasErrors($errorField);
+
+    expect($file->fresh()->cue_in_seconds)->toBeNull();
+})->with([
+    'cue in beyond the end' => [['cueIn' => '200'], 'cueIn'],
+    'cue out beyond the end' => [['cueOut' => '205'], 'cueOut'],
+    'cue out before cue in' => [['cueIn' => '50', 'cueOut' => '40'], 'cueOut'],
+    'fades longer than the range' => [['cueIn' => '10', 'cueOut' => '20', 'fadeIn' => '6', 'fadeOut' => '5'], 'fadeOut'],
+    'negative fade' => [['fadeIn' => '-1'], 'fadeIn'],
+    'not a number' => [['cueIn' => 'abc'], 'cueIn'],
+]);
+
+test('a presenter cannot change the cue points of a file they did not upload', function () {
+    $presenter = User::factory()->create();
+    $this->station->members()->attach($presenter->id, ['role' => 'presenter']);
+    $file = MediaFile::factory()->create(['tenant_id' => $this->station->tenant_id]);
+
+    $this->actingAs($presenter);
+    session(['current_station_id' => $this->station->id]);
+
+    Livewire::test(FileModal::class)
+        ->call('open', $file->id)
+        ->set('cueIn', '5')
+        ->call('save')
+        ->assertForbidden();
+
+    expect($file->fresh()->cue_in_seconds)->toBeNull();
 });
 
 test('the artist can be cleared back to null', function () {

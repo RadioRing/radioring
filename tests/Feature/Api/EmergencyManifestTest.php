@@ -82,6 +82,30 @@ test('the manifest carries the offline measured gain and leaves it out when unme
         ->and($files[1]['amplify'])->toBeNull();
 });
 
+test('the manifest carries the cue points but not the fades', function () {
+    $trimmed = emergencyMediaFile($this->station, 'Trimmed', 8, [
+        'duration_seconds' => 200,
+        'cue_in_seconds' => 2.5,
+        'cue_out_seconds' => 190.0,
+        'fade_in_seconds' => 3.0,
+    ]);
+    $untouched = emergencyMediaFile($this->station, 'Untouched');
+
+    $this->station->emergencyItems()->attach([
+        $trimmed->id => ['position' => 0],
+        $untouched->id => ['position' => 1],
+    ]);
+
+    $files = manifestFor($this->station)->json('files');
+
+    expect($files[0])
+        ->cue_in->toBe('2.50')
+        ->cue_out->toBe('190.00')
+        ->not->toHaveKey('fade_in')
+        ->and($files[1]['cue_in'])->toBeNull()
+        ->and($files[1]['cue_out'])->toBeNull();
+});
+
 test('the manifest leaves out a file that is gone from disk', function () {
     $file = emergencyMediaFile($this->station, 'Deleted on disk');
     $this->station->emergencyItems()->attach($file->id, ['position' => 0]);

@@ -142,12 +142,13 @@ class LiquidsoapNextTrackController extends Controller
             }
         }
 
-        // Optionales sanftes Einblenden pro Datei (z.B. Jingles). fade.in im Streamer-Script
-        // liest die liq_fade_in-Annotation; ohne sie bleibt der Übergang hart. Live-DB-Stand,
-        // damit das Häkchen ohne Rundown-Neugenerierung greift.
-        if ($item->mediaFile?->fade_in) {
-            $fadeSeconds = (float) config('radioring.fade_in_seconds', 2.0);
-            $annotations .= ",liq_fade_in=\"{$fadeSeconds}\"";
+        // Cue and fade points from the waveform editor, live DB state so an edit takes
+        // effect without regenerating the rundown. They were set on the current file: a
+        // replaced version still playing out from an older rundown gets none of them.
+        if ($item->mediaFile !== null && $item->supersededPath() === null) {
+            foreach ([...$item->mediaFile->cueAnnotations(), ...$item->mediaFile->fadeAnnotations()] as $key => $value) {
+                $annotations .= ",{$key}=\"{$value}\"";
+            }
         }
 
         return $this->plain("annotate:{$annotations}:{$this->safeUri($url)}");

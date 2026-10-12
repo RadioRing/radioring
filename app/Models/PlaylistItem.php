@@ -63,10 +63,10 @@ class PlaylistItem extends Model
         return $this->file_path ? basename($this->file_path) : null;
     }
 
-    /** Formatiert duration_seconds als MM:SS, bevorzugt aus MediaFile. */
+    /** Length as MM:SS, preferably what the media file plays (cue in to cue out). */
     public function durationFormatted(): ?string
     {
-        $seconds = $this->mediaFile?->duration_seconds ?? $this->duration_seconds;
+        $seconds = $this->mediaFile?->playbackDuration() ?? $this->duration_seconds;
 
         if (! $seconds) {
             return null;

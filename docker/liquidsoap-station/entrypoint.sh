@@ -81,14 +81,18 @@ init_emergency() {
   [[ -f "$EMERGENCY_PLAYLIST" ]] || echo "# no emergency files" > "$EMERGENCY_PLAYLIST"
 }
 
-# Manifest fields per line: name, url, gain. A file is named {media_id}-{updated_at}, so a
-# name already present is up to date and a replaced file arrives under a new name.
+# Manifest fields per line: name, url, gain, cue in, cue out. A file is named
+# {media_id}-{updated_at}, so a name already present is up to date and a replaced file
+# arrives under a new name.
+#
+# Separated by the unit separator (0x1f), not tabs: bash treats a tab in IFS as whitespace
+# and collapses empty fields, which would shift a cue out into the gain column.
 emergency_manifest_rows() {
-  jq -r '.files[] | [.name, .url, (.amplify // "")] | @tsv' "$1"
+  jq -r '.files[] | [.name, .url, (.amplify // ""), (.cue_in // ""), (.cue_out // "")] | join("\u001f")' "$1"
 }
 
 sync_emergency() {
-  local manifest http_code name url amplify base wanted=""
+  local manifest http_code name url amplify cue_in cue_out annotations base wanted=""
   manifest=$(mktemp)
 
   http_code=$(curl -s -o "$manifest" -w "%{http_code}" \
@@ -104,7 +108,7 @@ sync_emergency() {
 
   init_emergency
 
-  while IFS=$'\t' read -r name url amplify; do
+  while IFS=$'\x1f' read -r name url amplify cue_in cue_out; do
     [[ -n "$name" ]] || continue
     wanted+="${name}"$'\n'
 
@@ -131,13 +135,17 @@ sync_emergency() {
   done
 
   # Written through .tmp: Liquidsoap must never read a half written playlist. Each line
-  # carries the offline measured gain.
+  # carries the offline measured gain and the cue points (applied on request resolution).
   : > "${EMERGENCY_PLAYLIST}.tmp"
 
-  while IFS=$'\t' read -r name url amplify; do
+  while IFS=$'\x1f' read -r name url amplify cue_in cue_out; do
     [[ -s "${EMERGENCY_DIR}/${name}" ]] || continue
-    if [[ -n "$amplify" ]]; then
-      echo "annotate:liq_amplify=\"${amplify}\":${EMERGENCY_DIR}/${name}" >> "${EMERGENCY_PLAYLIST}.tmp"
+    annotations=""
+    [[ -n "$amplify" ]] && annotations+=",liq_amplify=\"${amplify}\""
+    [[ -n "$cue_in" ]] && annotations+=",liq_cue_in=\"${cue_in}\""
+    [[ -n "$cue_out" ]] && annotations+=",liq_cue_out=\"${cue_out}\""
+    if [[ -n "$annotations" ]]; then
+      echo "annotate:${annotations#,}:${EMERGENCY_DIR}/${name}" >> "${EMERGENCY_PLAYLIST}.tmp"
     else
       echo "${EMERGENCY_DIR}/${name}" >> "${EMERGENCY_PLAYLIST}.tmp"
     fi

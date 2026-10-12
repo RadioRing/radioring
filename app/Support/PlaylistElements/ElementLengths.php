@@ -4,6 +4,7 @@ namespace App\Support\PlaylistElements;
 
 use App\Models\PlaylistItem;
 use App\Models\Station;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Length of a template element before generating: known lengths, the pool average for a
@@ -28,7 +29,7 @@ class ElementLengths
             'marker' => 0,
             'external' => $item->externalSource?->expected_duration_seconds ?? $item->duration_seconds,
             'container' => $this->ofContainer($item),
-            default => $item->mediaFile?->duration_seconds ?? $item->duration_seconds,
+            default => $item->mediaFile?->playbackDuration() ?? $item->duration_seconds,
         };
     }
 
@@ -98,7 +99,8 @@ class ElementLengths
                 $query->whereHas('tags', fn ($q) => $q->whereIn('tags.id', $tags));
             }
 
-            $average = $query->avg('duration_seconds');
+            // Playback length (cue in to cue out), the same as MediaFile::playbackDuration().
+            $average = $query->avg(DB::raw('COALESCE(cue_out_seconds, duration_seconds) - COALESCE(cue_in_seconds, 0)'));
             $this->poolAverages[$key] = $average !== null ? (int) round((float) $average) : null;
         }
 

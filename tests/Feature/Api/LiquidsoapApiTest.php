@@ -225,70 +225,90 @@ test('next omits liq_amplify for an unmeasured track', function () {
     expect($response->getContent())->not->toContain('liq_amplify');
 });
 
-test('next annotates liq_fade_in for a track with fade-in enabled', function () {
-    Storage::fake('local');
-
-    $file = MediaFile::factory()->create([
-        'tenant_id' => $this->station->tenant_id,
-        'file_path' => "tenants/{$this->station->tenant_id}/media/jingle.mp3",
-        'type' => 'jingle',
-        'title' => 'Jingle',
-        'fade_in' => true,
-    ]);
-
-    config(['radioring.fade_in_seconds' => 2.0]);
-
+/**
+ * A rundown for the current hour with the given file as its only item.
+ */
+function rundownWithFile(Station $station, MediaFile $file, array $itemAttributes = []): GeneratedPlaylistItem
+{
     $rundown = GeneratedPlaylist::factory()->create([
-        'station_id' => $this->station->id,
+        'station_id' => $station->id,
         'broadcast_date' => today(),
         'broadcast_hour' => now()->hour,
         'status' => 'ready',
     ]);
 
-    GeneratedPlaylistItem::factory()->create([
+    return GeneratedPlaylistItem::factory()->create([
         'generated_playlist_id' => $rundown->id,
         'media_file_id' => $file->id,
         'position' => 0,
         'source_type' => 'template_item',
-        'title' => 'Jingle',
+        'title' => $file->title,
+        ...$itemAttributes,
     ]);
+}
 
-    $response = $this->withToken($this->token)
-        ->get("/api/liquidsoap/{$this->station->slug}/next");
-
-    expect($response->getContent())->toContain('liq_fade_in="2"');
-});
-
-test('next omits liq_fade_in for a track without fade-in', function () {
+test('next annotates cue and fade points of the file', function () {
     Storage::fake('local');
 
     $file = MediaFile::factory()->create([
         'tenant_id' => $this->station->tenant_id,
         'file_path' => "tenants/{$this->station->tenant_id}/media/song.mp3",
-        'type' => 'music',
-        'title' => 'Song',
-        'fade_in' => false,
+        'duration_seconds' => 200,
+        'cue_in_seconds' => 3.25,
+        'cue_out_seconds' => 190.5,
+        'fade_in_seconds' => 2.0,
+        'fade_out_seconds' => 4.0,
     ]);
 
-    $rundown = GeneratedPlaylist::factory()->create([
-        'station_id' => $this->station->id,
-        'broadcast_date' => today(),
-        'broadcast_hour' => now()->hour,
-        'status' => 'ready',
-    ]);
-
-    GeneratedPlaylistItem::factory()->create([
-        'generated_playlist_id' => $rundown->id,
-        'media_file_id' => $file->id,
-        'position' => 0,
-        'source_type' => 'template_item',
-        'title' => 'Song',
-    ]);
+    rundownWithFile($this->station, $file);
 
     $response = $this->withToken($this->token)
         ->get("/api/liquidsoap/{$this->station->slug}/next");
 
-    expect($response->getContent())->not->toContain('liq_fade_in');
+    expect($response->getContent())
+        ->toContain('liq_cue_in="3.25"')
+        ->toContain('liq_cue_out="190.50"')
+        ->toContain('liq_fade_in="2.00"')
+        ->toContain('liq_fade_out="4.00"');
+});
+
+test('next omits cue and fade annotations for an untouched file', function () {
+    Storage::fake('local');
+
+    $file = MediaFile::factory()->create([
+        'tenant_id' => $this->station->tenant_id,
+        'file_path' => "tenants/{$this->station->tenant_id}/media/song.mp3",
+    ]);
+
+    rundownWithFile($this->station, $file);
+
+    $response = $this->withToken($this->token)
+        ->get("/api/liquidsoap/{$this->station->slug}/next");
+
+    expect($response->getContent())
+        ->not->toContain('liq_cue_')
+        ->not->toContain('liq_fade_');
+});
+
+test('next does not apply the cue points of a new version to a replaced one', function () {
+    Storage::fake('local');
+
+    $oldPath = "tenants/{$this->station->tenant_id}/media/old.mp3";
+    Storage::disk('local')->put($oldPath, 'old-version');
+
+    $file = MediaFile::factory()->withCuePoints()->create([
+        'tenant_id' => $this->station->tenant_id,
+        'file_path' => "tenants/{$this->station->tenant_id}/media/new.mp3",
+    ]);
+
+    rundownWithFile($this->station, $file, ['media_file_path' => $oldPath]);
+
+    $response = $this->withToken($this->token)
+        ->get("/api/liquidsoap/{$this->station->slug}/next");
+
+    expect($response->getContent())
+        ->not->toContain('liq_cue_')
+        ->not->toContain('liq_fade_');
 });
 
 test('next annotates title and artist from the database, not the id3 tags', function () {

@@ -57,7 +57,7 @@ class PlaylistPalette
             id: (string) $file->id,
             title: $file->title,
             subtitle: $file->artist,
-            durationSeconds: $file->duration_seconds,
+            durationSeconds: $file->playbackDuration(),
             badge: MediaFile::typeLabel($file->type),
             badgeClass: MediaFile::typeBadgeClass($file->type),
             icon: $file->type === 'voicetrack' ? 'bi-mic' : 'bi-file-earmark-music',

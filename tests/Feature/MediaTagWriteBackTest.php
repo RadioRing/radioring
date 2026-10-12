@@ -79,7 +79,7 @@ test('changes that do not touch the tags queue nothing', function () {
     $file = MediaFile::factory()->create(['tenant_id' => $this->station->tenant_id]);
     Queue::fake();
 
-    $file->update(['loudness_lufs' => -14.2, 'fade_in' => true, 'type' => 'jingle']);
+    $file->update(['loudness_lufs' => -14.2, 'fade_in_seconds' => 2.0, 'cue_in_seconds' => 1.5, 'type' => 'jingle']);
 
     Queue::assertNotPushed(WriteMediaTagsJob::class);
 });

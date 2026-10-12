@@ -214,14 +214,16 @@ test('generator adds loudness normalization by default', function () {
         ->toContain('[live, program, emergency, blank()]');
 });
 
-test('generator wires a per-element fade.in driven by the liq_fade_in annotation', function () {
+test('generator wires per-element fades driven by the liq_fade_in and liq_fade_out annotations', function () {
     $script = app(LiquidsoapScriptGenerator::class)->generate($this->station);
 
     // duration=0. => standardmäßig harter Übergang; nur Elemente mit liq_fade_in-Annotation
     // (in der UI aktiviert) blenden ein. track_sensitive=true ist Pflicht, sonst blendet
     // fade.in (Default seit Liquidsoap 2.2: false) nur einmal beim Start der Source ein.
     expect($script)
-        ->toContain('faded = fade.in(track_sensitive=true, override_duration="liq_fade_in", duration=0., normalized)')
+        ->toContain('faded_in = fade.in(track_sensitive=true, override_duration="liq_fade_in", duration=0., normalized)')
+        // Fade-out from the waveform editor, track sensitive for the same reason.
+        ->toContain('faded = fade.out(track_sensitive=true, override_duration="liq_fade_out", duration=0., faded_in)')
         // The fade sits BEFORE the adjustable programme volume that feeds the fallback.
         ->toContain('program = amplify({cut_gain()}, override="liq_hard_cut_gain", faded)')
         ->toContain('[live, program, emergency, blank()]');

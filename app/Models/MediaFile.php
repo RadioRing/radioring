@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Storage;
 
-#[Fillable(['tenant_id', 'uploaded_by', 'title', 'artist', 'album', 'notes', 'type', 'fade_in', 'airtime_windows', 'airable_from', 'airable_until', 'file_path', 'duration_seconds', 'loudness_lufs', 'loudness_true_peak', 'loudness_measured_at', 'waveform_path'])]
+#[Fillable(['tenant_id', 'uploaded_by', 'title', 'artist', 'album', 'notes', 'type', 'cue_in_seconds', 'cue_out_seconds', 'fade_in_seconds', 'fade_out_seconds', 'airtime_windows', 'airable_from', 'airable_until', 'file_path', 'duration_seconds', 'loudness_lufs', 'loudness_true_peak', 'loudness_measured_at', 'waveform_path'])]
 class MediaFile extends Model
 {
     /** @use HasFactory<MediaFileFactory> */
@@ -49,7 +49,10 @@ class MediaFile extends Model
     {
         return [
             'uploaded_by' => 'integer',
-            'fade_in' => 'boolean',
+            'cue_in_seconds' => 'float',
+            'cue_out_seconds' => 'float',
+            'fade_in_seconds' => 'float',
+            'fade_out_seconds' => 'float',
             'airtime_windows' => 'array',
             'airable_from' => 'datetime',
             'airable_until' => 'datetime',
@@ -83,6 +86,90 @@ class MediaFile extends Model
         }
 
         return round($gain, 2);
+    }
+
+    /**
+     * Seconds that actually go on air: from cue in to cue out. This is the length every
+     * timing calculation must use (rundown cursor, fill planning, runtime), not the raw
+     * file length.
+     *
+     * @return int|null Null while the file length is unknown and no cue out is set.
+     */
+    public function playbackDuration(): ?int
+    {
+        $start = $this->cue_in_seconds ?? 0.0;
+        $end = $this->cue_out_seconds;
+
+        if ($this->duration_seconds !== null) {
+            $end = min($end ?? (float) $this->duration_seconds, (float) $this->duration_seconds);
+        }
+
+        if ($end === null) {
+            return null;
+        }
+
+        return max(0, (int) round($end - $start));
+    }
+
+    /** Playback length as M:SS, for lists that show what goes on air. */
+    public function playbackDurationFormatted(): ?string
+    {
+        $seconds = $this->playbackDuration();
+
+        if (! $seconds) {
+            return null;
+        }
+
+        return sprintf('%d:%02d', intdiv($seconds, 60), $seconds % 60);
+    }
+
+    /**
+     * Cue points as Liquidsoap annotations. liq_cue_in/liq_cue_out are applied when the
+     * request is resolved, so they also work in the emergency loop's playlist.
+     *
+     * @return array<string, string>
+     */
+    public function cueAnnotations(): array
+    {
+        $annotations = [];
+
+        if (($this->cue_in_seconds ?? 0.0) > 0.0) {
+            $annotations['liq_cue_in'] = self::liqSeconds($this->cue_in_seconds);
+        }
+
+        if ($this->cue_out_seconds !== null) {
+            $annotations['liq_cue_out'] = self::liqSeconds($this->cue_out_seconds);
+        }
+
+        return $annotations;
+    }
+
+    /**
+     * Fades as Liquidsoap annotations, read by fade.in/fade.out on the programme branch.
+     * Both are measured from the cue points: the fade in starts at cue in, the fade out
+     * ends at cue out.
+     *
+     * @return array<string, string>
+     */
+    public function fadeAnnotations(): array
+    {
+        $annotations = [];
+
+        if (($this->fade_in_seconds ?? 0.0) > 0.0) {
+            $annotations['liq_fade_in'] = self::liqSeconds($this->fade_in_seconds);
+        }
+
+        if (($this->fade_out_seconds ?? 0.0) > 0.0) {
+            $annotations['liq_fade_out'] = self::liqSeconds($this->fade_out_seconds);
+        }
+
+        return $annotations;
+    }
+
+    /** Seconds as a Liquidsoap float string: decimal point, no locale. */
+    public static function liqSeconds(float $seconds): string
+    {
+        return number_format($seconds, 2, '.', '');
     }
 
     protected static function booted(): void

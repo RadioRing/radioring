@@ -39,19 +39,31 @@
                             </div>
                         @endunless
 
-                        {{-- Waveform --}}
+                        {{-- Waveform and cue points --}}
                         <div class="card mb-4">
                             <div class="card-body p-2">
                                 @if($file->waveform_path)
                                     @php $fileHash = substr(md5($file->file_path), 0, 12); @endphp
                                     <div wire:ignore wire:key="waveform-{{ $file->id }}-{{ $fileHash }}"
-                                         x-data="mediaWaveform(@js(route('media.waveform', ['mediaFile' => $file, 'v' => $fileHash])), @js(route('media.preview', $file)))">
+                                         x-data="mediaWaveform(@js(route('media.waveform', ['mediaFile' => $file, 'v' => $fileHash])), @js(route('media.preview', $file)), @js($this->mayWrite))">
                                         <div x-ref="waveform"></div>
                                         <div class="d-flex flex-wrap align-items-center gap-2 mt-2 small">
                                             <span class="font-monospace">
                                                 <span x-text="formatTime(currentTime)">0:00.0</span>
                                                 <span class="text-muted">/ <span x-text="formatTime(duration)">0:00.0</span></span>
                                             </span>
+                                            <span class="badge bg-light text-dark border" x-show="duration > 0" x-cloak
+                                                  title="{{ __('What goes on air, from cue in to cue out') }}">
+                                                <i class="bi bi-broadcast me-1"></i><span x-text="formatTime(playbackLength())"></span>
+                                            </span>
+                                            <div class="btn-group btn-group-sm" role="group">
+                                                <button type="button" class="btn btn-outline-secondary" @click="playFromCueIn()" title="{{ __('Play from cue in') }}">
+                                                    <i class="bi bi-skip-start-fill"></i>
+                                                </button>
+                                                <button type="button" class="btn btn-outline-secondary" @click="previewEnding()" title="{{ __('Preview the ending up to cue out') }}">
+                                                    <i class="bi bi-skip-end-fill"></i>
+                                                </button>
+                                            </div>
                                             <span x-show="failed" x-cloak class="text-danger">
                                                 <i class="bi bi-exclamation-triangle me-1"></i>{{ __('The waveform could not be loaded.') }}
                                             </span>
@@ -70,6 +82,38 @@
                                         {{ __('Generating waveform...') }}
                                     </div>
                                 @endif
+                            </div>
+                            <div class="card-footer">
+                                <div class="row g-2">
+                                    @foreach([
+                                        ['field' => 'cueIn', 'label' => __('Cue in'), 'hint' => __('Where the file starts on air.'), 'placeholder' => '0', 'playhead' => true],
+                                        ['field' => 'fadeIn', 'label' => __('Fade in'), 'hint' => __('Seconds faded in from cue in.'), 'placeholder' => '0', 'playhead' => false],
+                                        ['field' => 'fadeOut', 'label' => __('Fade out'), 'hint' => __('Seconds faded out up to cue out.'), 'placeholder' => '0', 'playhead' => false],
+                                        ['field' => 'cueOut', 'label' => __('Cue out'), 'hint' => __('Where the file ends on air.'), 'placeholder' => __('End'), 'playhead' => true],
+                                    ] as $cueField)
+                                        <div class="col-6 col-md-3">
+                                            <label class="form-label small fw-medium mb-1" for="modal-{{ $cueField['field'] }}" title="{{ $cueField['hint'] }}">{{ $cueField['label'] }}</label>
+                                            <div class="input-group input-group-sm has-validation">
+                                                <input type="number" step="0.01" min="0" id="modal-{{ $cueField['field'] }}" form="mediaFileForm"
+                                                       wire:model="{{ $cueField['field'] }}" @disabled(! $this->mayWrite)
+                                                       class="form-control @error($cueField['field']) is-invalid @enderror"
+                                                       placeholder="{{ $cueField['placeholder'] }}">
+                                                <span class="input-group-text">s</span>
+                                                @if($cueField['playhead'] && $this->mayWrite && $file->waveform_path)
+                                                    <button type="button" class="btn btn-outline-secondary"
+                                                            @click="$dispatch('waveform-set-at-playhead', { field: @js($cueField['field']) })"
+                                                            title="{{ __('Set to the playhead position') }}">
+                                                        <i class="bi bi-geo-alt"></i>
+                                                    </button>
+                                                @endif
+                                                @error($cueField['field']) <div class="invalid-feedback">{{ $message }}</div> @enderror
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                                <p class="text-muted mb-0 mt-2" style="font-size:.75rem">
+                                    {{ __('Drag the markers in the waveform or type the seconds. Cue points belong to this version of the file: a replaced file starts without them.') }}
+                                </p>
                             </div>
                         </div>
 
@@ -105,16 +149,6 @@
                                                 <option value="jingle">{{ __('Jingle') }}</option>
                                                 <option value="voicetrack">{{ __('Voice track') }}</option>
                                             </select>
-                                        </div>
-                                        <div class="col-12 col-sm-6 d-flex align-items-end">
-                                            <div class="form-check mb-1">
-                                                <input class="form-check-input" type="checkbox" wire:model="fadeIn"
-                                                       id="modal-fade-in" @disabled(! $this->mayWrite)>
-                                                <label class="form-check-label small" for="modal-fade-in">
-                                                    {{ __('Sanft einblenden (Fade-in)') }}
-                                                    <i class="bi bi-question-circle text-muted" title="{{ __('Blendet die Datei beim Ausspielen weich ein statt hart einzusetzen – z.B. für Jingles.') }}"></i>
-                                                </label>
-                                            </div>
                                         </div>
                                         <div class="col-12">
                                             <label class="form-label small fw-medium mb-1" for="modal-notes">{{ __('Notes') }}</label>
@@ -523,16 +557,28 @@ Alpine.data('mediaFileModal', () => ({
 }));
 
 /**
- * Read-only waveform of the open file. The peaks are precomputed on the server, so the
- * browser never decodes the audio itself; it only streams it for playback.
+ * Waveform and cue editor of the open file. The peaks are precomputed on the server, so
+ * the browser never decodes the audio itself; it only streams it for playback.
+ *
+ * The four markers (cue in, fade in end, fade out start, cue out) mirror the Livewire
+ * fields below the waveform: dragging a marker writes the field, typing into a field
+ * moves the marker. Fades are stored as durations measured from the cue points.
  */
-Alpine.data('mediaWaveform', (waveformUrl, previewUrl) => ({
+Alpine.data('mediaWaveform', (waveformUrl, previewUrl, editable) => ({
     wavesurfer: null,
+    regions: null,
+    markers: {},
+    shades: {},
+    cues: { cueIn: 0, cueOut: 0, fadeIn: 0, fadeOut: 0 },
     currentTime: 0,
     duration: 0,
     zoom: 0,
     failed: false,
     destroyed: false,
+    stopAtCueOut: false,
+
+    /** Shortest stretch that has to stay between cue in and cue out, in seconds. */
+    MIN_LENGTH: 0.1,
 
     async init() {
         let data;
@@ -554,9 +600,12 @@ Alpine.data('mediaWaveform', (waveformUrl, previewUrl) => ({
         }
 
         const css = getComputedStyle(document.documentElement);
-        const color = (name) => css.getPropertyValue(name).trim();
+        this.color = (name) => css.getPropertyValue(name).trim();
 
         this.duration = data.duration;
+        this.readCues();
+
+        this.regions = WaveSurferRegions.create();
         this.wavesurfer = WaveSurfer.create({
             container: this.$refs.waveform,
             media: this.ensureAudio(),
@@ -565,9 +614,9 @@ Alpine.data('mediaWaveform', (waveformUrl, previewUrl) => ({
             duration: data.duration,
             normalize: true,
             height: 96,
-            waveColor: color('--bs-secondary-color'),
-            progressColor: color('--bs-primary'),
-            cursorColor: color('--bs-emphasis-color'),
+            waveColor: this.color('--bs-secondary-color'),
+            progressColor: this.color('--bs-primary'),
+            cursorColor: this.color('--bs-emphasis-color'),
             cursorWidth: 1,
             dragToSeek: true,
             autoScroll: true,
@@ -575,18 +624,234 @@ Alpine.data('mediaWaveform', (waveformUrl, previewUrl) => ({
             plugins: [
                 WaveSurferTimeline.create({
                     height: 16,
-                    style: { fontSize: '10px', color: color('--bs-secondary-color') },
+                    style: { fontSize: '10px', color: this.color('--bs-secondary-color') },
                 }),
                 WaveSurferHover.create({
-                    lineColor: color('--bs-primary'),
-                    labelBackground: color('--bs-dark'),
+                    lineColor: this.color('--bs-primary'),
+                    labelBackground: this.color('--bs-dark'),
                     labelColor: '#fff',
                     labelSize: '10px',
                 }),
+                this.regions,
             ],
         });
 
-        this.wavesurfer.on('timeupdate', (time) => { this.currentTime = time; });
+        this.wavesurfer.on('timeupdate', (time) => {
+            this.currentTime = time;
+
+            if (this.stopAtCueOut && time >= this.cues.cueOut) {
+                this.stopAtCueOut = false;
+                this.wavesurfer.pause();
+            }
+        });
+
+        this.wavesurfer.once('decode', () => this.buildRegions());
+
+        this.regions.on('region-update', (region) => this.moveMarker(region.id, region.start, false));
+        this.regions.on('region-updated', (region) => this.moveMarker(region.id, region.start, true));
+
+        // Typing into the fields below moves the markers.
+        ['cueIn', 'cueOut', 'fadeIn', 'fadeOut'].forEach((field) => {
+            $wire.$watch(field, () => {
+                if (this.destroyed || ! this.regions) {
+                    return;
+                }
+                this.readCues();
+                this.layout();
+            });
+        });
+
+        this.onSetAtPlayhead = (event) => {
+            if (this.wavesurfer && editable) {
+                this.moveMarker(event.detail.field, this.wavesurfer.getCurrentTime(), true);
+            }
+        };
+        window.addEventListener('waveform-set-at-playhead', this.onSetAtPlayhead);
+    },
+
+    /** The Livewire fields as numbers, defaults for empty or unusable values. */
+    readCues() {
+        const number = (value) => {
+            const parsed = parseFloat(value);
+            return Number.isFinite(parsed) ? parsed : null;
+        };
+        const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+        const end = this.duration;
+
+        const cueIn = clamp(number($wire.cueIn) ?? 0, 0, end);
+        let cueOut = clamp(number($wire.cueOut) ?? end, 0, end);
+
+        if (cueOut <= cueIn) {
+            cueOut = end;
+        }
+
+        this.cues = {
+            cueIn,
+            cueOut,
+            fadeIn: Math.max(0, number($wire.fadeIn) ?? 0),
+            fadeOut: Math.max(0, number($wire.fadeOut) ?? 0),
+        };
+    },
+
+    /** Writes the cue points back to Livewire; defaults become empty fields. */
+    writeCues() {
+        const tolerance = 0.005;
+        const round = (value) => String(Math.round(value * 100) / 100);
+
+        $wire.cueIn = this.cues.cueIn > tolerance ? round(this.cues.cueIn) : '';
+        $wire.cueOut = this.cues.cueOut < this.duration - tolerance ? round(this.cues.cueOut) : '';
+        $wire.fadeIn = this.cues.fadeIn > tolerance ? round(this.cues.fadeIn) : '';
+        $wire.fadeOut = this.cues.fadeOut > tolerance ? round(this.cues.fadeOut) : '';
+    },
+
+    /**
+     * Applies a new marker position, clamped so the points keep their order: cue in,
+     * fade in end, fade out start, cue out. While dragging, the dragged marker itself is
+     * left alone; it snaps to the clamped position when the drag ends.
+     */
+    moveMarker(id, position, done) {
+        const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+        const cues = { ...this.cues };
+
+        switch (id) {
+            case 'cueIn':
+                cues.cueIn = clamp(position, 0, cues.cueOut - this.MIN_LENGTH);
+                break;
+            case 'cueOut':
+                cues.cueOut = clamp(position, cues.cueIn + this.MIN_LENGTH, this.duration);
+                break;
+            case 'fadeIn':
+                cues.fadeIn = clamp(position - cues.cueIn, 0, cues.cueOut - cues.fadeOut - cues.cueIn);
+                break;
+            case 'fadeOut':
+                cues.fadeOut = clamp(cues.cueOut - position, 0, cues.cueOut - cues.cueIn - cues.fadeIn);
+                break;
+            default:
+                return;
+        }
+
+        // A shorter range squeezes the fades rather than letting them overlap.
+        const playable = cues.cueOut - cues.cueIn;
+        cues.fadeIn = Math.min(cues.fadeIn, playable);
+        cues.fadeOut = Math.min(cues.fadeOut, playable - cues.fadeIn);
+
+        this.cues = cues;
+        this.layout(done ? null : id);
+
+        if (done) {
+            this.writeCues();
+        }
+    },
+
+    buildRegions() {
+        if (this.destroyed) {
+            return;
+        }
+
+        const rgba = (name, alpha) => `rgba(${this.color(name)}, ${alpha})`;
+        const label = (text, background, bottom) => {
+            const element = document.createElement('div');
+            element.textContent = text;
+            element.style.cssText = [
+                'position:absolute', bottom ? 'bottom:0' : 'top:0', 'left:0',
+                'font-size:10px', 'line-height:14px', 'padding:0 4px', 'border-radius:2px',
+                'white-space:nowrap', 'color:#fff', `background:${background}`,
+                `cursor:${editable ? 'ew-resize' : 'default'}`,
+            ].join(';');
+            return element;
+        };
+
+        // Shades first so the markers sit on top of them.
+        this.shades.play = this.addShade(0, this.duration, rgba('--bs-primary-rgb', 0.07));
+        this.shades.fadeIn = this.addShade(0, this.duration, rgba('--bs-warning-rgb', 0.25));
+        this.shades.fadeOut = this.addShade(0, this.duration, rgba('--bs-warning-rgb', 0.25));
+
+        const markers = [
+            ['fadeIn', @js(__('Fade in')), this.color('--bs-warning'), true],
+            ['fadeOut', @js(__('Fade out')), this.color('--bs-warning'), true],
+            ['cueIn', @js(__('Cue in')), this.color('--bs-success'), false],
+            ['cueOut', @js(__('Cue out')), this.color('--bs-danger'), false],
+        ];
+
+        markers.forEach(([id, text, color, bottom]) => {
+            this.markers[id] = this.regions.addRegion({
+                id,
+                start: 0,
+                drag: editable,
+                resize: false,
+                color,
+                content: label(text, color, bottom),
+            });
+        });
+
+        this.layout();
+    },
+
+    /** A non interactive background region; clicks go through to the waveform. */
+    addShade(start, end, color) {
+        const region = this.regions.addRegion({ start, end, color, drag: false, resize: false });
+
+        if (region.element) {
+            region.element.style.pointerEvents = 'none';
+        }
+
+        return region;
+    },
+
+    /** Moves markers and shades to the current cue points. */
+    layout(skipMarker = null) {
+        if (! this.markers.cueIn) {
+            return;
+        }
+
+        const { cueIn, cueOut, fadeIn, fadeOut } = this.cues;
+        const positions = {
+            cueIn,
+            fadeIn: cueIn + fadeIn,
+            fadeOut: cueOut - fadeOut,
+            cueOut,
+        };
+
+        Object.entries(positions).forEach(([id, position]) => {
+            if (id !== skipMarker) {
+                this.markers[id].setOptions({ start: position, end: position });
+            }
+        });
+
+        // A region of zero length would turn into a marker; hide empty shades instead.
+        const shade = (region, start, end) => {
+            region.setOptions({ start, end: Math.max(end, start + 0.001) });
+            if (region.element) {
+                region.element.style.display = end - start > 0.001 ? '' : 'none';
+            }
+        };
+
+        shade(this.shades.play, cueIn, cueOut);
+        shade(this.shades.fadeIn, cueIn, cueIn + fadeIn);
+        shade(this.shades.fadeOut, cueOut - fadeOut, cueOut);
+    },
+
+    playbackLength() {
+        return Math.max(0, this.cues.cueOut - this.cues.cueIn);
+    },
+
+    playFromCueIn() {
+        if (! this.wavesurfer) {
+            return;
+        }
+        this.stopAtCueOut = false;
+        this.wavesurfer.setTime(this.cues.cueIn);
+        this.wavesurfer.play();
+    },
+
+    /** Plays the last seconds before cue out and stops there, to check the ending. */
+    previewEnding() {
+        if (! this.wavesurfer) {
+            return;
+        }
+        this.wavesurfer.setTime(Math.max(this.cues.cueIn, this.cues.cueOut - 8));
+        this.stopAtCueOut = true;
+        this.wavesurfer.play();
     },
 
     applyZoom() {
@@ -603,6 +868,7 @@ Alpine.data('mediaWaveform', (waveformUrl, previewUrl) => ({
 
     destroy() {
         this.destroyed = true;
+        window.removeEventListener('waveform-set-at-playhead', this.onSetAtPlayhead);
         this.wavesurfer?.destroy();
         this.wavesurfer = null;
     },

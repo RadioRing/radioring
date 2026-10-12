@@ -33,13 +33,10 @@ Grouped by topic, not by date. Within a group, the first item is the likeliest n
 
 What a station coming from mAirList or RadioDJ notices in the first hour on air.
 
-- **Cue points and transitions.** A media file carries one `fade_in` boolean. No cue-in, no
-  cue-out, no intro ramp, no mix point, no overlap between tracks. Loudness analysis already
-  runs ffmpeg on upload, so the markers can be measured in the same pass.
-- **A waveform for correcting them.** Cue points found by analysis are a starting point, not
-  the truth. The same ffmpeg pass writes a small peak file, which the editor draws and the
-  operator drags the markers on. Peaks are computed on the server: making the browser
-  analyse the mp3 would mean megabytes per click.
+- **Transitions.** Cue in, cue out and fades per file are set in the waveform editor (peaks
+  computed on the server). Still missing: a mix point ("start next") where the next element
+  starts while the current one fades out underneath, and cue points suggested by analysis
+  (silence detection in the same ffmpeg pass) instead of set by hand.
 
 ### Programme planning
 

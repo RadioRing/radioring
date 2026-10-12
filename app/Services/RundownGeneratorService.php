@@ -222,7 +222,8 @@ class RundownGeneratorService
                 ]);
                 $cursor = $cursor->copy()->addSeconds($duration);
             } else {
-                $duration = $item->duration_seconds ?? $item->mediaFile?->duration_seconds;
+                // What goes on air (cue in to cue out), not the raw file length.
+                $duration = $item->mediaFile?->playbackDuration() ?? $item->duration_seconds;
 
                 $rundown->items()->create([
                     'position' => $position++,
@@ -424,12 +425,12 @@ class RundownGeneratorService
             'loudness_lufs' => $track->loudness_lufs,
             'loudness_true_peak' => $track->loudness_true_peak,
             'title' => $track->title,
-            'duration_seconds' => $track->duration_seconds,
+            'duration_seconds' => $track->playbackDuration(),
             'source_type' => $sourceType,
         ]);
 
         $timeline[] = $this->airing($track, $cursor);
-        $cursor = $cursor->copy()->addSeconds($track->duration_seconds ?? 0);
+        $cursor = $cursor->copy()->addSeconds($track->playbackDuration() ?? 0);
     }
 
     /**

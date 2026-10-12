@@ -58,9 +58,10 @@ class EmergencyLoop
 
     /**
      * What the container downloads. Files missing on disk are left out rather than
-     * handed over as a dead link.
+     * handed over as a dead link. Cue points travel along and end up as annotations in the
+     * m3u; the fades do not, they belong to the programme branch only.
      *
-     * @return list<array{name: string, bytes: int, amplify: ?string, url: string}>
+     * @return list<array{name: string, bytes: int, amplify: ?string, cue_in: ?string, cue_out: ?string, url: string}>
      */
     public static function manifest(Station $station): array
     {
@@ -87,11 +88,14 @@ class EmergencyLoop
 
             $bytes += $size;
             $gainDb = $loudness ? $file->loudnessGainDb() : null;
+            $cues = $file->cueAnnotations();
 
             $entries[] = [
                 'name' => self::fileName($file),
                 'bytes' => $size,
                 'amplify' => $gainDb !== null ? "{$gainDb} dB" : null,
+                'cue_in' => $cues['liq_cue_in'] ?? null,
+                'cue_out' => $cues['liq_cue_out'] ?? null,
                 'url' => SignedDeliveryUrl::for('liquidsoap.media', [
                     'slug' => $station->slug,
                     'mediaFile' => $file->id,

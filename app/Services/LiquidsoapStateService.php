@@ -544,7 +544,7 @@ class LiquidsoapStateService
                 'now_playing_title' => $displayTitle,
                 'now_playing_artist' => $file?->artist ?: $artist,
                 'now_playing_source_type' => 'emergency',
-                'now_playing_duration_seconds' => $file?->duration_seconds,
+                'now_playing_duration_seconds' => $file?->playbackDuration(),
                 'now_playing_started_at' => $heartbeatStartedAt ?? now(),
                 'live_active' => false,
                 'live_title' => null,

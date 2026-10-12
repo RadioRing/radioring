@@ -20,7 +20,8 @@ class MediaReplacementService
      * archiviert: bereits generierte Rundowns halten den alten Pfad als Snapshot und
      * spielen sie zu Ende. Erst eine Neu-Generierung des Rundowns greift auf die neue
      * Fassung zu. Lautheit und Dauer gehoeren zur Datei, nicht zum Titel, und werden
-     * deshalb zurueckgesetzt bzw. neu gemessen.
+     * deshalb zurueckgesetzt bzw. neu gemessen. Cue points belong to the file as well and
+     * move to the archived version; fade lengths are measured from the cue points and stay.
      *
      * @param  string  $newPath  Bereits hochgeladener Pfad auf der local-Disk.
      * @param  bool  $adoptMetadata  Titel/Interpret/Album aus den ID3-Tags uebernehmen.
@@ -44,6 +45,8 @@ class MediaReplacementService
             'duration_seconds' => $file->duration_seconds,
             'loudness_lufs' => $file->loudness_lufs,
             'loudness_true_peak' => $file->loudness_true_peak,
+            'cue_in_seconds' => $file->cue_in_seconds,
+            'cue_out_seconds' => $file->cue_out_seconds,
             'replaced_by_user_id' => $user?->id,
         ]);
 
@@ -55,6 +58,8 @@ class MediaReplacementService
             'loudness_lufs' => null,
             'loudness_true_peak' => null,
             'loudness_measured_at' => null,
+            'cue_in_seconds' => null,
+            'cue_out_seconds' => null,
             'waveform_path' => null,
         ];
 
@@ -93,6 +98,8 @@ class MediaReplacementService
             'duration_seconds' => $file->duration_seconds,
             'loudness_lufs' => $file->loudness_lufs,
             'loudness_true_peak' => $file->loudness_true_peak,
+            'cue_in_seconds' => $file->cue_in_seconds,
+            'cue_out_seconds' => $file->cue_out_seconds,
             'replaced_by_user_id' => $user?->id,
         ]);
 
@@ -102,6 +109,8 @@ class MediaReplacementService
             'loudness_lufs' => $version->loudness_lufs,
             'loudness_true_peak' => $version->loudness_true_peak,
             'loudness_measured_at' => $version->loudness_lufs !== null ? now() : null,
+            'cue_in_seconds' => $version->cue_in_seconds,
+            'cue_out_seconds' => $version->cue_out_seconds,
             'waveform_path' => null,
         ]);
 

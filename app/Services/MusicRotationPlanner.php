@@ -111,7 +111,7 @@ class MusicRotationPlanner
         $cursor = $startAt->getTimestamp();
         $filled = 0;
         $chosen = [];
-        $longest = (int) $pool->max('duration_seconds');
+        $longest = (int) $pool->max(fn (MediaFile $track): ?int => $track->playbackDuration());
 
         $place = function (MediaFile $track) use (&$timeline, &$chosen, &$cursor, &$filled): void {
             if ($this->gvlPenalty($track, $this->context($timeline, $cursor)) > 0) {
@@ -120,8 +120,8 @@ class MusicRotationPlanner
 
             $timeline[] = $this->airing($track, $cursor);
             $chosen[] = $track;
-            $cursor += $track->duration_seconds ?? 0;
-            $filled += $track->duration_seconds ?? 0;
+            $cursor += $track->playbackDuration() ?? 0;
+            $filled += $track->playbackDuration() ?? 0;
         };
 
         while ($filled < $maxDuration && $remaining !== []) {
@@ -195,7 +195,7 @@ class MusicRotationPlanner
         $bestDeviation = $fit === FillFit::Closest ? $left : PHP_INT_MAX;
 
         foreach ($candidates as $first) {
-            $firstLength = $first->duration_seconds ?? 0;
+            $firstLength = $first->playbackDuration() ?? 0;
             $single = $deviation($firstLength);
 
             if ($single !== null && $single < $bestDeviation) {
@@ -211,7 +211,7 @@ class MusicRotationPlanner
                     continue;
                 }
 
-                $pair = $deviation($firstLength + ($second->duration_seconds ?? 0));
+                $pair = $deviation($firstLength + ($second->playbackDuration() ?? 0));
 
                 if ($pair === null || $pair >= $bestDeviation) {
                     continue;
@@ -479,7 +479,7 @@ class MusicRotationPlanner
     private function isAdjacentToNext(MediaFile $track, array $context): bool
     {
         return $context['nextMusicAt'] !== null
-            && $context['nextMusicAt'] <= $context['at'] + ($track->duration_seconds ?? 0) + self::ADJACENT_SLACK_SECONDS;
+            && $context['nextMusicAt'] <= $context['at'] + ($track->playbackDuration() ?? 0) + self::ADJACENT_SLACK_SECONDS;
     }
 
     /**

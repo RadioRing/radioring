@@ -123,9 +123,14 @@ and used to level playout. This happens automatically.
 Clicking the title of a file (or its pencil icon) opens the dialog where everything about
 that file is edited:
 
+- **Waveform** with preview: click or drag to jump, the slider zooms in.
+- **Cue in** and **cue out**: where the file starts and ends on air, for example to cut off
+  silence or a long intro. **Fade in** and **fade out**: how many seconds are faded in from
+  cue in and out up to cue out. Drag the markers in the waveform, type the seconds, or set
+  cue in and cue out to the playhead with a button. Rundowns and fill planning use the
+  trimmed length. Cue points belong to one version of the file: a replaced file starts
+  without them, and restoring a version brings its cue points back.
 - **Title**, **artist**, **album** and **type**.
-- **Fade in**: the file is faded in gently at the start, which helps with recordings that
-  begin abruptly.
 - **Notes** and **tags**.
 - **Run time** and **airtime windows**, see below.
 - **Replace file** (owners only): a new version takes the place of the old one. Playlists,

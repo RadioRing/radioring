@@ -198,7 +198,7 @@ class Show extends Component
         $item->update([
             'media_file_id' => $mediaFile->id,
             'title' => $mediaFile->title,
-            'duration_seconds' => $mediaFile->duration_seconds,
+            'duration_seconds' => $mediaFile->playbackDuration(),
             'source_type' => 'manual',
         ]);
 
