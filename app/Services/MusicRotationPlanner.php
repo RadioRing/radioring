@@ -70,6 +70,9 @@ class MusicRotationPlanner
 
     private int $artistSeparationSeconds = 0;
 
+    /** Whether the station segues: a track then only counts up to its segue point. */
+    private bool $segues = false;
+
     private int $violations = 0;
 
     public function __construct()
@@ -101,9 +104,10 @@ class MusicRotationPlanner
      * @param  list<TimelineEntry>  $timeline
      * @return list<MediaFile> in broadcast order
      */
-    public function plan(Collection $pool, array $timeline, Carbon $startAt, int $maxDuration, FillFit $fit = FillFit::Cross, int $artistSeparationSeconds = 0): array
+    public function plan(Collection $pool, array $timeline, Carbon $startAt, int $maxDuration, FillFit $fit = FillFit::Cross, int $artistSeparationSeconds = 0, bool $segues = false): array
     {
         $this->artistSeparationSeconds = max(0, $artistSeparationSeconds);
+        $this->segues = $segues;
         $this->violations = 0;
 
         $remaining = $pool->values()->all();
@@ -111,7 +115,7 @@ class MusicRotationPlanner
         $cursor = $startAt->getTimestamp();
         $filled = 0;
         $chosen = [];
-        $longest = (int) $pool->max(fn (MediaFile $track): ?int => $track->playbackDuration());
+        $longest = (int) $pool->max(fn (MediaFile $track): int => $this->length($track));
 
         $place = function (MediaFile $track) use (&$timeline, &$chosen, &$cursor, &$filled): void {
             if ($this->gvlPenalty($track, $this->context($timeline, $cursor)) > 0) {
@@ -120,8 +124,8 @@ class MusicRotationPlanner
 
             $timeline[] = $this->airing($track, $cursor);
             $chosen[] = $track;
-            $cursor += $track->playbackDuration() ?? 0;
-            $filled += $track->playbackDuration() ?? 0;
+            $cursor += $this->length($track);
+            $filled += $this->length($track);
         };
 
         while ($filled < $maxDuration && $remaining !== []) {
@@ -161,13 +165,14 @@ class MusicRotationPlanner
      * @param  Collection<int, MediaFile>  $candidates
      * @param  list<TimelineEntry>  $timeline
      */
-    public function pickOne(Collection $candidates, array $timeline, Carbon $at, int $artistSeparationSeconds = 0): ?MediaFile
+    public function pickOne(Collection $candidates, array $timeline, Carbon $at, int $artistSeparationSeconds = 0, bool $segues = false): ?MediaFile
     {
         if ($candidates->isEmpty()) {
             return null;
         }
 
         $this->artistSeparationSeconds = max(0, $artistSeparationSeconds);
+        $this->segues = $segues;
         $remaining = $candidates->values()->all();
 
         return $remaining[$this->pickFromRanked($this->rank($remaining, $this->normalizeTimeline($timeline), $at->getTimestamp()))];
@@ -195,7 +200,7 @@ class MusicRotationPlanner
         $bestDeviation = $fit === FillFit::Closest ? $left : PHP_INT_MAX;
 
         foreach ($candidates as $first) {
-            $firstLength = $first->playbackDuration() ?? 0;
+            $firstLength = $this->length($first);
             $single = $deviation($firstLength);
 
             if ($single !== null && $single < $bestDeviation) {
@@ -211,7 +216,7 @@ class MusicRotationPlanner
                     continue;
                 }
 
-                $pair = $deviation($firstLength + ($second->playbackDuration() ?? 0));
+                $pair = $deviation($firstLength + $this->length($second));
 
                 if ($pair === null || $pair >= $bestDeviation) {
                     continue;
@@ -479,7 +484,7 @@ class MusicRotationPlanner
     private function isAdjacentToNext(MediaFile $track, array $context): bool
     {
         return $context['nextMusicAt'] !== null
-            && $context['nextMusicAt'] <= $context['at'] + ($track->playbackDuration() ?? 0) + self::ADJACENT_SLACK_SECONDS;
+            && $context['nextMusicAt'] <= $context['at'] + $this->length($track) + self::ADJACENT_SLACK_SECONDS;
     }
 
     /**
@@ -508,6 +513,12 @@ class MusicRotationPlanner
     private function nearestDistance(array $times, int $at): ?int
     {
         return $times === [] ? null : min(array_map(fn (int $time): int => abs($at - $time), $times));
+    }
+
+    /** Seconds a track takes in the programme: up to its segue point on a segueing station. */
+    private function length(MediaFile $track): int
+    {
+        return $track->airDuration($this->segues) ?? 0;
     }
 
     /**

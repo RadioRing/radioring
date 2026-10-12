@@ -88,6 +88,14 @@ class LiquidsoapScriptGenerator
         $lines[] = 'faded = fade.out(track_sensitive=true, override_duration="liq_fade_out", duration=0., faded_in)';
         $programSource = 'faded';
 
+        // Opt-in per station: without segues the script stays exactly what it was before
+        // they existed (pinned by a snapshot test).
+        if ($station->segues_enabled) {
+            $lines[] = '';
+            $lines[] = $this->segueBlock();
+            $programSource = 'crossed';
+        }
+
         // Adjustable overall volume of the programme, which flush_and_skip fades out with
         // before a hard cut (see hardCutCommand). Deliberately on the programme branch only,
         // not on "radio": a hard cut must not turn down a live takeover.
@@ -100,7 +108,7 @@ class LiquidsoapScriptGenerator
         $programSource = 'program';
 
         $lines[] = '';
-        $lines[] = $this->hardCutCommand();
+        $lines[] = $station->segues_enabled ? $this->segueHardCutCommand() : $this->hardCutCommand();
         $lines[] = '';
         $lines[] = $this->liveStatusCallbacks();
         $lines[] = '';
@@ -294,6 +302,164 @@ end
 # so that it ENDS at that moment: a hard start announced at 14:59 for 15:00:00 fades the
 # running track out over the last {$fadeOutLiq}s of the hour, and the news begin on the hour
 # instead of {$fadeOutLiq}s after it. 0 (a manual skip) starts the ramp right away.
+def flush_and_skip(arg) =
+  if hard_cut_running() then
+    "busy"
+  else
+    lead = float_of_string(default=0., string.trim(arg))
+    wait = if lead > {$fadeOutLiq} then lead - {$fadeOutLiq} else 0. end
+    hard_cut_running := true
+    log(level=3, label="radioring", "Hard cut due in #{lead}s: fade starts in #{wait}s and runs for {$fadeOutLiq}s.")
+    thread.run(delay=wait + {$delayLiq}, hard_cut_step)
+    "ok"
+  end
+end
+server.register(namespace="radioring", description="Fade the programme out, flush the prefetch queue and skip to the next track", "flush_and_skip", flush_and_skip)
+LIQ;
+    }
+
+    /**
+     * Segues ("start next") with cross(): the element that ends carries liq_cross_duration
+     * (from its segue point to its cue out, see MediaFile::segueAnnotations), and the next
+     * element starts that many seconds before the end while this one fades out underneath.
+     *
+     * Settings found in the spike (.claude/plans/waveform-cue-editor.md, Liquidsoap 2.2.5):
+     * - conservative=false: the default (true) buffers every track end, and after a hard
+     *   cut the buffered seconds came back at full volume, the hard element 4 s late.
+     *   Non-conservative relies on the remaining time, which /next makes exact with an
+     *   explicit liq_cue_out. A wrong estimate only loses the overlap, never adds a gap.
+     * - minimum=0.: a track end without warning (a skip) gets a plain sequence instead of a
+     *   transition built from whatever was buffered.
+     * - The guard: a hard cut sets cut_done, which makes a running transition unavailable at
+     *   once. Without it the transition played out after the cut (3.5 s of both elements),
+     *   and the hard element came 4 s late.
+     *
+     * No overlap when the next element carries radioring_hard="1" (hard fixed time, ad
+     * break, news, external sources, voice tracks) or when the ending one has no segue
+     * point: then it is a plain sequence, exactly as without segues.
+     */
+    private function segueBlock(): string
+    {
+        return <<<'LIQ'
+# Segues: the next element starts at the segue point of the ending one.
+cut_done = ref(false)
+
+def segue_transition(a, b) =
+  overlap = float_of_string(default=0., a.metadata["liq_cross_duration"])
+  transition =
+    if b.metadata["radioring_hard"] == "1" or overlap <= 0. then
+      sequence([a.source, b.source])
+    else
+      add(normalize=false, [b.source, fade.out(duration=overlap, a.source)])
+    end
+  # Guard: a hard cut makes a running transition unavailable at once.
+  switch(track_sensitive=false, [({not(cut_done())}, transition)])
+end
+
+crossed = cross(id="segue", duration=0., override_duration="liq_cross_duration", minimum=0., conservative=false, segue_transition, faded)
+LIQ;
+    }
+
+    /**
+     * Seconds the programme stays muted after a hard cut at most, should no new element
+     * arrive (/next failing, a rundown that ran dry).
+     */
+    private const SEGUE_CUT_HOLD_TIMEOUT_SECONDS = 5.0;
+
+    /**
+     * The hard cut on a station with segues. Same fade and lead time as hardCutCommand, plus
+     * the two things the spike showed a cut needs once elements overlap:
+     *
+     * - cut_done turns a running transition off (see segueBlock).
+     * - The hold: cut_gain stays at 0 after the cut until a NEW element is on air, so nothing
+     *   cross() buffered before the cut leaks out. New means marked radioring_hard (the hard
+     *   fixed time element) or an item id not seen in the last few elements; a manual skip
+     *   delivers no hard element. A timeout releases it in any case, otherwise a failing
+     *   /next would keep the programme muted.
+     */
+    private function segueHardCutCommand(): string
+    {
+        $fadeOut = (float) config('radioring.hard_cut_fade_out_seconds', 0.8);
+        $hold = $this->liqFloat(self::SEGUE_CUT_HOLD_TIMEOUT_SECONDS);
+
+        $common = <<<LIQ
+# Hard cut with segues: cut_done stops a running transition, the hold keeps the programme
+# muted until a new element is on air (at most {$hold}s).
+hard_cut_running = ref(false)
+cut_hold = ref(false)
+cut_serial = ref(0)
+recent_items = ref([])
+
+def release_cut_hold(reason) =
+  if cut_hold() then
+    cut_hold := false
+    cut_done := false
+    cut_gain := 1.
+    log(level=3, label="radioring", "Hard cut: programme back on air (#{reason}).")
+  end
+end
+
+def hard_cut_now() =
+  cut_done := true
+  cut_hold := true
+  cut_gain := 0.
+  cut_serial := cut_serial() + 1
+  serial = cut_serial()
+  source.set_queue([])
+  source.skip()
+  hard_cut_running := false
+  thread.run(delay={$hold}, fun () -> if cut_serial() == serial then release_cut_hold("timeout") end)
+end
+
+def on_program_item(m) =
+  item = m["radioring_item_id"]
+  if item != "" then
+    known = list.mem(item, recent_items())
+    if cut_hold() and (m["radioring_hard"] == "1" or not known) then
+      release_cut_hold("item #{item}")
+    end
+    if not known then
+      recent_items := list.prefix(5, list.cons(item, recent_items()))
+    end
+  end
+end
+program.on_metadata(on_program_item)
+LIQ;
+
+        if ($fadeOut <= 0.0) {
+            return $common.<<<'LIQ'
+
+
+def flush_and_skip(arg) =
+  lead = float_of_string(default=0., string.trim(arg))
+  log(level=3, label="radioring", "Hard cut scheduled in #{lead}s.")
+  thread.run(delay=lead, hard_cut_now)
+  "ok"
+end
+server.register(namespace="radioring", description="Flush the prefetch queue and skip to the next track", "flush_and_skip", flush_and_skip)
+LIQ;
+        }
+
+        $steps = max(1, (int) round($fadeOut / self::HARD_CUT_RAMP_STEP_SECONDS));
+        $fadeOutLiq = $this->liqFloat($fadeOut);
+        $delayLiq = $this->liqFloat($fadeOut / $steps);
+        $factorLiq = $this->liqFloat(10 ** (-self::HARD_CUT_RAMP_ATTENUATION_DB / (20 * $steps)));
+        $floorLiq = $this->liqFloat(10 ** (-self::HARD_CUT_RAMP_ATTENUATION_DB / 20));
+
+        return $common.<<<LIQ
+
+
+def rec hard_cut_step() =
+  gain = cut_gain() * {$factorLiq}
+  if gain <= {$floorLiq} then
+    hard_cut_now()
+  else
+    cut_gain := gain
+    thread.run(delay={$delayLiq}, hard_cut_step)
+  end
+end
+
+# Fades out over {$fadeOutLiq}s so the ramp ENDS when the cut is due, see hardCutCommand.
 def flush_and_skip(arg) =
   if hard_cut_running() then
     "busy"

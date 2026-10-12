@@ -57,7 +57,7 @@ class PlaylistPalette
             id: (string) $file->id,
             title: $file->title,
             subtitle: $file->artist,
-            durationSeconds: $file->playbackDuration(),
+            durationSeconds: $file->airDuration((bool) $station->segues_enabled),
             badge: MediaFile::typeLabel($file->type),
             badgeClass: MediaFile::typeBadgeClass($file->type),
             icon: $file->type === 'voicetrack' ? 'bi-mic' : 'bi-file-earmark-music',

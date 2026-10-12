@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Storage;
 
-#[Fillable(['tenant_id', 'uploaded_by', 'title', 'artist', 'album', 'notes', 'type', 'cue_in_seconds', 'cue_out_seconds', 'fade_in_seconds', 'fade_out_seconds', 'airtime_windows', 'airable_from', 'airable_until', 'file_path', 'duration_seconds', 'loudness_lufs', 'loudness_true_peak', 'loudness_measured_at', 'waveform_path'])]
+#[Fillable(['tenant_id', 'uploaded_by', 'title', 'artist', 'album', 'notes', 'type', 'cue_in_seconds', 'cue_out_seconds', 'segue_seconds', 'fade_in_seconds', 'fade_out_seconds', 'airtime_windows', 'airable_from', 'airable_until', 'file_path', 'duration_seconds', 'loudness_lufs', 'loudness_true_peak', 'loudness_measured_at', 'waveform_path'])]
 class MediaFile extends Model
 {
     /** @use HasFactory<MediaFileFactory> */
@@ -52,6 +52,7 @@ class MediaFile extends Model
             'duration_seconds' => 'float',
             'cue_in_seconds' => 'float',
             'cue_out_seconds' => 'float',
+            'segue_seconds' => 'float',
             'fade_in_seconds' => 'float',
             'fade_out_seconds' => 'float',
             'airtime_windows' => 'array',
@@ -99,17 +100,83 @@ class MediaFile extends Model
     public function playbackDuration(): ?int
     {
         $start = $this->cue_in_seconds ?? 0.0;
-        $end = $this->cue_out_seconds;
-
-        if ($this->duration_seconds !== null) {
-            $end = min($end ?? (float) $this->duration_seconds, (float) $this->duration_seconds);
-        }
+        $end = $this->playbackEnd();
 
         if ($end === null) {
             return null;
         }
 
         return max(0, (int) round($end - $start));
+    }
+
+    /**
+     * Where the file stops counting on a station with segues: at the segue point the next
+     * element starts and this one fades out underneath, so a rundown must place the next
+     * element there. Without segues (or without a segue point) the same as
+     * playbackDuration().
+     */
+    public function airDuration(bool $segues): ?int
+    {
+        if (! $segues || $this->segueOverlap() === null) {
+            return $this->playbackDuration();
+        }
+
+        return max(0, (int) round($this->segue_seconds - ($this->cue_in_seconds ?? 0.0)));
+    }
+
+    /**
+     * Seconds this file overlaps with the next element: from the segue point to where it
+     * really ends (cue out, or the file end). Null without a usable segue point.
+     */
+    public function segueOverlap(): ?float
+    {
+        if ($this->segue_seconds === null) {
+            return null;
+        }
+
+        $end = $this->playbackEnd();
+
+        if ($end === null || $this->segue_seconds <= ($this->cue_in_seconds ?? 0.0)) {
+            return null;
+        }
+
+        $overlap = round($end - $this->segue_seconds, 2);
+
+        return $overlap > 0.0 ? $overlap : null;
+    }
+
+    /**
+     * The segue as Liquidsoap annotations: liq_cross_duration for cross() on the programme
+     * branch, plus liq_cue_out ALWAYS. cross() starts the transition from the remaining
+     * time Liquidsoap estimates, which a VBR file without Xing header gets wrong by tens of
+     * seconds (no overlap then); an explicit cue out makes it exact.
+     *
+     * @return array<string, string>
+     */
+    public function segueAnnotations(): array
+    {
+        $overlap = $this->segueOverlap();
+
+        if ($overlap === null) {
+            return [];
+        }
+
+        return [
+            'liq_cross_duration' => self::liqSeconds($overlap),
+            'liq_cue_out' => self::liqSeconds($this->playbackEnd()),
+        ];
+    }
+
+    /** Where the file ends on air: cue out, but never past the end of the file. */
+    private function playbackEnd(): ?float
+    {
+        $end = $this->cue_out_seconds;
+
+        if ($this->duration_seconds !== null) {
+            $end = min($end ?? $this->duration_seconds, $this->duration_seconds);
+        }
+
+        return $end;
     }
 
     /** Playback length as M:SS, for lists that show what goes on air. */

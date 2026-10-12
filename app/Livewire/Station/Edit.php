@@ -37,6 +37,8 @@ class Edit extends Component
 
     public int $artistSeparationMinutes = 45;
 
+    public bool $seguesEnabled = false;
+
     public bool $alertEmailsEnabled = true;
 
     public string $stereoToolLicenseKey = '';
@@ -62,6 +64,7 @@ class Edit extends Component
         $this->status = $station->status;
         $this->regenerateRundownsNightly = (bool) $station->regenerate_rundowns_nightly;
         $this->artistSeparationMinutes = (int) $station->artist_separation_minutes;
+        $this->seguesEnabled = (bool) $station->segues_enabled;
         $this->alertEmailsEnabled = (bool) $station->alert_emails_enabled;
         $this->stereoToolLicenseKey = (string) $station->stereo_tool_license_key;
         $this->stereoToolPreset = (string) $station->stereo_tool_preset;
@@ -80,6 +83,7 @@ class Edit extends Component
             'status' => 'required|in:active,paused',
             'regenerateRundownsNightly' => 'boolean',
             'artistSeparationMinutes' => 'required|integer|min:0|max:240',
+            'seguesEnabled' => 'boolean',
             'alertEmailsEnabled' => 'boolean',
             'stereoToolLicenseKey' => 'nullable|string|max:255',
             'stereoToolPreset' => [
@@ -93,6 +97,7 @@ class Edit extends Component
             'status' => $this->status,
             'regenerate_rundowns_nightly' => $this->regenerateRundownsNightly,
             'artist_separation_minutes' => $this->artistSeparationMinutes,
+            'segues_enabled' => $this->seguesEnabled,
             'alert_emails_enabled' => $this->alertEmailsEnabled,
         ];
 
@@ -108,12 +113,22 @@ class Edit extends Component
             || ($attributes['stereo_tool_preset'] ?? null) !== $this->station->stereo_tool_preset
         );
 
+        // Segues live in the generated script, which the player only fetches when it starts.
+        $seguesChanged = $this->seguesEnabled !== (bool) $this->station->segues_enabled;
+
         $this->station->update($attributes);
 
         $this->dispatch('notify', message: __('Station saved.'), type: 'success');
 
         if ($processingChanged) {
             $this->applyProcessing();
+        } elseif ($seguesChanged) {
+            app(LiquidsoapCommandService::class)->restart($this->station);
+
+            $this->dispatch('notify',
+                message: __('Restarting the player so the segue setting takes effect. Regenerate upcoming rundowns so their times match.'),
+                type: 'success',
+            );
         }
     }
 

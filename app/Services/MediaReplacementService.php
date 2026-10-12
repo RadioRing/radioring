@@ -47,6 +47,7 @@ class MediaReplacementService
             'loudness_true_peak' => $file->loudness_true_peak,
             'cue_in_seconds' => $file->cue_in_seconds,
             'cue_out_seconds' => $file->cue_out_seconds,
+            'segue_seconds' => $file->segue_seconds,
             'replaced_by_user_id' => $user?->id,
         ]);
 
@@ -60,6 +61,7 @@ class MediaReplacementService
             'loudness_measured_at' => null,
             'cue_in_seconds' => null,
             'cue_out_seconds' => null,
+            'segue_seconds' => null,
             'waveform_path' => null,
         ];
 
@@ -101,6 +103,7 @@ class MediaReplacementService
             'loudness_true_peak' => $file->loudness_true_peak,
             'cue_in_seconds' => $file->cue_in_seconds,
             'cue_out_seconds' => $file->cue_out_seconds,
+            'segue_seconds' => $file->segue_seconds,
             'replaced_by_user_id' => $user?->id,
         ]);
 
@@ -112,6 +115,7 @@ class MediaReplacementService
             'loudness_measured_at' => $version->loudness_lufs !== null ? now() : null,
             'cue_in_seconds' => $version->cue_in_seconds,
             'cue_out_seconds' => $version->cue_out_seconds,
+            'segue_seconds' => $version->segue_seconds,
             'waveform_path' => null,
         ]);
 

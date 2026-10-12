@@ -90,8 +90,9 @@
                                         ['field' => 'fadeIn', 'label' => __('Fade in'), 'hint' => __('Seconds faded in from cue in.'), 'placeholder' => '0', 'playhead' => false],
                                         ['field' => 'fadeOut', 'label' => __('Fade out'), 'hint' => __('Seconds faded out up to cue out.'), 'placeholder' => '0', 'playhead' => false],
                                         ['field' => 'cueOut', 'label' => __('Cue out'), 'hint' => __('Where the file ends on air.'), 'placeholder' => __('End'), 'playhead' => true],
+                                        ['field' => 'segue', 'label' => __('Segue'), 'hint' => __('Where the next element starts while this one fades out underneath (start next).'), 'placeholder' => __('None'), 'playhead' => true],
                                     ] as $cueField)
-                                        <div class="col-6 col-md-3">
+                                        <div class="col-6 col-md">
                                             <label class="form-label small fw-medium mb-1" for="modal-{{ $cueField['field'] }}" title="{{ $cueField['hint'] }}">{{ $cueField['label'] }}</label>
                                             <div class="input-group input-group-sm has-validation">
                                                 <input type="number" step="0.01" min="0" id="modal-{{ $cueField['field'] }}" form="mediaFileForm"
@@ -114,6 +115,9 @@
                                 <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
                                     <p class="text-muted mb-0 flex-grow-1" style="font-size:.75rem">
                                         {{ __('Drag the markers in the waveform or type the seconds. Cue points belong to this version of the file: a replaced file starts without them.') }}
+                                        @unless($station->segues_enabled)
+                                            {{ __('This station does not use segues: the segue point only applies on stations that have them switched on.') }}
+                                        @endunless
                                     </p>
                                     @if($this->mayWrite)
                                         <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap"
@@ -580,7 +584,7 @@ Alpine.data('mediaWaveform', (waveformUrl, previewUrl, editable) => ({
     regions: null,
     markers: {},
     shades: {},
-    cues: { cueIn: 0, cueOut: 0, fadeIn: 0, fadeOut: 0 },
+    cues: { cueIn: 0, cueOut: 0, fadeIn: 0, fadeOut: 0, segue: null },
     currentTime: 0,
     duration: 0,
     zoom: 0,
@@ -662,7 +666,7 @@ Alpine.data('mediaWaveform', (waveformUrl, previewUrl, editable) => ({
         this.regions.on('region-updated', (region) => this.moveMarker(region.id, region.start, true));
 
         // Typing into the fields below moves the markers.
-        ['cueIn', 'cueOut', 'fadeIn', 'fadeOut'].forEach((field) => {
+        ['cueIn', 'cueOut', 'fadeIn', 'fadeOut', 'segue'].forEach((field) => {
             $wire.$watch(field, () => {
                 if (this.destroyed || ! this.regions) {
                     return;
@@ -696,12 +700,20 @@ Alpine.data('mediaWaveform', (waveformUrl, previewUrl, editable) => ({
             cueOut = end;
         }
 
+        const segue = number($wire.segue);
+
         this.cues = {
             cueIn,
             cueOut,
             fadeIn: Math.max(0, number($wire.fadeIn) ?? 0),
             fadeOut: Math.max(0, number($wire.fadeOut) ?? 0),
+            segue: segue === null ? null : this.clampSegue(segue, cueIn, cueOut),
         };
+    },
+
+    /** The segue point stays strictly between cue in and cue out. */
+    clampSegue(position, cueIn, cueOut) {
+        return Math.min(Math.max(position, cueIn + this.MIN_LENGTH), cueOut - this.MIN_LENGTH);
     },
 
     /** Writes the cue points back to Livewire; defaults become empty fields. */
@@ -713,6 +725,7 @@ Alpine.data('mediaWaveform', (waveformUrl, previewUrl, editable) => ({
         $wire.cueOut = this.cues.cueOut < this.duration - tolerance ? round(this.cues.cueOut) : '';
         $wire.fadeIn = this.cues.fadeIn > tolerance ? round(this.cues.fadeIn) : '';
         $wire.fadeOut = this.cues.fadeOut > tolerance ? round(this.cues.fadeOut) : '';
+        $wire.segue = this.cues.segue !== null ? round(this.cues.segue) : '';
     },
 
     /**
@@ -737,8 +750,16 @@ Alpine.data('mediaWaveform', (waveformUrl, previewUrl, editable) => ({
             case 'fadeOut':
                 cues.fadeOut = clamp(cues.cueOut - position, 0, cues.cueOut - cues.cueIn - cues.fadeIn);
                 break;
+            case 'segue':
+                cues.segue = position;
+                break;
             default:
                 return;
+        }
+
+        // Moving a cue point drags the segue point along when it would fall outside.
+        if (cues.segue !== null) {
+            cues.segue = this.clampSegue(cues.segue, cues.cueIn, cues.cueOut);
         }
 
         // A shorter range squeezes the fades rather than letting them overlap.
@@ -776,12 +797,14 @@ Alpine.data('mediaWaveform', (waveformUrl, previewUrl, editable) => ({
         this.shades.play = this.addShade(0, this.duration, rgba('--bs-primary-rgb', 0.07));
         this.shades.fadeIn = this.addShade(0, this.duration, rgba('--bs-warning-rgb', 0.25));
         this.shades.fadeOut = this.addShade(0, this.duration, rgba('--bs-warning-rgb', 0.25));
+        this.shades.segue = this.addShade(0, this.duration, rgba('--bs-info-rgb', 0.25));
 
         const markers = [
             ['fadeIn', @js(__('Fade in')), this.color('--bs-warning'), true],
             ['fadeOut', @js(__('Fade out')), this.color('--bs-warning'), true],
             ['cueIn', @js(__('Cue in')), this.color('--bs-success'), false],
             ['cueOut', @js(__('Cue out')), this.color('--bs-danger'), false],
+            ['segue', @js(__('Segue')), this.color('--bs-info'), true],
         ];
 
         markers.forEach(([id, text, color, bottom]) => {
@@ -815,12 +838,13 @@ Alpine.data('mediaWaveform', (waveformUrl, previewUrl, editable) => ({
             return;
         }
 
-        const { cueIn, cueOut, fadeIn, fadeOut } = this.cues;
+        const { cueIn, cueOut, fadeIn, fadeOut, segue } = this.cues;
         const positions = {
             cueIn,
             fadeIn: cueIn + fadeIn,
             fadeOut: cueOut - fadeOut,
             cueOut,
+            segue: segue ?? cueOut,
         };
 
         Object.entries(positions).forEach(([id, position]) => {
@@ -828,6 +852,12 @@ Alpine.data('mediaWaveform', (waveformUrl, previewUrl, editable) => ({
                 this.markers[id].setOptions({ start: position, end: position });
             }
         });
+
+        // Without a segue point there is no marker to drag; it is set with the field or
+        // the playhead button.
+        if (this.markers.segue.element) {
+            this.markers.segue.element.style.display = segue === null ? 'none' : '';
+        }
 
         // A region of zero length would turn into a marker; hide empty shades instead.
         const shade = (region, start, end) => {
@@ -840,6 +870,7 @@ Alpine.data('mediaWaveform', (waveformUrl, previewUrl, editable) => ({
         shade(this.shades.play, cueIn, cueOut);
         shade(this.shades.fadeIn, cueIn, cueIn + fadeIn);
         shade(this.shades.fadeOut, cueOut - fadeOut, cueOut);
+        shade(this.shades.segue, segue ?? cueOut, cueOut);
     },
 
     playbackLength() {

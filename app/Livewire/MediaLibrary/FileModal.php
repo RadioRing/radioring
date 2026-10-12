@@ -64,6 +64,9 @@ class FileModal extends Component
 
     public string $fadeOut = '';
 
+    /** Segue point ("start next"): where the next element starts, empty for none. */
+    public string $segue = '';
+
     /** @var array<int|string> */
     public array $tagIds = [];
 
@@ -150,6 +153,7 @@ class FileModal extends Component
         $this->cueOut = self::secondsField($this->file->cue_out_seconds);
         $this->fadeIn = self::secondsField($this->file->fade_in_seconds);
         $this->fadeOut = self::secondsField($this->file->fade_out_seconds);
+        $this->segue = self::secondsField($this->file->segue_seconds);
         $this->tagIds = $this->file->tags()->pluck('tags.id')->map(fn ($id) => (string) $id)->all();
 
         $this->airtimeWindows = collect($this->file->airtime_windows ?? [])
@@ -261,6 +265,7 @@ class FileModal extends Component
             'cueOut' => 'nullable|numeric|min:0',
             'fadeIn' => 'nullable|numeric|min:0|max:60',
             'fadeOut' => 'nullable|numeric|min:0|max:60',
+            'segue' => 'nullable|numeric|min:0',
             'airtimeWindows' => 'array|max:20',
             'airtimeWindows.*.days' => 'array',
             'airtimeWindows.*.days.*' => 'in:1,2,3,4,5,6,7',
@@ -340,7 +345,7 @@ class FileModal extends Component
      * length. Values that mean "nothing to do" (cue in at 0, cue out at the very end, a
      * fade of 0 s) are stored as null, so an untouched file stays plainly untouched.
      *
-     * @return array{cue_in_seconds: ?float, cue_out_seconds: ?float, fade_in_seconds: ?float, fade_out_seconds: ?float}
+     * @return array{cue_in_seconds: ?float, cue_out_seconds: ?float, segue_seconds: ?float, fade_in_seconds: ?float, fade_out_seconds: ?float}
      */
     private function validatedCuePoints(): array
     {
@@ -350,6 +355,7 @@ class FileModal extends Component
         $cueOut = $parse($this->cueOut);
         $fadeIn = $parse($this->fadeIn);
         $fadeOut = $parse($this->fadeOut);
+        $segue = $parse($this->segue);
         $length = $this->file->duration_seconds;
 
         $errors = [];
@@ -374,6 +380,12 @@ class FileModal extends Component
             $errors['fadeOut'] = __('Fade in and fade out together are longer than what plays.');
         }
 
+        $end = $cueOut ?? $length;
+
+        if ($segue !== null && ($segue <= ($cueIn ?? 0.0) || ($end !== null && $segue >= $end))) {
+            $errors['segue'] = __('The segue point must lie between cue in and cue out.');
+        }
+
         if ($errors !== []) {
             throw ValidationException::withMessages($errors);
         }
@@ -381,6 +393,7 @@ class FileModal extends Component
         return [
             'cue_in_seconds' => $cueIn !== null && $cueIn > 0.0 ? $cueIn : null,
             'cue_out_seconds' => $cueOut !== null && ($length === null || $cueOut < $length) ? $cueOut : null,
+            'segue_seconds' => $segue,
             'fade_in_seconds' => $fadeIn !== null && $fadeIn > 0.0 ? $fadeIn : null,
             'fade_out_seconds' => $fadeOut !== null && $fadeOut > 0.0 ? $fadeOut : null,
         ];

@@ -32,6 +32,9 @@ class RundownGeneratorService
     /** GVL violations of the current rundown. */
     private int $rotationViolations = 0;
 
+    /** The station segues: a file then lasts up to its segue point, where the next one starts. */
+    private bool $segues = false;
+
     public function __construct(private readonly MusicRotationPlanner $rotationPlanner) {}
 
     /**
@@ -145,6 +148,7 @@ class RundownGeneratorService
 
         $this->lengths = new ElementLengths($station);
         $this->artistSeparationSeconds = 60 * (int) $station->artist_separation_minutes;
+        $this->segues = (bool) $station->segues_enabled;
         $this->rotationViolations = 0;
         $cursor = $broadcastStart->copy();
         $timeline = $this->surroundingTimeline($station, $rundown, $broadcastStart);
@@ -223,7 +227,7 @@ class RundownGeneratorService
                 $cursor = $cursor->copy()->addSeconds($duration);
             } else {
                 // What goes on air (cue in to cue out), not the raw file length.
-                $duration = $item->mediaFile?->playbackDuration() ?? $item->duration_seconds;
+                $duration = $item->mediaFile?->airDuration($this->segues) ?? $item->duration_seconds;
 
                 $rundown->items()->create([
                     'position' => $position++,
@@ -378,7 +382,7 @@ class RundownGeneratorService
             $tracks = $station->poolMediaFiles()->where('type', 'music')->airableAt($cursor)->get();
         }
 
-        $chosen = $this->rotationPlanner->plan($tracks, $timeline, $cursor, $maxDuration, $fit, $this->artistSeparationSeconds);
+        $chosen = $this->rotationPlanner->plan($tracks, $timeline, $cursor, $maxDuration, $fit, $this->artistSeparationSeconds, $this->segues);
         $this->rotationViolations += $this->rotationPlanner->lastPlanViolations();
 
         foreach ($chosen as $track) {
@@ -404,7 +408,7 @@ class RundownGeneratorService
             $query->whereHas('tags', fn ($q) => $q->whereIn('tags.id', $item->fill_tags));
         }
 
-        $track = $this->rotationPlanner->pickOne($query->get(), $timeline, $cursor, $this->artistSeparationSeconds);
+        $track = $this->rotationPlanner->pickOne($query->get(), $timeline, $cursor, $this->artistSeparationSeconds, $this->segues);
 
         if ($track) {
             $this->appendTrack($rundown, $position++, $track, 'resolved_random', $cursor, $timeline);
@@ -425,12 +429,12 @@ class RundownGeneratorService
             'loudness_lufs' => $track->loudness_lufs,
             'loudness_true_peak' => $track->loudness_true_peak,
             'title' => $track->title,
-            'duration_seconds' => $track->playbackDuration(),
+            'duration_seconds' => $track->airDuration($this->segues),
             'source_type' => $sourceType,
         ]);
 
         $timeline[] = $this->airing($track, $cursor);
-        $cursor = $cursor->copy()->addSeconds($track->playbackDuration() ?? 0);
+        $cursor = $cursor->copy()->addSeconds($track->airDuration($this->segues) ?? 0);
     }
 
     /**

@@ -198,7 +198,7 @@ class Show extends Component
         $item->update([
             'media_file_id' => $mediaFile->id,
             'title' => $mediaFile->title,
-            'duration_seconds' => $mediaFile->playbackDuration(),
+            'duration_seconds' => $mediaFile->airDuration((bool) $this->station->segues_enabled),
             'source_type' => 'manual',
         ]);
 

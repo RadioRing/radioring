@@ -66,6 +66,17 @@
 
                         <div class="form-check form-switch mb-3">
                             <input class="form-check-input" type="checkbox" role="switch"
+                                   id="seguesEnabled" wire:model="seguesEnabled">
+                            <label class="form-check-label fw-medium" for="seguesEnabled">
+                                {{ __('Segues (start next)') }}
+                            </label>
+                            <div class="text-muted-sm">
+                                {{ __('Files with a segue point start the next element there while they fade out underneath. Hard fixed times, ad breaks, news, external sources and voice tracks always start clean. Switching it restarts the player briefly.') }}
+                            </div>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" role="switch"
                                    id="alertEmailsEnabled" wire:model="alertEmailsEnabled">
                             <label class="form-check-label fw-medium" for="alertEmailsEnabled">
                                 {{ __('Alert mails to the owners') }}

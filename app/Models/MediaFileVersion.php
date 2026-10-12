@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * ersetzt wurde. Die Datei bleibt liegen, solange noch generierte Rundowns auf
  * ihren Pfad zeigen; danach raeumt media:prune-replaced sie ab.
  */
-#[Fillable(['media_file_id', 'file_path', 'original_filename', 'duration_seconds', 'loudness_lufs', 'loudness_true_peak', 'cue_in_seconds', 'cue_out_seconds', 'replaced_by_user_id'])]
+#[Fillable(['media_file_id', 'file_path', 'original_filename', 'duration_seconds', 'loudness_lufs', 'loudness_true_peak', 'cue_in_seconds', 'cue_out_seconds', 'segue_seconds', 'replaced_by_user_id'])]
 class MediaFileVersion extends Model
 {
     protected function casts(): array
@@ -22,6 +22,7 @@ class MediaFileVersion extends Model
             'loudness_true_peak' => 'float',
             'cue_in_seconds' => 'float',
             'cue_out_seconds' => 'float',
+            'segue_seconds' => 'float',
         ];
     }
 

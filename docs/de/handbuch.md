@@ -141,6 +141,11 @@ alles zu dieser Datei bearbeitet wird:
   Anfang und Cue-Out an den Beginn der Stille am Ende (unter -50 dB). Von Hand gesetzte
   Cue-Punkte überschreibt es nicht. „Aus Stille ermitteln“ im Dialog schlägt die Werte
   für eine vorhandene Datei neu vor; gespeichert wird erst mit „Speichern“.
+- **Mix-Punkt** (Start Next): Ab hier startet das nächste Element, während diese Datei
+  bis zum Cue-Out darunter ausblendet. Wirkt nur auf Stationen mit eingeschalteten
+  Mix-Punkten (Station bearbeiten); dort plant der Rundown das nächste Element am
+  Mix-Punkt ein. Harte Fixzeiten, Werbeunterbrechungen, Nachrichten, externe Quellen und
+  Voice-Tracks starten trotzdem sauber nach dem Ende.
 - **Titel**, **Interpret**, **Album** und **Typ**.
 - **Notizen** und **Tags**.
 - **Laufzeit** und **Sendefenster** (siehe unten).
@@ -501,6 +506,9 @@ Fehlersuche („Was lief gestern um 14 Uhr?").
   desselben Interpreten bei Auffüll- und Zufallselementen. Zweimal hintereinander
   derselbe Interpret kommt ohnehin nie vor, und die GVL-Regeln gelten immer. `0`
   schaltet den Abstand ab.
+- **Mix-Punkte (Start Next)**: Dateien mit Mix-Punkt überlappen mit dem nächsten Element.
+  Standardmäßig aus. Umschalten startet den Player kurz neu; kommende Rundowns danach neu
+  generieren, damit ihre Zeiten stimmen.
 - **Team**: Weitere Nutzer per **E-Mail-Adresse** hinzufügen. Neue Mitglieder sind
   **Bearbeiter**; die Rolle lässt sich jederzeit umschalten.
 - **Station löschen**: Entfernt die Station unwiderruflich (nur der Gründer).

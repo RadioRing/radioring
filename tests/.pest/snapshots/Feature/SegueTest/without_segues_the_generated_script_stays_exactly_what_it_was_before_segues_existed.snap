@@ -1,0 +1,191 @@
+# Auto-generiert von RadioRing – nicht manuell editieren
+settings.log.level.set(3)
+settings.init.allow_root.set(true)
+settings.init.force_start.set(true)
+settings.server.telnet.set(true)
+server.telnet(port=1234)
+
+api_url = "https://panel.example"
+slug = "snapshot-fm"
+token = "snapshot-token"
+
+def protocol_safe(~rlog, ~maxtime, arg) =
+  ignore(maxtime)
+  tmp = file.temp("liq_safe", ".mp3")
+  try
+    response = http.get(arg)
+    if response.status_code >= 200 and response.status_code < 300 then
+      file.write(data="#{response}", tmp)
+      [tmp]
+    else
+      rlog("safe-Auflösung von #{arg}: HTTP #{response.status_code}, übersprungen.")
+      file.remove(tmp)
+      []
+    end
+  catch _ do
+    rlog("safe-Auflösung von #{arg} fehlgeschlagen (CurlException o.ä.), übersprungen.")
+    file.remove(tmp)
+    []
+  end
+end
+protocol.add(temporary=true, "safe", protocol_safe)
+
+def next_track() =
+  body = ref("")
+  try
+    body := string.trim(http.get(
+      headers=[("Authorization", "Bearer #{token}")],
+      "#{api_url}/api/liquidsoap/#{slug}/next"
+    ))
+  catch err do
+    log(level=2, label="radioring", "next_track: HTTP-Fehler beim /next-Abruf, überspringe (request.dynamic versucht erneut).")
+    ignore(err)
+  end
+  if body() == "" then
+    null()
+  else
+    request.create(body())
+  end
+end
+
+source = request.dynamic(id="program_queue", prefetch=3, retry_delay=1., timeout=60., next_track)
+normalized = amplify(1., override="liq_amplify", source)
+faded_in = fade.in(track_sensitive=true, override_duration="liq_fade_in", duration=0., normalized)
+faded = fade.out(track_sensitive=true, override_duration="liq_fade_out", duration=0., faded_in)
+cut_gain = ref(1.)
+program = amplify({cut_gain()}, override="liq_hard_cut_gain", faded)
+
+# Hard cut: fade out over 0.8000s (16 steps of 0.0500s), then cut.
+hard_cut_running = ref(false)
+
+def hard_cut_now() =
+  source.set_queue([])
+  source.skip()
+  cut_gain := 1.
+  hard_cut_running := false
+end
+
+def rec hard_cut_step() =
+  gain = cut_gain() * 0.6494
+  if gain <= 0.0010 then
+    hard_cut_now()
+  else
+    cut_gain := gain
+    thread.run(delay=0.0500, hard_cut_step)
+  end
+end
+
+# The argument is the number of seconds from now until the cut is due. The ramp is placed
+# so that it ENDS at that moment: a hard start announced at 14:59 for 15:00:00 fades the
+# running track out over the last 0.8000s of the hour, and the news begin on the hour
+# instead of 0.8000s after it. 0 (a manual skip) starts the ramp right away.
+def flush_and_skip(arg) =
+  if hard_cut_running() then
+    "busy"
+  else
+    lead = float_of_string(default=0., string.trim(arg))
+    wait = if lead > 0.8000 then lead - 0.8000 else 0. end
+    hard_cut_running := true
+    log(level=3, label="radioring", "Hard cut due in #{lead}s: fade starts in #{wait}s and runs for 0.8000s.")
+    thread.run(delay=wait + 0.0500, hard_cut_step)
+    "ok"
+  end
+end
+server.register(namespace="radioring", description="Fade the programme out, flush the prefetch queue and skip to the next track", "flush_and_skip", flush_and_skip)
+
+def live_status(connected) =
+  try
+    ignore(http.post(
+      headers=[("Authorization", "Bearer #{token}"), ("Content-Type", "application/json")],
+      data="{\"connected\":#{connected}}",
+      "#{api_url}/api/liquidsoap/#{slug}/live"
+    ))
+  catch err do
+    log(level=2, label="radioring", "live_status: live-POST fehlgeschlagen (ignoriert).")
+    ignore(err)
+  end
+end
+def on_live_connect(_) = live_status("true") end
+def on_live_disconnect() = live_status("false") end
+
+live = input.harbor("live", port=8005, password="changeme", buffer=5., max=60., on_connect=on_live_connect, on_disconnect=on_live_disconnect)
+
+# Emergency loop: local files, played while the programme branch is unavailable.
+emergency = playlist(id="emergency", mode="randomize", reload_mode="never", "/app/liquidsoap/emergency/emergency.m3u")
+emergency = amplify(1., override="liq_amplify", emergency)
+emergency = metadata.map(fun (_) -> [("radioring_source", "emergency")], emergency)
+
+# Grace period: the emergency loop takes over only after the programme has been unavailable for 5.0000s.
+program_unavailable_since = ref(-1.)
+def track_program_availability() =
+  if program.is_ready() then
+    program_unavailable_since := -1.
+  elsif program_unavailable_since() < 0. then
+    program_unavailable_since := time()
+  end
+end
+thread.run(every=0.1000, track_program_availability)
+def emergency_due() =
+  program_unavailable_since() >= 0. and time() - program_unavailable_since() >= 5.0000
+end
+emergency = switch(id="emergency_gate", track_sensitive=false, [(emergency_due, emergency)])
+
+radio = fallback(track_sensitive=false, [live, program, emergency, blank()])
+
+# Watchdog: poke the request queue while the programme branch is unavailable.
+def rec request_queue_watchdog() =
+  if not program.is_ready() then
+    log(level=3, label="radioring", "Watchdog: programme source is not ready, waking the request queue.")
+    source.set_queue([])
+  end
+  thread.run(delay=10.0000, request_queue_watchdog)
+end
+thread.run(delay=10.0000, request_queue_watchdog)
+
+now_playing_meta = ref([])
+
+def post_now_playing(m, heartbeat) =
+  payload = json.stringify({
+    item_id = m["radioring_item_id"],
+    filename = m["filename"],
+    title = m["title"],
+    artist = m["artist"],
+    source = m["radioring_source"],
+    heartbeat = heartbeat,
+    elapsed = radio.elapsed()
+  })
+  try
+    response = http.post(
+      headers=[("Authorization", "Bearer #{token}"), ("Content-Type", "application/json")],
+      data=payload,
+      "#{api_url}/api/liquidsoap/#{slug}/now-playing"
+    )
+    if response.status_code < 200 or response.status_code >= 300 then
+      log(level=2, label="radioring", "now-playing: HTTP #{response.status_code}, report lost (heartbeat: #{heartbeat}).")
+    end
+  catch err do
+    log(level=2, label="radioring", "now-playing: POST failed, report lost (heartbeat: #{heartbeat}).")
+    ignore(err)
+  end
+end
+
+def on_meta(m) =
+  now_playing_meta := m
+  post_now_playing(m, false)
+end
+radio.on_metadata(on_meta)
+
+def on_track_change(m) =
+  now_playing_meta := m
+end
+radio.on_track(on_track_change)
+
+# Heartbeat: repeats the report for the track on air, see nowPlayingCallback.
+def now_playing_heartbeat() =
+  m = now_playing_meta()
+  if m["radioring_item_id"] != "" or m["radioring_source"] == "emergency" then
+    post_now_playing(m, true)
+  end
+end
+thread.run(every=30.0000, now_playing_heartbeat)
+

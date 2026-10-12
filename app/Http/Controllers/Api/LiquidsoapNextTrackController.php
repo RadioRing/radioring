@@ -39,7 +39,7 @@ class LiquidsoapNextTrackController extends Controller
         if ($item->source_type === 'adbreak') {
             $signalPath = config('radioring.adbreak_signal_path', '');
 
-            return $this->plain("annotate:radioring_item_id=\"{$item->id}\",title=\"START_AD_BREAK\",artist=\"START_AD_BREAK\":{$signalPath}");
+            return $this->plain("annotate:radioring_item_id=\"{$item->id}\",title=\"START_AD_BREAK\",artist=\"START_AD_BREAK\"{$this->hardStart($item, $station)}:{$signalPath}");
         }
 
         // Externe dynamische Quellen (Syndication/News/Wetter als ExternalSource):
@@ -66,7 +66,7 @@ class LiquidsoapNextTrackController extends Controller
                 'item' => $item->id,
             ]);
 
-            $annotations = "radioring_item_id=\"{$item->id}\"";
+            $annotations = "radioring_item_id=\"{$item->id}\"".$this->hardStart($item, $station);
             // The source's broadcast title, not the frozen item title: the item carries
             // the operator's label (part numbers and the like), which belongs in the
             // library and the log, not in the stream metadata. Live DB value, so a
@@ -101,7 +101,7 @@ class LiquidsoapNextTrackController extends Controller
                 return $this->skipToNextItem($slug, $stateService);
             }
 
-            return $this->plain("annotate:radioring_item_id=\"{$item->id}\":{$this->safeUri($url)}");
+            return $this->plain("annotate:radioring_item_id=\"{$item->id}\"{$this->hardStart($item, $station)}:{$this->safeUri($url)}");
         }
 
         // Normale Tracks: authentifizierte HTTP-URL, adressiert per Medien-ID (eine
@@ -115,7 +115,7 @@ class LiquidsoapNextTrackController extends Controller
             'item' => $item->id,
         ]);
 
-        $annotations = "radioring_item_id=\"{$item->id}\"";
+        $annotations = "radioring_item_id=\"{$item->id}\"".$this->hardStart($item, $station);
 
         // Titel/Interpret aus der DB mitschicken, damit der AUSGEHENDE Stream die
         // (korrigierbaren) DB-Werte zeigt statt der evtl. veralteten ID3-Tags der Datei.
@@ -145,13 +145,41 @@ class LiquidsoapNextTrackController extends Controller
         // Cue and fade points from the waveform editor, live DB state so an edit takes
         // effect without regenerating the rundown. They were set on the current file: a
         // replaced version still playing out from an older rundown gets none of them.
+        // The segue point too, on a station with segues: cross() in the script starts the
+        // next element there and fades this one out underneath.
         if ($item->mediaFile !== null && $item->supersededPath() === null) {
-            foreach ([...$item->mediaFile->cueAnnotations(), ...$item->mediaFile->fadeAnnotations()] as $key => $value) {
+            $points = [
+                ...$item->mediaFile->cueAnnotations(),
+                ...$item->mediaFile->fadeAnnotations(),
+                ...($station->segues_enabled ? $item->mediaFile->segueAnnotations() : []),
+            ];
+
+            foreach ($points as $key => $value) {
                 $annotations .= ",{$key}=\"{$value}\"";
             }
         }
 
         return $this->plain("annotate:{$annotations}:{$this->safeUri($url)}");
+    }
+
+    /**
+     * Marks an element that must not be faded in over the end of the previous one, on a
+     * station with segues: the transition in the script then plays it after the previous
+     * element instead of overlapping. A hard fixed time must start on time and clean,
+     * laut.fm needs the ad break signal clean, news and external sources carry time
+     * signals, and a presenter must not talk over the outro of a track by accident.
+     */
+    private function hardStart(GeneratedPlaylistItem $item, Station $station): string
+    {
+        if (! $station->segues_enabled) {
+            return '';
+        }
+
+        $hard = $item->fixed_mode === 'hard'
+            || in_array($item->source_type, ['adbreak', 'external', 'news', 'weather', 'news_weather'], true)
+            || $item->isVoiceTrack();
+
+        return $hard ? ',radioring_hard="1"' : '';
     }
 
     /**

@@ -631,5 +631,13 @@
     "No silence found at the start or end.": "Am Anfang und am Ende wurde keine Stille gefunden.",
     "Cue points suggested from silence. Check them and save.": "Cue-Punkte aus der Stille vorgeschlagen. Bitte prüfen und speichern.",
     "Suggest cue in and cue out from the silence at the start and end": "Cue-In und Cue-Out anhand der Stille am Anfang und Ende vorschlagen",
-    "Detect from silence": "Aus Stille ermitteln"
+    "Detect from silence": "Aus Stille ermitteln",
+    "Segue": "Mix-Punkt",
+    "Where the next element starts while this one fades out underneath (start next).": "Wo das nächste Element startet, während dieses darunter ausblendet (Start Next).",
+    "None": "Keiner",
+    "This station does not use segues: the segue point only applies on stations that have them switched on.": "Diese Station nutzt keine Mix-Punkte: Der Mix-Punkt wirkt nur auf Stationen, die sie eingeschaltet haben.",
+    "The segue point must lie between cue in and cue out.": "Der Mix-Punkt muss zwischen Cue-In und Cue-Out liegen.",
+    "Segues (start next)": "Mix-Punkte (Start Next)",
+    "Files with a segue point start the next element there while they fade out underneath. Hard fixed times, ad breaks, news, external sources and voice tracks always start clean. Switching it restarts the player briefly.": "Dateien mit Mix-Punkt starten dort das nächste Element und blenden darunter aus. Harte Fixzeiten, Werbeunterbrechungen, Nachrichten, externe Quellen und Voice-Tracks starten immer sauber. Umschalten startet den Player kurz neu.",
+    "Restarting the player so the segue setting takes effect. Regenerate upcoming rundowns so their times match.": "Der Player startet neu, damit die Mix-Punkt-Einstellung greift. Generiere kommende Rundowns neu, damit ihre Zeiten stimmen."
 }

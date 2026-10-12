@@ -29,7 +29,7 @@ class ElementLengths
             'marker' => 0,
             'external' => $item->externalSource?->expected_duration_seconds ?? $item->duration_seconds,
             'container' => $this->ofContainer($item),
-            default => $item->mediaFile?->playbackDuration() ?? $item->duration_seconds,
+            default => $item->mediaFile?->airDuration((bool) $this->station?->segues_enabled) ?? $item->duration_seconds,
         };
     }
 
@@ -99,8 +99,12 @@ class ElementLengths
                 $query->whereHas('tags', fn ($q) => $q->whereIn('tags.id', $tags));
             }
 
-            // Playback length (cue in to cue out), the same as MediaFile::playbackDuration().
-            $average = $query->avg(DB::raw('COALESCE(cue_out_seconds, duration_seconds) - COALESCE(cue_in_seconds, 0)'));
+            // Playback length (cue in to cue out, or to the segue point on a segueing
+            // station), the same as MediaFile::airDuration().
+            $end = $this->station->segues_enabled
+                ? 'COALESCE(segue_seconds, cue_out_seconds, duration_seconds)'
+                : 'COALESCE(cue_out_seconds, duration_seconds)';
+            $average = $query->avg(DB::raw("{$end} - COALESCE(cue_in_seconds, 0)"));
             $this->poolAverages[$key] = $average !== null ? (int) round((float) $average) : null;
         }
 

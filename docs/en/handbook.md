@@ -134,6 +134,11 @@ that file is edited:
   at the start and cue out at the beginning of the silence at the end (below -50 dB). It
   never overwrites cue points set by hand. "Detect from silence" in the dialog suggests the
   values again for an existing file; they are stored only when you save.
+- **Segue** (start next): from here the next element starts while this file fades out
+  underneath up to its cue out. Only applies on stations with segues switched on (Edit
+  station); there the rundown places the next element at the segue point. Hard fixed
+  times, ad breaks, news, external sources and voice tracks still start clean after the
+  end.
 - **Title**, **artist**, **album** and **type**.
 - **Notes** and **tags**.
 - **Run time** and **airtime windows**, see below.
@@ -452,6 +457,9 @@ Under **Edit station**, available to the owner:
 - **Artist separation** (default 45 minutes): the minimum gap between two titles of the
   same artist in fill and random elements. The same artist never plays twice in a row
   anyway, and the GVL rules always apply. `0` turns the gap off.
+- **Segues (start next)**: files with a segue point overlap with the next element. Off by
+  default. Switching restarts the player briefly; regenerate upcoming rundowns afterwards
+  so their times match.
 - **Team**: add users by **email address**. New members are **editors**; the role can be
   switched at any time.
 - **Delete station**: irreversible, founder only
