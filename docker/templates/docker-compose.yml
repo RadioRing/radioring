@@ -52,7 +52,7 @@ services:
   # Icecast sidecars and Traefik must not.
   dockerproxy:
     profiles: [driver-docker]
-    image: tecnativa/docker-socket-proxy:0.3
+    image: tecnativa/docker-socket-proxy:3.4
     restart: unless-stopped
     environment:
       CONTAINERS: 1
@@ -122,7 +122,7 @@ services:
   # with Traefik alone.
   dockerproxy-traefik:
     profiles: [traefik]
-    image: tecnativa/docker-socket-proxy:0.3
+    image: tecnativa/docker-socket-proxy:3.4
     restart: unless-stopped
     environment:
       CONTAINERS: 1
